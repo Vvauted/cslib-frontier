@@ -17,14 +17,14 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Collect
 public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Standard
 
 /-!
-# Parametric Dynamic Word-RAM Soft Heap
+# Parametric Single-Heap Word-RAM Soft Heap
 
-This module exports a parametric dynamic Word-RAM Soft Heap ([Chazelle2000];
-[PettieRamachandran2002], Section 2.4 & Lemma 2.2) for arbitrary corruption rank threshold
-`r : ℕ` (including `softRankThreshold = 8` for `ε = 1 / 16` and `rankThresholdForEps ε` for any
-rational `ε > 0`, without `meld`), together with both composable `Cslib.DataStructure.Memory.Prog`
-operations and a standalone flat deterministic width-blind `Cslib.WordRAM.Program .standard r`
-batch driver (`SoftHeap.Standard`).
+Unregistered single-heap Word-RAM soft-heap step following [Chazelle2000] and
+[PettieRamachandran2002], Lemma 2.2. Supports `insert`, `extractMin`, and `collectCorrupted`
+(without `meld` or arbitrary-handle `delete`) for arbitrary corruption rank threshold `r : ℕ` and
+`rankThresholdForEps ε = Nat.log 2 (Nat.ceil (12 / ε)) + 1` (`0 < ε : ℚ`), exported both as
+composable `Cslib.DataStructure.Memory.Prog` operations and as a standalone flat deterministic
+width-blind `Cslib.WordRAM.Program .standard r` batch driver (`SoftHeap.Standard`).
 
 ## Cost model and scope
 
@@ -38,13 +38,14 @@ batch driver (`SoftHeap.Standard`).
   allocation internally and lowers via `exists_softHeap_standard_program` and
   `exists_softHeap_standard_program_eps` to a single fixed width-blind rand-free
   `Program .standard r` (`¬prog.ReadsWidth`, `prog.IsRandFree`) executing `N` insertions and `M`
-  extract-mins in `O(N * (r + 1) + M + 1)` (`O(N * (rankThresholdForEps ε + 1) + M + 1)`) native
-  instructions with at most `12 * N / 2 ^ r` (`≤ ε * N`) surviving corrupted items.
+  extract-mins from `State.init I.encode` under `Fits w I.wordBound` in
+  `O(N * (r + 1) + M + 1)` (`O(N * (rankThresholdForEps ε + 1) + M + 1)`) native instructions with
+  at most `12 * N / 2 ^ r` (`≤ ε * N`) surviving corrupted items.
 
 ## Main definitions
 
-* `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.softRankThreshold`, `rankThresholdForEps`,
-  `shFuelBound`: default threshold `8`, `ε`-derived threshold, and `shFuelBound r maxItems`.
+* `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.rankThresholdForEps`, `shFuelBound`:
+  `ε`-derived corruption rank threshold and `shFuelBound r maxItems`.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.targetSize`, `sizeCap`, `itemPhi`:
   parametric soft-heap rank parameters and exact closed-form item potential.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.SHHandle`, `SHExtractResult`, `SHInv`:
@@ -59,9 +60,8 @@ batch driver (`SoftHeap.Standard`).
 ## Main results
 
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.corrupt_sum_bound`, `corrupt_sum_bound_eps`,
-  `corrupt_sum_bound_eight`, `shInv_corrupted_le`, `shInv_corrupted_le_eps`,
-  `shInv_corrupted_le_sixteen`: Chazelle's corruption bounds (`2 ^ r * #corrupted ≤ 12 * N` and
-  rational `ε`-error specialization).
+  `shInv_corrupted_le`, `shInv_corrupted_le_eps`: Chazelle's corruption bounds
+  (`2 ^ r * #corrupted ≤ 12 * N` and rational `ε`-error specialization).
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.SHInv.origKey_le_ckey`: every surviving
   entry satisfies `origKey ≤ ckey`.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.realizes_allocPool`, `realizes_defill`,
@@ -79,5 +79,5 @@ batch driver (`SoftHeap.Standard`).
 * [B. Chazelle, *The Soft Heap: An Approximate Priority Queue with Optimal Error Rate*,
   Journal of the ACM 47(6), 2000][Chazelle2000]
 * [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
-  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.4 & Lemma 2.2.
+  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Lemma 2.2.
 -/

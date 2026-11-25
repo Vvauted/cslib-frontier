@@ -11,10 +11,11 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Defill
 public import CslibFrontier.Computability.WordRAM.Realization.Absorb
 public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
--- `import all` reuses private program helpers, representation, vector, and suffix-min lemmas.
+-- `import all` reads `Program`'s `extractPopItem`/`unlinkLinks`/`extractFixup`/`shExtractMinRaw`
+-- (`shExtractMin` body), plus `Model`'s `RootListLinksOnly`, `ItemListRep.pop`, `vec*` lemmas.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
-import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Defill
+import CslibFrontier.Foundations.Data.List.Range
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame
 import CslibFrontier.DataStructure.Memory.Frame
 import Mathlib.Data.Rat.Cast.Order
@@ -1109,7 +1110,7 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
         omega
       have hlen_xpop : xPop.itemIds.length ≤ maxItems := by
         rw [← List.length_map (f := fun id => id - (ic₀ + 1))]
-        refine nodup_length_le_bound hit_nd ?_
+        refine List.length_le_of_nodup_lt hit_nd ?_
         intro y hy
         rcases List.mem_map.mp hy with ⟨id, hid, rfl⟩
         have hidx := itemIds_sub_mid pre x suf |>.mem (xPop_itemIds_sub hid)
@@ -2264,7 +2265,7 @@ theorem shExtractMin_spec {w ic₀ nc₀ maxItems maxNodes fuel : ℕ}
               omega
             have hx_len : xNode.itemIds.length ≤ maxItems := by
               rw [← List.length_map (f := fun id => id - (ic₀ + 1))]
-              refine nodup_length_le_bound hit_nd ?_
+              refine List.length_le_of_nodup_lt hit_nd ?_
               intro y hy
               rcases List.mem_map.mp hy with ⟨id, hid, rfl⟩
               have := hinv_rw.itemIds_range id (itemIds_sub_mid pre xNode suf |>.mem hid)

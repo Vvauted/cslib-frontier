@@ -28,12 +28,15 @@ import Mathlib.Tactic.Ring
 /-!
 # Flat `Program .standard` Batch Driver for the Parametric Word-RAM Soft Heap
 
-Packages the dynamic Word-RAM Soft Heap (`shInsert`, `shExtractMin`, `shCollectCorrupted`) into a
-single flat deterministic width-blind standard-basis program (`Program .standard r`,
-`¬prog.ReadsWidth`, `prog.IsRandFree`) operating directly on the standard input convention
-`State.init I.encode`, hiding `shFuelBound` internally and certifying `O(N * (r + 1) + M + 1)`
-(`O(N log(1/ε) + M + 1)`) native Word-RAM step counts and Chazelle's corruption bound
-([Chazelle2000]; [PettieRamachandran2002]).
+Unregistered single-heap Word-RAM batch driver step following [Chazelle2000] and
+[PettieRamachandran2002], Lemma 2.2. Packages `shInsert`, `shExtractMin`, and batch
+`shCollectCorrupted` (without `meld` or arbitrary-handle `delete`) into a single flat
+deterministic width-blind standard-basis program (`Program .standard r`, `¬prog.ReadsWidth`,
+`prog.IsRandFree`) operating directly on `State.init I.encode` under `Fits w I.wordBound`, hiding
+`shFuelBound` internally and certifying `O(N * (r + 1) + M + 1)` (and
+`O(N * (rankThresholdForEps ε + 1) + M + 1)` for arbitrary `0 < ε : ℚ`, where
+`rankThresholdForEps ε = Nat.log 2 (Nat.ceil (12 / ε)) + 1`) native Word-RAM step counts alongside
+the corruption bound.
 
 ## Main definitions
 
@@ -66,7 +69,7 @@ single flat deterministic width-blind standard-basis program (`Program .standard
 * [B. Chazelle, *The Soft Heap: An Approximate Priority Queue with Optimal Error Rate*,
   Journal of the ACM 47(6), 2000][Chazelle2000]
 * [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
-  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.4 & Lemma 2.2.
+  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Lemma 2.2.
 -/
 
 namespace Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap
@@ -542,132 +545,6 @@ end
 
 /-! ### Framing and Proof Helpers for `shBatchProg_spec` -/
 
-private theorem itemListRep_congr {itemBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {head tail : ℕ}
-    {items : List SHItem}
-    (hagree : ∀ it ∈ items, ∀ j < 3,
-      mem₁ (itemBase + 3 * it.id + j) = mem₂ (itemBase + 3 * it.id + j))
-    (hrep : ItemListRep itemBase mem₁ head tail items) :
-    ItemListRep itemBase mem₂ head tail items := by
-  induction items generalizing head with
-  | nil => exact hrep
-  | cons it rest ih =>
-    cases rest with
-    | nil =>
-      rcases hrep with ⟨hh, ht, hid, h0, h1, h2⟩
-      refine ⟨hh, ht, hid, ?_, ?_, ?_⟩
-      · simpa only [Nat.add_zero] using (hagree it (by simp) 0 (by decide)).symm.trans h0
-      · exact (hagree it (by simp) 1 (by decide)).symm.trans h1
-      · exact (hagree it (by simp) 2 (by decide)).symm.trans h2
-    | cons it2 rest2 =>
-      rcases hrep with ⟨hh, hid, h0, h1, h2, htail⟩
-      refine ⟨hh, hid, ?_, ?_, ?_, ?_⟩
-      · simpa only [Nat.add_zero] using (hagree it (by simp) 0 (by decide)).symm.trans h0
-      · exact (hagree it (by simp) 1 (by decide)).symm.trans h1
-      · exact (hagree it (by simp) 2 (by decide)).symm.trans h2
-      · exact ih (fun x hx => hagree x (by simp [hx])) htail
-
-private theorem treeMemRep_congr {rt itemBase nodeBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {t : SHTree}
-    (hnode : ∀ id ∈ t.nodeIds, ∀ j < 8,
-      mem₁ (nodeBase + 12 * id + j) = mem₂ (nodeBase + 12 * id + j))
-    (hitem : ∀ it ∈ t.allItems, ∀ j < 3,
-      mem₁ (itemBase + 3 * it.id + j) = mem₂ (itemBase + 3 * it.id + j))
-    (hrep : TreeMemRep rt itemBase nodeBase mem₁ t) :
-    TreeMemRep rt itemBase nodeBase mem₂ t := by
-  induction hrep with
-  | @node id r ck items l r' hid h0 h1 h2 h3 h45 h6 h7 _ _ ihL ihR =>
-    have hn : ∀ j < 8, mem₁ (nodeBase + 12 * id + j) = mem₂ (nodeBase + 12 * id + j) :=
-      hnode id (by simp)
-    have hi : ItemListRep itemBase mem₂ (mem₂ (nodeBase + 12 * id + 4))
-        (mem₂ (nodeBase + 12 * id + 5)) items := by
-      rw [← hn 4 (by decide), ← hn 5 (by decide)]
-      refine itemListRep_congr (fun it hit j hj => ?_) h45
-      apply hitem it _ j hj
-      simp only [SHTree.allItems, SHTree.allEntries_node, List.map_append, List.map_map,
-        List.mem_append, List.mem_map]
-      exact Or.inl (Or.inl ⟨it, hit, rfl⟩)
-    refine .node hid ?_ ?_ ?_ ?_ hi ?_ ?_ ?_ ?_
-    · simpa only [Nat.add_zero] using (hn 0 (by decide)).symm.trans h0
-    · exact (hn 1 (by decide)).symm.trans h1
-    · exact (hn 2 (by decide)).symm.trans h2
-    · exact (hn 3 (by decide)).symm.trans h3
-    · exact (hn 6 (by decide)).symm.trans h6
-    · exact (hn 7 (by decide)).symm.trans h7
-    · intro c hc
-      refine ihL c hc ?_ ?_
-      · intro nid hnid j hj
-        apply hnode nid _ j hj
-        simp only [SHTree.nodeIds_node, hc, Option.elim_some, List.cons_append,
-          List.mem_cons, List.mem_append]
-        exact Or.inr (Or.inl hnid)
-      · intro it hit j hj
-        apply hitem it _ j hj
-        simp only [SHTree.allItems, SHTree.allEntries_node, hc, Option.elim_some,
-          List.map_append, List.mem_append]
-        exact Or.inl (Or.inr hit)
-    · intro c hc
-      refine ihR c hc ?_ ?_
-      · intro nid hnid j hj
-        apply hnode nid _ j hj
-        simp only [SHTree.nodeIds_node, hc, Option.elim_some, List.cons_append,
-          List.mem_cons, List.mem_append]
-        exact Or.inr (Or.inr hnid)
-      · intro it hit j hj
-        apply hitem it _ j hj
-        simp only [SHTree.allItems, SHTree.allEntries_node, hc, Option.elim_some,
-          List.map_append, List.mem_append]
-        exact Or.inr hit
-
-private theorem rootListRep_congr {nodeBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {prev : ℕ}
-    {roots : List SHTree}
-    (hagree : ∀ t ∈ roots, ∀ j, j = 9 ∨ j = 10 ∨ j = 11 →
-      mem₁ (nodeBase + 12 * t.rootId + j) = mem₂ (nodeBase + 12 * t.rootId + j))
-    (hrep : RootListRep nodeBase mem₁ prev roots) :
-    RootListRep nodeBase mem₂ prev roots := by
-  induction roots generalizing prev with
-  | nil => trivial
-  | cons t rest ih =>
-    rcases hrep with ⟨hrank, h9, h10, h11, hrest⟩
-    refine ⟨hrank, ?_, ?_, ?_, ih (fun u hu => hagree u (by simp [hu])) hrest⟩
-    · rw [← hagree t (by simp) 9 (Or.inl rfl)]; exact h9
-    · rw [← hagree t (by simp) 10 (Or.inr (Or.inl rfl))]; exact h10
-    · rw [← hagree t (by simp) 11 (Or.inr (Or.inr rfl))]; exact h11
-
-private theorem shInv_congr_outside {w ic₀ nc₀ maxItems maxNodes : ℕ}
-    {h : SHHandle} {roots : List SHTree} {created : ℕ → ℕ} {s s' : Memory.State}
-    (hinv : SHInv w ic₀ nc₀ maxItems maxNodes h roots created s)
-    (hwf' : Memory.WellFormed w s') (hfr' : s'.frontier = s.frontier)
-    (hagree : ∀ a, InSHPool ic₀ nc₀ maxItems maxNodes h a → s'.mem a = s.mem a) :
-    SHInv w ic₀ nc₀ maxItems maxNodes h roots created s' := by
-  refine ⟨hinv.fits16, hwf', hinv.ic_le, hinv.ic_max, hinv.nc_le, hinv.nc_max, hinv.pool_cap,
-    hinv.nc_roots_le, hfr' ▸ hinv.item_pool_lt, hfr' ▸ hinv.node_pool_lt, hinv.pools_disj,
-    hinv.fits_fuel, hinv.nodeIds_nodup, hinv.nodeIds_range, hinv.itemIds_nodup,
-    hinv.itemIds_range, ?_, hinv.trees_valid, ?_, ?_, hinv.firstRoot_eq, hinv.created_zero,
-    hinv.created_step, hinv.live_rank_le, hinv.rank_le⟩
-  · intro idx h1 h2 hnot
-    have := hinv.nc_max
-    rw [hagree (h.nodeBase + 12 * idx + 4) (Or.inr ⟨by omega, by omega⟩)]
-    exact hinv.dead_nodes_empty idx h1 h2 hnot
-  · intro t ht
-    refine treeMemRep_congr (fun id hid j hj => ?_) (fun it hit k hk => ?_) (hinv.trees_mem t ht)
-    · have hid_in : id ∈ forestNodeIds roots := List.mem_flatMap.mpr ⟨t, ht, hid⟩
-      have hrng := hinv.nodeIds_range id hid_in
-      have := hinv.nc_max
-      exact (hagree (h.nodeBase + 12 * id + j) (Or.inr ⟨by omega, by omega⟩)).symm
-    · have hit_in : it.id ∈ forestItemIds roots := by
-        refine List.mem_flatMap.mpr ⟨t, ht, ?_⟩
-        exact List.mem_map_of_mem hit
-      have hrng := hinv.itemIds_range it.id hit_in
-      have := hinv.ic_max
-      exact (hagree (h.itemBase + 3 * it.id + k) (Or.inl ⟨by omega, by omega⟩)).symm
-  · refine rootListRep_congr (fun t ht j hj => ?_) hinv.rootList
-    have hid_in : t.rootId ∈ forestNodeIds roots := by
-      refine List.mem_flatMap.mpr ⟨t, ht, ?_⟩
-      cases t
-      simp only [SHTree.rootId, SHTree.nodeIds_node, List.cons_append, List.mem_cons, true_or]
-    have hrng := hinv.nodeIds_range t.rootId hid_in
-    have := hinv.nc_max
-    exact (hagree (h.nodeBase + 12 * t.rootId + j) (Or.inr ⟨by omega, by omega⟩)).symm
-
 private theorem itemListRep_fits {w itemBase : ℕ} {mem : ℕ → ℕ} {head tail : ℕ}
     {items : List SHItem} (hmem_fits : ∀ a, Fits w (mem a))
     (hrep : ItemListRep itemBase mem head tail items) :
@@ -715,17 +592,6 @@ private theorem shInv_fits_entry {w ic₀ nc₀ maxItems maxNodes : ℕ}
   rcases List.mem_flatMap.mp hp with ⟨t, ht, hpt⟩
   exact treeMemRep_fits hinv.wf (hinv.trees_mem t ht) p hpt
 
-private theorem list_take_succ {α : Type} (xs : List α) (j : ℕ) (hj : j < xs.length) :
-    xs.take (j + 1) = xs.take j ++ [xs[j]] := by
-  induction xs generalizing j with
-  | nil => simp only [List.length_nil] at hj; omega
-  | cons x rest ih =>
-    cases j with
-    | zero => rfl
-    | succ j' =>
-      simp only [List.take_succ_cons, List.getElem_cons_succ, List.cons_append]
-      exact congrArg (x :: ·) (ih j' (by simp only [List.length_cons] at hj; omega))
-
 private def rootsToEntries (roots : List SHTree) : List SHBatchEntry :=
   (forestEntries roots).map (fun p => ⟨p.1.val, p.1.origKey, p.2⟩)
 
@@ -734,6 +600,94 @@ private theorem rootsToEntries_map_pair (roots : List SHTree) :
       (forestItems roots).map (fun it => (it.val, it.origKey)) := by
   simp only [rootsToEntries, forestItems, List.map_map]
   rfl
+
+private theorem shBatch_step_append_lt
+    {I : SHBatchInput} {j : ℕ} (hj_lt : j < I.ops.length)
+    {extCount : ℕ} {extracts₀ : List SHBatchExtract} (ex_cur : SHBatchExtract)
+    {states₀ : List (List SHBatchEntry)} (nextState : List SHBatchEntry)
+    (hstates_len : states₀.length = j + 1)
+    (hstates_head : states₀.head? = some [])
+    (hexts_len : extracts₀.length = extCount)
+    (hext_cnt : (I.ops.take j).countP SHOp.isExtract = extCount)
+    (hstep₀ : ∀ m' < j,
+      ∃ st st' : List SHBatchEntry,
+        states₀[m']? = some st ∧ states₀[m' + 1]? = some st' ∧
+        match I.ops[m']? with
+        | some (.insert v' k') =>
+            ((st'.map (fun e => (e.val, e.origKey))).Perm
+              ((v', k') :: st.map (fun e => (e.val, e.origKey)))) ∧
+            ∀ e ∈ st', e.origKey ≤ e.ckey
+        | some .extractMin =>
+            ∃ ex : SHBatchExtract,
+              extracts₀[(I.ops.take m').countP SHOp.isExtract]? = some ex ∧
+              (st = [] → ex = ⟨0, 0, 0⟩ ∧ st' = []) ∧
+              (st ≠ [] → ∃ e : SHBatchEntry, e ∈ st ∧
+                ex = ⟨1, e.val, e.ckey⟩ ∧ e.origKey ≤ e.ckey ∧
+                (∀ p ∈ st, e.ckey ≤ p.ckey) ∧
+                ((e :: st').map (fun x => (x.val, x.origKey))).Perm
+                  (st.map (fun x => (x.val, x.origKey))))
+        | none => False) :
+    (states₀ ++ [nextState]).length = (j + 1) + 1 ∧
+    (states₀ ++ [nextState]).head? = some [] ∧
+    (states₀ ++ [nextState])[j + 1]? = some nextState ∧
+    ∀ m' < j,
+      ∃ st st' : List SHBatchEntry,
+        (states₀ ++ [nextState])[m']? = some st ∧
+        (states₀ ++ [nextState])[m' + 1]? = some st' ∧
+        match I.ops[m']? with
+        | some (.insert v' k') =>
+            ((st'.map (fun e => (e.val, e.origKey))).Perm
+              ((v', k') :: st.map (fun e => (e.val, e.origKey)))) ∧
+            ∀ e ∈ st', e.origKey ≤ e.ckey
+        | some .extractMin =>
+            ∃ ex : SHBatchExtract,
+              (extracts₀ ++ [ex_cur])[(I.ops.take m').countP SHOp.isExtract]? = some ex ∧
+              (st = [] → ex = ⟨0, 0, 0⟩ ∧ st' = []) ∧
+              (st ≠ [] → ∃ e : SHBatchEntry, e ∈ st ∧
+                ex = ⟨1, e.val, e.ckey⟩ ∧ e.origKey ≤ e.ckey ∧
+                (∀ p ∈ st, e.ckey ≤ p.ckey) ∧
+                ((e :: st').map (fun x => (x.val, x.origKey))).Perm
+                  (st.map (fun x => (x.val, x.origKey))))
+        | none => False := by
+  refine ⟨by simp only [List.length_append, List.length_singleton, hstates_len], ?_, ?_, ?_⟩
+  · cases states₀ with
+    | nil => simp only [List.length_nil] at hstates_len; omega
+    | cons hd tl => simpa only [List.cons_append, List.head?_cons] using hstates_head
+  · rw [List.getElem?_append_right (by omega), hstates_len, Nat.sub_self]
+    rfl
+  · intro m' hm_lt
+    obtain ⟨st, st', hst, hst', hmatch⟩ := hstep₀ m' hm_lt
+    refine ⟨st, st', ?_, ?_, ?_⟩
+    · rw [List.getElem?_append_left (by omega)]; exact hst
+    · rw [List.getElem?_append_left (by omega)]; exact hst'
+    · cases hop_m : I.ops[m']? with
+      | none => rw [hop_m] at hmatch; exact hmatch
+      | some op_m =>
+        rw [hop_m] at hmatch
+        cases op_m with
+        | insert v' k' => exact hmatch
+        | extractMin =>
+          rcases hmatch with ⟨ex, hex_m, h1, h2⟩
+          have hcnt_lt : (I.ops.take m').countP SHOp.isExtract < extCount := by
+            rw [← hext_cnt]
+            have hm_lt_len : m' < I.ops.length := by omega
+            have htk := (List.take_append_getElem hm_lt_len).symm
+            have hpre : I.ops.take (m' + 1) <+: I.ops.take j := by
+              rw [show m' + 1 = min (m' + 1) j by omega, ← List.take_take]
+              exact List.take_prefix _ _
+            rw [htk] at hpre
+            have hsub : I.ops.take m' ++ [I.ops[m']?.getD SHOp.extractMin] <+: I.ops.take j := by
+              simpa only [List.getElem?_eq_getElem hm_lt_len, Option.getD_some] using hpre
+            rcases hsub with ⟨rest, hrest⟩
+            have heq_ex : I.ops[m']?.getD SHOp.extractMin = .extractMin := by
+              rw [hop_m]; rfl
+            rw [← hrest, heq_ex]
+            repeat rw [List.countP_append]
+            simp only [List.countP_cons, SHOp.isExtract, List.countP_nil, ↓reduceIte]
+            omega
+          refine ⟨ex, ?_, h1, h2⟩
+          rw [List.getElem?_append_left (hexts_len ▸ hcnt_lt)]
+          exact hex_m
 
 private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I.wordBound)
     (s₀ : Memory.State) (extBase : ℕ)
@@ -877,7 +831,7 @@ private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I
     let j := st₀.opIdx
     have hj_lt : j < I.ops.length := by omega
     have htake_j : I.ops.take (j + 1) = I.ops.take j ++ [I.ops[j]] :=
-      list_take_succ I.ops j hj_lt
+      (List.take_append_getElem hj_lt).symm
     have hdrop_j : I.ops.drop j = I.ops[j] :: I.ops.drop (j + 1) := by
       exact List.drop_eq_getElem_cons hj_lt
     have haddr_lt : 3 + 3 * j + 2 < s₀.frontier := by
@@ -1333,7 +1287,7 @@ private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I
               by_cases h0 : a = extBase + 3 * st₀.extCount
               · subst h0; rw [Function.update_self]; exact hres_fits.1
               · rw [Function.update_of_ne h0]; exact hwf_mid.mem_fits a
-        have hinv₁ := shInv_congr_outside hinv_mid hwf₁ rfl hs₁_agree
+        have hinv₁ := hinv_mid.congr_outside hwf₁ rfl hs₁_agree
         have htake_items :
             SHBatchInput.insertedItems ⟨I.rankThreshold, I.ops.take (j + 1)⟩ =
               SHBatchInput.insertedItems ⟨I.rankThreshold, I.ops.take j⟩ := by
@@ -1350,18 +1304,9 @@ private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I
           simp only [Bool.false_eq_true, ↓reduceIte, List.append_nil]
           exact hexts_found
         let states₁ := states₀ ++ [rootsToEntries []]
-        have hstates₁_len : states₁.length = (j + 1) + 1 := by
-          simp only [states₁, List.length_append, List.length_singleton, hstates_len, j]
-        have hstates₁_head : states₁.head? = some [] := by
-          cases states₀ with
-          | nil => simp only [List.length_nil] at hstates_len; omega
-          | cons hd tl =>
-            simp only [states₁, List.cons_append, List.head?_cons] at hstates_head ⊢
-            exact hstates_head
-        have hstates₁_last : states₁[j + 1]? = some (rootsToEntries []) := by
-          simp only [states₁]
-          rw [List.getElem?_append_right (by omega), hstates_len, Nat.sub_self]
-          rfl
+        obtain ⟨hstates₁_len, hstates₁_head, hstates₁_last, hstep_lt⟩ :=
+          shBatch_step_append_lt hj_lt ex_cur (rootsToEntries [])
+            hstates_len hstates_head hexts_len hext_cnt.symm hstep₀
         have hstep₁ : ∀ m' < j + 1,
             ∃ st st' : List SHBatchEntry,
               states₁[m']? = some st ∧ states₁[m' + 1]? = some st' ∧
@@ -1382,43 +1327,7 @@ private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I
               | none => False := by
           intro m' hm'
           rcases Nat.lt_succ_iff_lt_or_eq.mp hm' with hm_lt | rfl
-          · obtain ⟨st, st', hst, hst', hmatch⟩ := hstep₀ m' hm_lt
-            refine ⟨st, st', ?_, ?_, ?_⟩
-            · simp only [states₁]; rw [List.getElem?_append_left (by omega)]; exact hst
-            · simp only [states₁]; rw [List.getElem?_append_left (by omega)]; exact hst'
-            · cases hop_m : I.ops[m']? with
-              | none => rw [hop_m] at hmatch; exact hmatch
-              | some op_m =>
-                rw [hop_m] at hmatch
-                cases op_m with
-                | insert v' k' => exact hmatch
-                | extractMin =>
-                  rcases hmatch with ⟨ex, hex_m, h1, h2⟩
-                  have hcnt_lt : (I.ops.take m').countP SHOp.isExtract < st₀.extCount := by
-                    rw [hext_cnt]
-                    have hsub :
-                        I.ops.take m' ++ [I.ops[m']?.getD SHOp.extractMin] <+: I.ops.take j := by
-                      have hm_lt_len : m' < I.ops.length := by dsimp only [j] at hm_lt; omega
-                      have htk := list_take_succ I.ops m' hm_lt_len
-                      have hpre : I.ops.take (m' + 1) <+: I.ops.take j := by
-                        rw [show m' + 1 = min (m' + 1) j by omega, ← List.take_take]
-                        exact List.take_prefix _ _
-                      rw [htk] at hpre
-                      simpa only [List.getElem?_eq_getElem hm_lt_len, Option.getD_some] using hpre
-                    rcases hsub with ⟨rest, hrest⟩
-                    have hcnt_sub : (I.ops.take m').countP SHOp.isExtract + 1 ≤
-                        (I.ops.take j).countP SHOp.isExtract := by
-                      have heq_ex : I.ops[m']?.getD SHOp.extractMin = .extractMin := by
-                        rw [hop_m]; rfl
-                      rw [← hrest, heq_ex]
-                      repeat rw [List.countP_append]
-                      simp only [List.countP_cons, SHOp.isExtract, List.countP_nil, ↓reduceIte]
-                      omega
-                    dsimp only [j] at hcnt_sub
-                    omega
-                  refine ⟨ex, ?_, h1, h2⟩
-                  rw [List.getElem?_append_left (hexts_len ▸ hcnt_lt)]
-                  exact hex_m
+          · exact hstep_lt m' hm_lt
           · refine ⟨rootsToEntries [], rootsToEntries [], ?_, hstates₁_last, ?_⟩
             · simp only [states₁]; rw [List.getElem?_append_left (by omega)]; exact hstates_last
             · rw [List.getElem?_eq_getElem hj_lt, hop_j]
@@ -1484,7 +1393,7 @@ private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I
               by_cases h0 : a = extBase + 3 * st₀.extCount
               · subst h0; rw [Function.update_self]; exact hres_fits.1
               · rw [Function.update_of_ne h0]; exact hwf_mid.mem_fits a
-        have hinv₁ := shInv_congr_outside hinv_mid hwf₁ rfl hs₁_agree
+        have hinv₁ := hinv_mid.congr_outside hwf₁ rfl hs₁_agree
         let e_pop : SHBatchEntry := ⟨it₀.val, it₀.origKey, res.key⟩
         have htake_items :
             SHBatchInput.insertedItems ⟨I.rankThreshold, I.ops.take (j + 1)⟩ =
@@ -1532,18 +1441,9 @@ private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I
             exact List.Perm.append_left _ hfi
           exact h1.trans (h2.trans hperm₀)
         let states₁ := states₀ ++ [rootsToEntries roots₁]
-        have hstates₁_len : states₁.length = (j + 1) + 1 := by
-          simp only [states₁, List.length_append, List.length_singleton, hstates_len, j]
-        have hstates₁_head : states₁.head? = some [] := by
-          cases states₀ with
-          | nil => simp only [List.length_nil] at hstates_len; omega
-          | cons hd tl =>
-            simp only [states₁, List.cons_append, List.head?_cons] at hstates_head ⊢
-            exact hstates_head
-        have hstates₁_last : states₁[j + 1]? = some (rootsToEntries roots₁) := by
-          simp only [states₁]
-          rw [List.getElem?_append_right (by omega), hstates_len, Nat.sub_self]
-          rfl
+        obtain ⟨hstates₁_len, hstates₁_head, hstates₁_last, hstep_lt⟩ :=
+          shBatch_step_append_lt hj_lt ex_cur (rootsToEntries roots₁)
+            hstates_len hstates_head hexts_len hext_cnt.symm hstep₀
         have hstep₁ : ∀ m' < j + 1,
             ∃ st st' : List SHBatchEntry,
               states₁[m']? = some st ∧ states₁[m' + 1]? = some st' ∧
@@ -1564,43 +1464,7 @@ private theorem shBatch_iterate_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I
               | none => False := by
           intro m' hm'
           rcases Nat.lt_succ_iff_lt_or_eq.mp hm' with hm_lt | rfl
-          · obtain ⟨st, st', hst, hst', hmatch⟩ := hstep₀ m' hm_lt
-            refine ⟨st, st', ?_, ?_, ?_⟩
-            · simp only [states₁]; rw [List.getElem?_append_left (by omega)]; exact hst
-            · simp only [states₁]; rw [List.getElem?_append_left (by omega)]; exact hst'
-            · cases hop_m : I.ops[m']? with
-              | none => rw [hop_m] at hmatch; exact hmatch
-              | some op_m =>
-                rw [hop_m] at hmatch
-                cases op_m with
-                | insert v' k' => exact hmatch
-                | extractMin =>
-                  rcases hmatch with ⟨ex, hex_m, h1, h2⟩
-                  have hcnt_lt : (I.ops.take m').countP SHOp.isExtract < st₀.extCount := by
-                    rw [hext_cnt]
-                    have hsub :
-                        I.ops.take m' ++ [I.ops[m']?.getD SHOp.extractMin] <+: I.ops.take j := by
-                      have hm_lt_len : m' < I.ops.length := by dsimp only [j] at hm_lt; omega
-                      have htk := list_take_succ I.ops m' hm_lt_len
-                      have hpre : I.ops.take (m' + 1) <+: I.ops.take j := by
-                        rw [show m' + 1 = min (m' + 1) j by omega, ← List.take_take]
-                        exact List.take_prefix _ _
-                      rw [htk] at hpre
-                      simpa only [List.getElem?_eq_getElem hm_lt_len, Option.getD_some] using hpre
-                    rcases hsub with ⟨rest, hrest⟩
-                    have hcnt_sub : (I.ops.take m').countP SHOp.isExtract + 1 ≤
-                        (I.ops.take j).countP SHOp.isExtract := by
-                      have heq_ex : I.ops[m']?.getD SHOp.extractMin = .extractMin := by
-                        rw [hop_m]; rfl
-                      rw [← hrest, heq_ex]
-                      repeat rw [List.countP_append]
-                      simp only [List.countP_cons, SHOp.isExtract, List.countP_nil, ↓reduceIte]
-                      omega
-                    dsimp only [j] at hcnt_sub
-                    omega
-                  refine ⟨ex, ?_, h1, h2⟩
-                  rw [List.getElem?_append_left (hexts_len ▸ hcnt_lt)]
-                  exact hex_m
+          · exact hstep_lt m' hm_lt
           · refine ⟨rootsToEntries roots₀, rootsToEntries roots₁, ?_, hstates₁_last, ?_⟩
             · simp only [states₁]; rw [List.getElem?_append_left (by omega)]; exact hstates_last
             · rw [List.getElem?_eq_getElem hj_lt, hop_j]

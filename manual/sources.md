@@ -712,6 +712,11 @@ Eshan Chattopadhyay and Jyun-Jie Liao. *Optimal Error Pseudodistributions for Re
 
 Shuchi Chawla, Jason D. Hartline, David L. Malec and Balasubramanian Sivan. "Multi-Parameter Mechanism Design and Sequential Posted Pricing." *Proceedings of the 42nd ACM Symposium on Theory of Computing (STOC 2010)*, 311–320, 2010. https://doi.org/10.1145/1806689.1806733 ; cited from https://arxiv.org/pdf/0907.2435v2 (26 pp., SHA-256 `220807f3da1b4dc409fe627719ac167130108db0ae60d4bc495e3a76e9e0838b`), inspected on 2026-11-24 for §1–§2.2 (sequential and order-oblivious posted-price mechanisms and group strategy-proofness, pp. 1–4), §5.2 Theorem 10 (p. 9), and Appendix D.2 (Theorem 24, Proof of Theorem 10 for `k = 1` single-item non-i.i.d. regular revenue `2`-approximation via `(φᵢ)⁺`, and "An example with a gap of 2", pp. 18–19).
 
+<a id="chazelle2000"></a>
+## chazelle2000
+
+Bernard Chazelle. "The Soft Heap: An Approximate Priority Queue with Optimal Error Rate." *Journal of the ACM* 47(6), 1012–1027, 2000 (bibliography key `Chazelle2000`). https://doi.org/10.1145/355541.355554 . Bibliographic metadata and the soft-heap model (`sift`/`fill-up`, error parameter `0 < ε ≤ 1 / 2`, `O(1)` amortized `delete`/`meld`/`findmin`, `O(log(1 / ε))` amortized `insert`, and at most `ε n` corrupted items) were checked via DOI records and Princeton/secondary summaries on 2026-11-26 UTC; the typeset JACM PDF was not opened on disk, so no internal theorem number or printed page locator is claimed. Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) for an unregistered single-heap Word-RAM step (`insert`, `extractMin`, and `collectCorrupted`, without `meld` or arbitrary-handle `delete`) parameterized by arbitrary rank threshold `r : ℕ` and `rankThresholdForEps ε` (`0 < ε : ℚ`).
+
 <a id="chendeng06"></a>
 ## chendeng06
 
@@ -2587,6 +2592,11 @@ Gary L. Peterson. "Myths About the Mutual Exclusion Problem." *Information Proce
 ## peterson1982
 
 Gary L. Peterson. "An $O(n \log n)$ Unidirectional Algorithm for the Circular Extrema Problem." *ACM Transactions on Programming Languages and Systems* 4(4), 758–762, 1982. https://doi.org/10.1145/69622.357194 . The library's key is `Peterson1982`. Bibliographic metadata checked via DOI and search summaries on 2026-11-22 UTC; the journal PDF was not directly inspected, so internal theorem and page locators are not claimed. [RingElection/Peterson.lean](../CslibFrontier/Computability/Distributed/RingElection/Peterson.lean) formalizes all-initially-active basic two-hop unidirectional FIFO ring election steps toward [#7200](https://github.com/cslib-community/cslib-frontier/issues/7200) (with all `n` nodes starting active in `twoHopAllActiveInit`, rather than spontaneous wakeup or the `1.44 n log n` Fibonacci-threshold refinement): strict-local-peak active-subring halving `2 * active_{k + 1} ≤ active_k` (`twoHopAllActive_phase_halving`), one-step FIFO confluence (`twoHopStep_comm`), unique-maximum termination (`twoHopAllActive_elects_leader`), and the `2 * n * Nat.log 2 n + n` asynchronous message bound (`twoHopAllActive_messages_le`).
+
+<a id="pettieramachandran2002"></a>
+## pettieramachandran2002
+
+Seth Pettie and Vijaya Ramachandran. "An Optimal Minimum Spanning Tree Algorithm." *Journal of the ACM* 49(1), 16–34, 2002 (bibliography key `PettieRamachandran2002`). https://doi.org/10.1145/505241.505243 . Bibliographic metadata and Lemma 2.2 (for `0 < ε < 1 / 2`, `O(1)` amortized complexity per soft-heap operation except `O(log(1 / ε))` for `insert`, with at most `ε n` corrupted items at any given time) were checked via DOI records and University of Michigan / secondary summaries on 2026-11-26 UTC; the typeset JACM PDF was not opened on disk, so printed page and subsection locators are not claimed. Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) as a single-heap Word-RAM soft-heap step (`insert`, `extractMin`, `collectCorrupted`, without `meld` or arbitrary `delete`, and proving `n + 1 ≤ C * (I.numInserts * (rankThresholdForEps ε + 1) + I.numExtracts + 1)` for all `0 < ε : ℚ` via `rankThresholdForEps ε = Nat.log 2 (Nat.ceil (12 / ε)) + 1`), rather than the paper's full MST algorithm or `meld`/`delete` interface.
 
 <a id="pighizzini2009"></a>
 ## pighizzini2009

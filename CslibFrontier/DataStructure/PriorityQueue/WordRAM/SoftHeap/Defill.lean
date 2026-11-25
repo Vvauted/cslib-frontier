@@ -11,7 +11,9 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
 public import CslibFrontier.Computability.WordRAM.Realization.Absorb
 public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
--- `import all` exposes `Program` helpers and `Model`'s tree/list lemmas for internal proofs.
+-- `import all` reads `Program`'s `defillPickChild`, `defillSplice`, `defillFinish`, `defillStep`
+-- (and `defill` body), plus `Model`'s `ItemListRep.*`, `TreeMemRep.*`, `SHTree.*` lemmas.
+-- (and `defill` body), plus `Model`'s `ItemListRep.*`, `TreeMemRep.*`, `SHTree.*` lemmas.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame

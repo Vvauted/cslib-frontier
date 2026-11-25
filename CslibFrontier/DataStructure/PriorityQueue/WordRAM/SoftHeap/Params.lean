@@ -25,16 +25,15 @@ import Mathlib.Tactic.Ring
 /-!
 # Soft-Heap Rank Parameters, Corruption Bound, and Item Potential
 
-Parametric rank threshold `r : ℕ` (with `softRankThreshold = 8` for `ε = 1 / 16` and
+Unregistered single-heap Word-RAM parameter and potential step following [Chazelle2000] and
+[PettieRamachandran2002], Lemma 2.2 (supporting `insert`, `extractMin`, and `collectCorrupted`,
+without `meld` or arbitrary-handle `delete`). Provides parametric rank threshold `r : ℕ` (with
 `rankThresholdForEps ε` for arbitrary rational `ε > 0`), node size bounds (`targetSize`, `sizeCap`),
-Chazelle's exponential corruption bound `corrupt_sum_bound` / `corrupt_sum_bound_eps`, and the
-exact rational item potential `itemPhi` ([Chazelle2000]; [PettieRamachandran2002],
-Section 2.4 & Lemma 2.2).
+the exponential corruption bound `corrupt_sum_bound` / `corrupt_sum_bound_eps`, and the exact
+rational item potential `itemPhi`.
 
 ## Main definitions
 
-* `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.softRankThreshold`: default corruption rank
-  threshold `8` (`ε = 1 / 16`).
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.rankThresholdForEps`: rank threshold
   sufficient to guarantee corruption fraction at most `ε : ℚ`.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.shFuelBound`: sufficient Word-RAM `defill`
@@ -50,8 +49,6 @@ Section 2.4 & Lemma 2.2).
   `2 ^ r * ∑ k ∈ Finset.Icc (r + 1) K, C k * sizeCap r k ≤ 12 * C 0`.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.corrupt_sum_bound_eps`:
   rational corruption sum bound at threshold `rankThresholdForEps ε`.
-* `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.corrupt_sum_bound_eight`:
-  tight `1 / 16` specialization `16 * ∑ k ∈ Finset.Icc 9 K, C k * sizeCap 8 k ≤ C 0`.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.itemPhi_sub_succ`: exact telescoping rank
   potential drop `itemPhi r k - itemPhi r (k + 1) = 1 / targetSize r k`.
 
@@ -60,15 +57,12 @@ Section 2.4 & Lemma 2.2).
 * [B. Chazelle, *The Soft Heap: An Approximate Priority Queue with Optimal Error Rate*,
   Journal of the ACM 47(6), 2000][Chazelle2000]
 * [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
-  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.4 & Lemma 2.2.
+  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Lemma 2.2.
 -/
 
 public section
 
 namespace Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap
-
-/-- Default corruption rank threshold (`r = 8`, giving error rate `ε = 1 / 16`). -/
-@[expose] def softRankThreshold : ℕ := 8
 
 /-- Rank threshold achieving error rate at most `ε : ℚ` (using `12 / 2 ^ r ≤ ε`). -/
 @[expose] def rankThresholdForEps (ε : ℚ) : ℕ :=
@@ -126,27 +120,6 @@ theorem targetSize_succ (r k : ℕ) :
       · simp only [targetSize, hk, hne, hmod, ↓reduceIte]
         have hq : (k + 1 - r + 1) / 2 = (k - r + 1) / 2 := by omega
         rw [hq]
-
-/-- `targetSize r` at `k + 2` doubles whenever `r ≤ k`. -/
-theorem targetSize_add_two {r k : ℕ} (hk : r ≤ k) :
-    targetSize r (k + 2) = 2 * targetSize r k := by
-  by_cases hkr : k = r
-  · subst hkr
-    simp only [targetSize, le_rfl, ↓reduceIte, show ¬ (k + 2 ≤ k) by omega,
-      show (k + 2 - k + 1) / 2 = 1 by omega]
-    norm_num
-  · simp only [targetSize, show ¬ (k + 2 ≤ r) by omega, show ¬ (k ≤ r) by omega, ↓reduceIte]
-    have hq : (k + 2 - r + 1) / 2 = (k - r + 1) / 2 + 1 := by omega
-    rw [hq, Nat.pow_succ, Nat.mul_comm]
-
-/-- `targetSize r` is monotone in rank. -/
-theorem targetSize_mono {r a b : ℕ} (hab : a ≤ b) : targetSize r a ≤ targetSize r b := by
-  dsimp only [targetSize]
-  split_ifs with h1 h2 h2
-  · exact le_rfl
-  · exact Nat.one_le_two_pow
-  · omega
-  · exact Nat.pow_le_pow_right (by omega) (by omega)
 
 /-- `targetSize r k` is even whenever `r < k`. -/
 theorem targetSize_even_of_gt {r k : ℕ} (hk : r < k) : 2 ∣ targetSize r k := by
@@ -231,8 +204,7 @@ private theorem sizeCap_even_odd_le (r t : ℕ) :
       omega
     exact ⟨heven, hodd⟩
 
-/-- Every rank `k` satisfies `sizeCap r k ≤ 4 * targetSize r k`. -/
-theorem sizeCap_le_four_mul_targetSize (r k : ℕ) : sizeCap r k ≤ 4 * targetSize r k := by
+private theorem sizeCap_le_four_mul_targetSize (r k : ℕ) : sizeCap r k ≤ 4 * targetSize r k := by
   by_cases hk : k ≤ r
   · rw [sizeCap_eq_one_of_le hk, targetSize_le_threshold hk]; omega
   · let d := k - r
@@ -271,11 +243,12 @@ private theorem targetSize_add_corruptPot_le {r k : ℕ} (hk : r ≤ k) :
     simp only [corruptPot, hmod0, hmod1, ↓reduceIte, hts, hts1]
     omega
 
-private theorem pow_mul_le_of_step (C : ℕ → ℕ) (hstep : ∀ k, 2 * C (k + 1) ≤ C k) :
+/-- Geometric halving step `2 * C (k + 1) ≤ C k` yields `2 ^ r * C r ≤ C 0` for all `r`. -/
+theorem pow_mul_le_of_step {C : ℕ → ℕ} (hstep : ∀ k, 2 * C (k + 1) ≤ C k) :
     ∀ r : ℕ, 2 ^ r * C r ≤ C 0
   | 0 => by simp
   | r + 1 => by
-      have ih := pow_mul_le_of_step C hstep r
+      have ih := pow_mul_le_of_step hstep r
       have hr := hstep r
       calc 2 ^ (r + 1) * C (r + 1)
           = 2 ^ r * (2 * C (r + 1)) := by ring
@@ -324,7 +297,7 @@ theorem corrupt_sum_bound (r : ℕ) (C : ℕ → ℕ) (K : ℕ)
             _ ≤ C j * corruptPot r j := Nat.mul_le_mul_right _ h2
         rw [Nat.mul_add] at hmul
         omega
-  have hpow : 2 ^ r * C r ≤ C 0 := pow_mul_le_of_step C hstep r
+  have hpow : 2 ^ r * C r ≤ C 0 := pow_mul_le_of_step hstep r
   by_cases hK : K ≤ r
   · have hemp : Finset.Icc (r + 1) K = ∅ := by
       ext x; simp only [Finset.mem_Icc, Finset.notMem_empty, iff_false]; omega
@@ -347,14 +320,6 @@ theorem corrupt_sum_bound (r : ℕ) (C : ℕ → ℕ) (K : ℕ)
         ≤ 2 ^ r * (12 * C r) := Nat.mul_le_mul_left _ hsum_sc
       _ = 12 * (2 ^ r * C r) := by ring
       _ ≤ 12 * C 0 := Nat.mul_le_mul_left 12 hpow
-
-/-- Tight `r = 8` (`ε = 1 / 16`) specialization of `corrupt_sum_bound`. -/
-theorem corrupt_sum_bound_eight (C : ℕ → ℕ) (K : ℕ) (hstep : ∀ k, 2 * C (k + 1) ≤ C k) :
-    16 * (∑ k ∈ Finset.Icc 9 K, C k * sizeCap 8 k) ≤ C 0 := by
-  have hb := corrupt_sum_bound 8 C K hstep
-  have h256 : 2 ^ 8 = 256 := by decide
-  rw [h256, show (8 + 1 : ℕ) = 9 by rfl] at hb
-  omega
 
 /-- Rational error-rate specialization: setting `r = rankThresholdForEps ε` for any `0 < ε` yields
 total capacity above rank `r` at most `ε * C 0`. -/

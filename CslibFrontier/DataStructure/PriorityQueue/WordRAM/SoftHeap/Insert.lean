@@ -11,10 +11,11 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Defill
 public import CslibFrontier.Computability.WordRAM.Realization.Absorb
 public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
--- `import all` reuses private program helpers, representation, vector, and suffix-min lemmas.
+-- `import all` reads `Program`'s `shInsertInit`/`combine*`/`shInsertRaw`/`shInsertLinkRoot`
+-- (and `shInsert` body), plus `Model`'s `InPoolRaw`, `suffixMinTree_spec`, and `vec*` lemmas.
+-- (and `shInsert` body), plus `Model`'s `InPoolRaw`, `suffixMinTree_spec`, and `vec*` lemmas.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
-import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Defill
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame
 import CslibFrontier.DataStructure.Memory.Frame
 import Mathlib.Data.Rat.Cast.Order
@@ -733,7 +734,7 @@ private theorem combineOne_spec {rt w ic₀ nc₀ maxItems maxNodes itemBase nod
   have hcr'_decay : ∀ k, 2 * created' (k + 1) ≤ created' k := by
     intro k; have := hcr_step' k; omega
   have hpow_le : 2 ^ (z.rank + 1) ≤ maxItems := by
-    have hm := two_pow_mul_created_le hcr'_decay (z.rank + 1)
+    have hm := pow_mul_le_of_step hcr'_decay (z.rank + 1)
     have hcpos : 1 ≤ created' (z.rank + 1) := by dsimp only [created']; simp
     have h1 : 2 ^ (z.rank + 1) ≤ 2 ^ (z.rank + 1) * created' (z.rank + 1) :=
       Nat.le_mul_of_pos_right _ hcpos

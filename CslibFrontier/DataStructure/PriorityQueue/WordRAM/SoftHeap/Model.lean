@@ -11,8 +11,12 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 public import CslibFrontier.Computability.WordRAM.Realization.Absorb
 public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
--- `import all` unfolds `Program`'s private helpers and opaque defs for internal proofs.
+-- `import all` reads `Program`'s private `updateSuffixMin*`, `extractPopItem`, and
+-- `shInsertLinkRoot`, plus the unexposed `allocPool` body.
+-- `shInsertLinkRoot`, plus the unexposed `allocPool` body.
+-- `shInsertLinkRoot`, plus the unexposed `allocPool` body.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
+import CslibFrontier.Foundations.Data.List.Range
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame
 import CslibFrontier.DataStructure.Memory.Frame
 import Mathlib.Algebra.BigOperators.Ring.Finset
@@ -30,7 +34,7 @@ Algebraic tree representation `SHTree`, heap/rank/corruption invariant `SHTree.V
 in-memory linked item and root-list predicates (`ItemListRep`, `TreeMemRep`, `RootListRep`),
 the full soft-heap invariant `SHInv`, pool initialization/allocation specifications
 (`shInit_inv`, `allocPool_spec`), and the global corruption bounds
-(`shInv_corrupted_le`, `shInv_corrupted_le_eps`, `shInv_corrupted_le_sixteen`).
+(`shInv_corrupted_le`, `shInv_corrupted_le_eps`).
 
 ## Main definitions
 
@@ -49,8 +53,8 @@ the full soft-heap invariant `SHInv`, pool initialization/allocation specificati
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.SHInv.origKey_le_ckey`: surviving entries
   never have keys lowered below `origKey`.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.shInv_corrupted_le`,
-  `shInv_corrupted_le_eps`, `shInv_corrupted_le_sixteen`: global corruption bounds for arbitrary
-  threshold `h.rankThreshold`, rational `ε > 0`, and `ε = 1 / 16`.
+  `shInv_corrupted_le_eps`: global corruption bounds for arbitrary threshold `h.rankThreshold` and
+  rational `ε > 0`.
 -/
 
 public section
@@ -331,8 +335,7 @@ private theorem SHTree.Valid.lb_le_allEntries {rt lb : ℕ} {t : SHTree} (ht : t
       | none => simp at hR
       | some c => exact Nat.le_trans hlb (ihR c rfl (hr c rfl) p hR)
 
-/-- Every entry in a valid soft-heap tree satisfies `origKey ≤ ckey`. -/
-theorem SHTree.Valid.origKey_le_allEntries {rt lb : ℕ} {t : SHTree} (ht : t.Valid rt lb) :
+private theorem SHTree.Valid.origKey_le_allEntries {rt lb : ℕ} {t : SHTree} (ht : t.Valid rt lb) :
     ∀ p ∈ t.allEntries, p.1.origKey ≤ p.2 := by
   induction t using SHTree.ind generalizing lb with
   | node id r ck items l r' ihL ihR =>
@@ -495,7 +498,7 @@ theorem totalPhi_nonneg (rt : ℕ) (roots : List SHTree) : 0 ≤ totalPhi rt roo
 
 /-- Item list representation depends only on cells `itemBase + 3 * it.id + {0, 1, 2}` for
 `it ∈ items`. -/
-private theorem ItemListRep.congr {itemBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {head tail : ℕ}
+theorem ItemListRep.congr {itemBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {head tail : ℕ}
     {items : List SHItem}
     (hagree : ∀ it ∈ items, ∀ j < 3, mem₁ (itemBase + 3 * it.id + j) =
       mem₂ (itemBase + 3 * it.id + j))
@@ -706,7 +709,7 @@ private theorem TreeMemRep.right_mem {rt itemBase nodeBase : ℕ} {mem : ℕ →
 
 /-- `TreeMemRep` depends only on node offsets `+0..+7` for `id ∈ t.nodeIds` and item offsets
 `+0..+2` for `it ∈ t.allItems`. -/
-private theorem TreeMemRep.congr {rt itemBase nodeBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {t : SHTree}
+theorem TreeMemRep.congr {rt itemBase nodeBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {t : SHTree}
     (hnode : ∀ id ∈ t.nodeIds, ∀ j < 8, mem₁ (nodeBase + 12 * id + j) =
       mem₂ (nodeBase + 12 * id + j))
     (hitem : ∀ it ∈ t.allItems, ∀ j < 3, mem₁ (itemBase + 3 * it.id + j) =
@@ -812,7 +815,7 @@ private theorem RootListRep.pairwise_rank {nodeBase : ℕ} {mem : ℕ → ℕ} {
 
 /-- Framing lemma for `RootListRep`: if `mem₁` and `mem₂` agree on `{9, 10, 11}` of every root
 in `roots`, then `RootListRep` is preserved. -/
-private theorem RootListRep.congr {nodeBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {prev : ℕ}
+theorem RootListRep.congr {nodeBase : ℕ} {mem₁ mem₂ : ℕ → ℕ} {prev : ℕ}
     {roots : List SHTree}
     (hagree : ∀ t ∈ roots, ∀ j, j = 9 ∨ j = 10 ∨ j = 11 →
       mem₁ (nodeBase + 12 * t.rootId + j) = mem₂ (nodeBase + 12 * t.rootId + j))
@@ -887,20 +890,10 @@ structure SHInv (w ic₀ nc₀ maxItems maxNodes : ℕ) (h : SHHandle)
   /-- Root ranks are bounded by `h.nodeCount - nc₀`. -/
   rank_le : ∀ t ∈ roots, t.rank ≤ h.nodeCount - nc₀
 
-private theorem nodup_length_le_bound {xs : List ℕ} {B : ℕ} (hnd : xs.Nodup)
-    (hle : ∀ x ∈ xs, x < B) : xs.length ≤ B := by
-  have hsub : xs.toFinset ⊆ Finset.range B := by
-    intro x hx
-    rw [List.mem_toFinset] at hx
-    exact Finset.mem_range.mpr (hle x hx)
-  calc xs.length = xs.toFinset.card := (List.toFinset_card_of_nodup hnd).symm
-    _ ≤ (Finset.range B).card := Finset.card_le_card hsub
-    _ = B := Finset.card_range B
-
 private theorem subperm_length_fits {w B : ℕ} {xs ys : List ℕ}
     (hsub : ∀ x ∈ xs, x ∈ ys) (hxs : xs.Nodup)
     (hle : ∀ y ∈ ys, y < B) (hB : B < 2 ^ w) : Fits w xs.length := by
-  have hlen : xs.length ≤ B := nodup_length_le_bound hxs (fun x hx => hle x (hsub x hx))
+  have hlen : xs.length ≤ B := List.length_le_of_nodup_lt hxs (fun x hx => hle x (hsub x hx))
   exact Nat.lt_of_le_of_lt hlen hB
 
 private theorem list_nodup_append_disj {α : Type} {xs ys : List α}
@@ -1010,16 +1003,6 @@ theorem totalPhi_append (rt : ℕ) (xs ys : List SHTree) :
     totalPhi rt (xs ++ ys) = totalPhi rt xs + totalPhi rt ys := by
   simp [totalPhi, List.map_append, List.sum_append]
 
-private theorem two_pow_mul_created_le {C : ℕ → ℕ}
-    (hstep : ∀ k, 2 * C (k + 1) ≤ C k) : ∀ k, 2 ^ k * C k ≤ C 0 := by
-  intro k
-  induction k with
-  | zero => simp
-  | succ k ih =>
-    rw [Nat.pow_succ, Nat.mul_assoc]
-    calc 2 ^ k * (2 * C (k + 1)) ≤ 2 ^ k * C k := Nat.mul_le_mul_left _ (hstep k)
-      _ ≤ C 0 := ih
-
 private theorem targetSize_le_two_pow (rt r : ℕ) : targetSize rt r ≤ 2 ^ r := by
   by_cases hr : r ≤ rt
   · rw [targetSize_le_threshold hr]; exact Nat.one_le_two_pow
@@ -1068,7 +1051,7 @@ private theorem rootList_pre_length_le_rank {pre suf : List SHTree} {x : SHTree}
     rcases List.mem_map.mp hr with ⟨u, hu, rfl⟩
     exact h2 u hu x (by simp)
   rw [← List.length_map (as := pre) (f := SHTree.rank)]
-  exact nodup_length_le_bound hrk_nd hrk_lt
+  exact List.length_le_of_nodup_lt hrk_nd hrk_lt
 
 private theorem SHInv.pools_disj_node_item {w ic₀ nc₀ maxItems maxNodes : ℕ}
     {h : SHHandle} {roots : List SHTree} {created : ℕ → ℕ} {s : Memory.State}
@@ -1092,7 +1075,7 @@ private theorem tree_phi_le_fuel {rt ic₀ nc₀ maxItems : ℕ} {t : SHTree}
     omega
   have hall_len : t.allItems.length ≤ maxItems := by
     rw [← List.length_map (f := SHItem.id), ← List.length_map (f := fun id => id - (ic₀ + 1))]
-    refine nodup_length_le_bound hit_nd ?_
+    refine List.length_le_of_nodup_lt hit_nd ?_
     intro y hy
     rcases List.mem_map.mp hy with ⟨id, hid, rfl⟩
     have := hid_rng id hid
@@ -1105,7 +1088,7 @@ private theorem tree_phi_le_fuel {rt ic₀ nc₀ maxItems : ℕ} {t : SHTree}
     omega
   have hnc_len : t.nodeCount ≤ 2 * maxItems := by
     rw [← t.nodeIds_length, ← List.length_map (fun id => id - (nc₀ + 1))]
-    refine nodup_length_le_bound hnc_nd ?_
+    refine List.length_le_of_nodup_lt hnc_nd ?_
     intro y hy
     rcases List.mem_map.mp hy with ⟨id, hid, rfl⟩
     have := hnd_rng id hid
@@ -1665,18 +1648,9 @@ theorem shInv_corrupted_le_eps {ε : ℚ} (hε : 0 < ε)
       _ = (2 ^ rankThresholdForEps ε : ℚ) * (ε * ((h.itemCount - ic₀ : ℕ) : ℚ)) := by ring
   exact (mul_le_mul_iff_right₀ hpow_pos).mp hmul
 
-/-- Tight `ε = 1 / 16` (`h.rankThreshold = 8`) specialization of `shInv_corrupted_le`. -/
-theorem shInv_corrupted_le_sixteen {w ic₀ nc₀ maxItems maxNodes : ℕ}
-    {h : SHHandle} {roots : List SHTree} {created : ℕ → ℕ} {s : Memory.State}
-    (hinv : SHInv w ic₀ nc₀ maxItems maxNodes h roots created s)
-    (hrt : h.rankThreshold = 8) :
-    16 * ((forestEntries roots).filter (fun p => decide (p.1.origKey < p.2))).length ≤
-      h.itemCount - ic₀ := by
-  have hnat := shInv_corrupted_le hinv
-  rw [hrt, show 2 ^ 8 = 256 by decide] at hnat
-  omega
-
-private theorem SHInv.congr_outside {w ic₀ nc₀ maxItems maxNodes : ℕ}
+/-- `SHInv` is preserved under memory updates outside `InSHPool` that keep `WellFormed` and
+`frontier`. -/
+theorem SHInv.congr_outside {w ic₀ nc₀ maxItems maxNodes : ℕ}
     {h : SHHandle} {roots : List SHTree} {created : ℕ → ℕ} {s s' : Memory.State}
     (hinv : SHInv w ic₀ nc₀ maxItems maxNodes h roots created s)
     (hwf' : Memory.WellFormed w s') (hfr' : s'.frontier = s.frontier)
@@ -1728,7 +1702,7 @@ private theorem SHInv.forestEntries_length_le {w ic₀ nc₀ maxItems maxNodes :
     omega
   have hle : (forestItemIds roots).length ≤ h.itemCount - ic₀ := by
     rw [← List.length_map (f := fun id => id - (ic₀ + 1))]
-    refine nodup_length_le_bound hnd ?_
+    refine List.length_le_of_nodup_lt hnd ?_
     intro y hy
     rcases List.mem_map.mp hy with ⟨id, hid, rfl⟩
     have hid' := hinv.itemIds_range id hid

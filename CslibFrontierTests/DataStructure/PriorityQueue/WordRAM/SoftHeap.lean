@@ -14,15 +14,16 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap
 
 These kernel-checked tests exercise `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap`:
 
-1. Pure rank thresholds (`softRankThreshold`, `rankThresholdForEps`), `targetSize`,
-   `shFuelBound`, `corrupt_sum_bound_eight`, `corrupt_sum_bound_eps`, and `itemPhi_sub_succ`.
+1. Pure rank thresholds (`rankThresholdForEps`), `targetSize`, `shFuelBound`,
+   `corrupt_sum_bound`, `corrupt_sum_bound_eps`, and `itemPhi_sub_succ`.
 2. Uniform `Realizes .exact` (`work := 0`) certificate types for pool allocation, `defill`,
    `shInsert`, `shExtractMin` (`SHExtractResult`), `shCollectCorrupted`, and `shBatchProg`.
 3. End-to-end stateful pool lifecycle at `r = 8` using `allocPool_spec`, `shInit_inv`, empty &
    non-empty `shExtractMin_spec`, multiple `shInsert_spec` calls, amortized telescoping total
-   memory cost (`≤ 5130`), `shInv_corrupted_le_sixteen`, and `shCollectCorrupted_spec`.
-4. Concrete rank-9 corrupted heap witness at `r = 8` exercising `SHInv.origKey_le_ckey`,
-   `shInv_corrupted_le`, `shInv_corrupted_le_sixteen`, and non-empty `shCollectCorrupted_spec`.
+   memory cost (`≤ 5130`), `shInv_corrupted_le`, and `shCollectCorrupted_spec`.
+4. Concrete rank-9 corrupted heap witness at `r = 8` (`rankThresholdForEps (1 / 16)`) exercising
+   `SHInv.origKey_le_ckey`, `shInv_corrupted_le_eps`, `shInv_corrupted_le`, and non-empty
+   `shCollectCorrupted_spec`.
 5. Non-vacuous concrete `w = 16` instantiations of `exists_softHeap_standard_program` and
    `exists_softHeap_standard_program_eps` (`ε = 1 / 4`) verifying `Runs`, `.halt`, `WellFormed`,
    exact memory output arrays via `SHBatchExtract.readFrom`, corruption bounds, and step bounds.
@@ -36,9 +37,9 @@ open Cslib.WordRAM Cslib.WordRAM.Realization Cslib.DataStructure Cslib.DataStruc
 open Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap
 
 example :
-    softRankThreshold = 8 ∧ targetSize 8 8 = 1 ∧ targetSize 8 9 = 2 ∧ targetSize 8 11 = 4 ∧
+    targetSize 8 8 = 1 ∧ targetSize 8 9 = 2 ∧ targetSize 8 11 = 4 ∧
       rankThresholdForEps (1 / 4 : ℚ) = 6 ∧ shFuelBound 8 2 = 1500 := by
-  refine ⟨rfl, ?_, ?_, ?_, ?_, rfl⟩
+  refine ⟨?_, ?_, ?_, ?_, rfl⟩
   · simp [targetSize]
   · simp [targetSize]
   · simp [targetSize]
@@ -50,7 +51,11 @@ example :
     16 * ∑ k ∈ Finset.Icc 9 10,
         (fun j => if j ≤ 10 then 2 ^ (10 - j) else 0) k * sizeCap 8 k ≤
       (if 0 ≤ 10 then 2 ^ (10 - 0) else 0) := by
-  refine corrupt_sum_bound_eight (fun j => if j ≤ 10 then 2 ^ (10 - j) else 0) 10 ?_
+  have hb := corrupt_sum_bound 8 (fun j => if j ≤ 10 then 2 ^ (10 - j) else 0) 10 ?_
+  · change 256 * (∑ k ∈ Finset.Icc 9 10,
+        (fun j => if j ≤ 10 then 2 ^ (10 - j) else 0) k * sizeCap 8 k) ≤
+        12 * (if 0 ≤ 10 then 2 ^ (10 - 0) else 0) at hb
+    omega
   intro k
   by_cases hk10 : k + 1 ≤ 10
   · have hk : k ≤ 10 := by omega
@@ -221,8 +226,8 @@ example :
     exact_mod_cast hq
   have hcor₂ :
       ((forestEntries roots₂).filter (fun p => decide (p.1.origKey < p.2))).length = 0 := by
-    have hb := shInv_corrupted_le_sixteen hinv₂ hrt2'
-    rw [hic2'] at hb
+    have hb := shInv_corrupted_le hinv₂
+    rw [hrt2', hic2', show (2 ^ 8 : ℕ) = 256 by decide] at hb
     omega
   have hno_cor₂ : ∀ p ∈ forestEntries roots₂, p.2 ≤ p.1.origKey := by
     intro p hp
@@ -258,8 +263,8 @@ example :
   have hrt3' : extRes.handle.rankThreshold = 8 := hrt3.trans hrt2'
   have hcor₃ :
       ((forestEntries roots₃).filter (fun p => decide (p.1.origKey < p.2))).length = 0 := by
-    have hb := shInv_corrupted_le_sixteen hinv₃ hrt3'
-    rw [hic3'] at hb
+    have hb := shInv_corrupted_le hinv₃
+    rw [hrt3', hic3', show (2 ^ 8 : ℕ) = 256 by decide] at hb
     omega
   have hs4_fr : s₄.frontier = 85 := by rw [hfr₄, hfr₃, hfr₂, hfr₁]
   have hout_disj : ∀ a, 0 + 0 ≤ a → a < 0 + 2 → ¬ InSHPool 0 0 2 4 extRes.handle a := by
@@ -284,8 +289,14 @@ example :
   · rw [hic3'] at hm_cor; omega
   · rw [hfr₅, hs4_fr]
 
+private theorem rankThresholdForEps_one_sixteenth :
+    rankThresholdForEps (1 / 16 : ℚ) = 8 := by
+  have hceil : Nat.ceil (12 / (1 / 16 : ℚ)) = 192 := by
+    rw [show (12 / (1 / 16 : ℚ) : ℚ) = ((192 : ℕ) : ℚ) by norm_num, Nat.ceil_natCast]
+  rw [rankThresholdForEps, hceil, show Nat.log 2 192 = 7 by decide]
+
 -- Concrete rank-9 corrupted soft heap (`r = 8`, `origKey = 10 < ckey = 20`): exercises
--- `SHInv.origKey_le_ckey`, `shInv_corrupted_le`, `shInv_corrupted_le_sixteen`, and
+-- `SHInv.origKey_le_ckey`, `shInv_corrupted_le_eps`, `shInv_corrupted_le`, and
 -- non-empty `shCollectCorrupted_spec`.
 example :
     ∃ (s' : Memory.State) (newOut : ℕ),
@@ -394,9 +405,9 @@ example :
     · simp only [List.mem_singleton] at ht; subst ht; exact hval
     · simp only [List.mem_singleton] at ht; subst ht; exact htree_rep
     · simp only [List.mem_singleton] at ht; subst ht; decide
-  have hbound : 16 * ((forestEntries [tCor]).filter
-      (fun p => decide (p.1.origKey < p.2))).length ≤ 512 :=
-    shInv_corrupted_le_sixteen hinv rfl
+  have hbound_eps :=
+    shInv_corrupted_le_eps (ε := (1 / 16 : ℚ)) (by norm_num) hinv
+      rankThresholdForEps_one_sixteenth.symm
   have hbound_gen : 2 ^ 8 * ((forestEntries [tCor]).filter
       (fun p => decide (p.1.origKey < p.2))).length ≤ 12 * 512 :=
     shInv_corrupted_le hinv
