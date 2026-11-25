@@ -13,6 +13,7 @@ public import CslibFrontier.Crypto.Protocols.KEM.FujisakiOkamoto.Word
 public import CslibFrontier.Algorithms.WordRAM.Arborescence.Internal.Workspace
 public import CslibFrontier.Computability.Complexity.Classes.ModP.GapP
 public import CslibFrontier.Probability.Freedman
+public import CslibFrontier.Computability.Complexity.FineGrained.PlanarSAT
 public import CslibFrontier.Computability.Complexity.Problems.Partition
 public import CslibFrontier.Algorithms.Lean.Scheduling.LPT
 public import CslibFrontier.Crypto.Computational.ElGamal.Decodable
