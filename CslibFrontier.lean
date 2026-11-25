@@ -10586,6 +10586,7 @@ public import CslibFrontier.Computability.Circuit.Boolean.Zhegalkin.BlockCols
 public import CslibFrontier.Computability.Complexity.Classes.LogSpace.FirstOrder.Ordered.NondeterministicDecider
 public import CslibFrontier.Crypto.Computational.MLDSA.SigningHedges
 public import CslibFrontier.Computability.PolyTime.CNF.GreedyParityContext
+public import CslibFrontier.Algorithms.LinearAlgebra.LyapunovCertificate
 public import CslibFrontier.Computability.Distributed.SetAgreement.AtomicSnapshot.CleanCollect
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Plumbing.Tidy.Run
 public import CslibFrontier.Foundations.NumberTheory.ModularWeights
