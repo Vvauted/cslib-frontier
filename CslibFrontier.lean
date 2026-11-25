@@ -7600,6 +7600,15 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.FibonacciHeap.Mi
 public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.FibonacciHeap.Model
 public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.FibonacciHeap.Program
 public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.FibonacciHeap.Trees
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Collect
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Defill
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.ExtractMin
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Insert
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Params
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
+public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Standard
 public import CslibFrontier.DataStructure.Queue.Memory
 public import CslibFrontier.DataStructure.Queue.Memory.Transfer
 public import CslibFrontier.DataStructure.Queue.Spec
