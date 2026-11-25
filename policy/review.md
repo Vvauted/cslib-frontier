@@ -316,3 +316,24 @@ or `manual/sources.md` keeps its approval whenever the script reports it identic
 names the files it merges by entry): nobody reviews it again.
 When the script reports differences, review the paths and diffs it prints as a delta, under the
 carry-forward rule above.
+
+### Stacked chains
+
+A stacked chain has at most three open, unlanded layers. Do not open a fourth layer until the
+lowest lands; land or roll up what is approved first. A chain that already has more layers is not
+closed for it, but gets no new layer until it is within the cap.
+
+A layer cannot land while the root of its chain cannot: the root is a draft, or its author has not
+answered a request for changes for 48 hours. Reviewers do not review layers above such a root; they
+review the root's fix, or leave the chain until it moves, and no sweep assigns reviewers to those
+layers.
+
+Approved contiguous layers may land together as a rollup instead of one by one. When the root and
+the layers directly above it are each approved at their current heads, and each of those heads
+contains the head of the layer below, the topmost of them carries the whole change: retarget it to
+`main`, or open a new PR at its head, and list in its description every included PR with its
+approved head. Each layer's approval covers its own delta, so the rollup needs no new review; the
+non-author who queues it checks the list against the approvals, and checks that no included PR is
+held or has a request for changes at its listed head posted after its approval. A restack of the
+rollup is checked with `check_restack.py` without `--approved-base`, since the lower layers' changes
+belong to the rollup. Once it lands, close the included PRs with a link to it.
