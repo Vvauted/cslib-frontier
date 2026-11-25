@@ -1,7 +1,7 @@
 /-
-Copyright (c) 2026 vvauted. All rights reserved.
+Copyright (c) 2026 Samuel Schlesinger, vvauted. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: vvauted
+Authors: Samuel Schlesinger, vvauted
 -/
 
 module
@@ -11,70 +11,74 @@ public import CslibFrontier.DataStructure.DisjointSet.UnionFind
 public import CslibFrontier.DataStructure.StateTransition.Amortized
 public import CslibFrontier.Foundations.Data.Nat.InverseAckermann
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
--- `import all` unfolds `UnionFind.impl` and reuses `UnionFind`'s private `Batteries.UnionFind`
--- bridge lemmas (`compressWithSteps_*`, `rank_link`, `unionFind_ext`) without editing it.
-import all CslibFrontier.DataStructure.DisjointSet.UnionFind
--- `import all` also unfolds `Batteries.UnionFind.findAux_s` and `parentD_findAux` for
--- `parentD_findAux_eq_findPathGo`.
-import all Batteries.Data.UnionFind.Basic
+import Mathlib.Order.Iterate
 
 /-!
-# Tarjan's inverse-Ackermann amortized bounds for Union–Find
+# Inverse-Ackermann amortized step bounds for Union–Find
 
-This module establishes Tarjan's (1975) inverse-Ackermann amortized upper bounds for
-`Cslib.DataStructure.DisjointSet.UnionFind.impl` (`Batteries.UnionFind` with union by rank and
-full path compression) using `Cslib.DataStructure.Amortized` certificates over `Execution.ofStep`.
+This module is an abstract step-count step toward `#3558` and `#5441` (not a registered cited
+endpoint of [Tarjan1975] or [CLRS2009]): it proves inverse-Ackermann amortized upper bounds on the
+abstract `findSteps`/link traces of `Cslib.DataStructure.DisjointSet.UnionFind.impl`
+(`Batteries.UnionFind` with union by rank and full path compression) using
+`Cslib.DataStructure.Amortized` certificates over `Execution.ofStep`.
 
-Following Tarjan (1975) and Kozen (1992), each node `i < uf.size` receives a potential built
-from the level `k = ackLevel (uf.rank i + d) (uf.rank (uf.parent i) + d)` and iteration count
-`i₀ = ackIter (uf.rank i + d) (uf.rank (uf.parent i) + d)` such that
+The rank-shifted potential `potentialCore` adapts the level/iteration potential from
+[CLRS2009] Section 21.4 (pp. 573–581, Lemmas 21.11–21.13 and Theorem 21.14) using the `+ d` rank
+shift (`d := max 1 d ≥ 1`). Each node `i < uf.size` receives a potential built from the level
+`k = ackLevel (uf.rank i + d) (uf.rank (uf.parent i) + d)` and iteration count
+`i₀ = ackIter (uf.rank i + d) (uf.rank (uf.parent i) + d)` in the `(j + 1)`-fold hierarchy
+`Nat.ackermann` so that
 `ackermann k (uf.rank i + d) ≤ (ackermann k)^[i₀] (uf.rank i + d) ≤ uf.rank (uf.parent i) + d`.
-Shifting node ranks by `d := max 1 d ≥ 1` ensures `1 ≤ uf.rank i + d` everywhere, avoiding
-separate rank-zero handling during `find`.
+Shifting node ranks by `d ≥ 1` ensures `1 ≤ uf.rank i + d` everywhere, avoiding separate
+rank-zero handling during `find`.
 
 A single parameterized potential `potentialCore zeroSingletons q d uf` unifies two regimes:
 
 1. **`zeroSingletons = true, d = 1` (`tarjanAmortized`)**: initial potential at `init n` is `0`,
-   giving single-parameter amortized bounds `2 * α(n) + 2` for `Op.same`, `5 * α(n) + 2` for
+   giving single-parameter amortized charges `2 * α(n) + 2` for `Op.same`, `5 * α(n) + 2` for
    `Op.union`, and `1` for `Op.numComponents`, hence `total id traces ≤ m * (5 * α(n) + 2)`.
 2. **`zeroSingletons = false, d = m / n + 1` (`tarjanAmortizedAt`)**: initial potential at
    `init n` is `n * (q * (m / n + 1))`, while each `link` has amortized charge at most `q`. When
-   `n ≤ m`, `n * (m / n + 1) ≤ 2 * m`, yielding Tarjan's two-parameter bound
+   `n ≤ m`, `n * (m / n + 1) ≤ 2 * m`, yielding the two-parameter step bound
    `total id traces ≤ m * (5 * α(m, n) + 2)` (`tarjan_run_two_param`) for every `m, n`, together
    with the linear `7 * m` corollary once `n * Nat.log 2 n ≤ m` (`tarjan_run_linear_of_dense`).
 
 ## Cost model and scope
 
-Like `Cslib.DataStructure.DisjointSet.UnionFind`, `total id traces` counts the exact abstract
-forest steps recorded by `UnionFind.step` (`findSteps` parent-pointer inspections per `find`,
-`1` link step per `Op.union`, and `1` counter read per `Op.numComponents`), excluding the `O(n)`
-creation of `init n`. These theorems bound abstract pointer/link steps on `Batteries.UnionFind`
-and make no Word-RAM or Turing-machine instruction claim. `Nat.inverseAckermannTwo m n` uses
-shift `d = m / n + 1` in `Nat.ackermann`, equivalent up to small constant shifts/factors to
-Tarjan's (1975) `4 * ⌈m / n⌉` convention.
+Like `Cslib.DataStructure.DisjointSet.UnionFind`, `total id traces` counts only the exact abstract
+forest steps recorded by `UnionFind.step` (`findSteps` parent-pointer inspections per `find`, `1`
+link step per `Op.union`, and `1` counter read per `Op.numComponents`), excluding the `O(n)`
+creation of `init n`. These theorems make no Word-RAM or pointer-machine instruction-cost claim
+(`#3558`, `#5441`). Moreover, `Nat.inverseAckermannTwo m n` uses shift `d = m / n + 1` in the
+[CLRS2009] recurrence rather than [Tarjan1975]'s `4 * ⌈m / n⌉` threshold convention, matching
+Tarjan's bound only up to small constant shifts/factors and the omitted `init n` cost.
 
 ## Main definitions
 
-* `tarjanPotential`, `tarjanCharge`: single-parameter Tarjan potential and per-operation charges.
+* `tarjanPotential`, `tarjanCharge`: single-parameter CLRS/Tarjan potential and operation charges.
 * `tarjanPotentialAt`, `tarjanChargeAt`: rank-shifted potential and per-operation charges for the
-  two-parameter analysis.
+  two-parameter step analysis.
 
 ## Main results
 
 * `tarjanAmortized`, `tarjanUniformAmortized`: `Amortized` certificates for the single-parameter
-  `O(α(n))` bound.
-* `tarjan_run_correct`: adaptive client correctness and `m * (5 * α(n) + 2)` bound from `init n`.
+  `O(α(n))` abstract step bound.
+* `tarjan_run_correct`: adaptive client correctness and `m * (5 * α(n) + 2)` abstract step bound
+  from `init n`.
 * `tarjanAmortizedAt`, `tarjanUniformAmortizedAt`: `Amortized` certificates parameterized by `d`.
-* `tarjan_run_two_param`: Tarjan's (1975) two-parameter `m * (5 * α(m, n) + 2)` step bound for
-  all universe sizes `n` and operation counts `m`.
-* `tarjan_run_linear_of_dense`: strict linear step-count bound `total id traces ≤ 7 * m` whenever
+* `tarjan_run_two_param`: two-parameter `m * (5 * α(m, n) + 2)` abstract step bound for all
+  universe sizes `n` and operation counts `m` (step toward `#3558` and `#5441`).
+* `tarjan_run_linear_of_dense`: linear `total id traces ≤ 7 * m` abstract step corollary whenever
   `n * Nat.log 2 n ≤ m`.
 
 ## References
 
+* [T. H. Cormen, C. E. Leiserson, R. L. Rivest, and C. Stein, *Introduction to Algorithms* (3rd
+  ed.), MIT Press, 2009, Section 21.4, pp. 573–581 (Lemmas 21.11–21.13, Theorem 21.14)][CLRS2009].
 * [R. E. Tarjan, *Efficiency of a Good But Not Linear Set Union Algorithm*, JACM 22(2),
-  1975][Tarjan1975].
-* [D. C. Kozen, *The Design and Analysis of Algorithms*, Lectures 10–11, 1992][Kozen1992].
+  pp. 215–225, 1975][Tarjan1975].
+* [D. C. Kozen, *The Design and Analysis of Algorithms*, Lectures 10–11, pp. 48–57,
+  1992][Kozen1992].
 -/
 
 public section
@@ -82,12 +86,6 @@ public section
 namespace Cslib.DataStructure.DisjointSet.UnionFind
 
 open Cslib.DataStructure Cslib.DataStructure.DisjointSet
-
-/-- The representation invariant of `UnionFind.impl n` agrees with `UnionFind.Rep`. -/
-theorem impl_rep_iff (n : ℕ) (p : Partition n) (s : State n) :
-    (impl n).rep p s ↔ Rep p s := by
-  unfold impl
-  exact Iff.rfl
 
 private theorem rank_compressWithSteps (uf : Batteries.UnionFind) (x : Fin uf.size) (i : ℕ) :
     (compressWithSteps uf x).1.rank i = uf.rank i := by
@@ -175,33 +173,21 @@ private theorem findPathGo_pairwise_rank_lt (uf : Batteries.UnionFind) :
       exact lt_of_lt_of_le (uf.rank'_lt x.1 x.2 h)
         (findPathGo_rank_ge uf fuel ⟨uf.arr[x.1].parent, uf.parent'_lt x.1 x.2⟩ hv)
 
-private theorem pairwise_ne_of_pairwise_rank_lt {uf : Batteries.UnionFind} {l : List ℕ}
-    (hpw : l.Pairwise (fun u v => uf.rank u < uf.rank v)) : l.Nodup :=
-  List.nodup_iff_pairwise_ne.mpr (hpw.imp fun hlt heq => Nat.ne_of_lt hlt (congrArg uf.rank heq))
-
 private theorem findPath_nodup (uf : Batteries.UnionFind) (x : Fin uf.size) :
     (findPath uf x).Nodup :=
-  pairwise_ne_of_pairwise_rank_lt (findPathGo_pairwise_rank_lt uf (rankBound uf) x)
-
-private theorem rank_lt_or_gt_of_pairwise {uf : Batteries.UnionFind} {l : List ℕ}
-    (hpw : l.Pairwise (fun u v => uf.rank u < uf.rank v))
-    {u v : ℕ} (hu : u ∈ l) (hv : v ∈ l) (hne : u ≠ v) :
-    uf.rank u < uf.rank v ∨ uf.rank v < uf.rank u := by
-  induction l with
-  | nil => simp at hu
-  | cons a t ih =>
-    rw [List.pairwise_cons] at hpw
-    rw [List.mem_cons] at hu hv
-    rcases hu with rfl | hu <;> rcases hv with rfl | hv
-    · exact absurd rfl hne
-    · exact .inl (hpw.1 v hv)
-    · exact .inr (hpw.1 u hu)
-    · exact ih hpw.2 hu hv
+  List.nodup_iff_pairwise_ne.mpr
+    ((findPathGo_pairwise_rank_lt uf (rankBound uf) x).imp fun hlt heq =>
+      Nat.ne_of_lt hlt (congrArg uf.rank heq))
 
 private theorem findPath_rank_ne_of_ne (uf : Batteries.UnionFind) (x : Fin uf.size) {u v : ℕ}
     (hu : u ∈ findPath uf x) (hv : v ∈ findPath uf x) (hne : u ≠ v) :
-    uf.rank u < uf.rank v ∨ uf.rank v < uf.rank u :=
-  rank_lt_or_gt_of_pairwise (findPathGo_pairwise_rank_lt uf (rankBound uf) x) hu hv hne
+    uf.rank u < uf.rank v ∨ uf.rank v < uf.rank u := by
+  have hpw : (findPath uf x).Pairwise
+      (fun a b => uf.rank a < uf.rank b ∨ uf.rank b < uf.rank a) :=
+    (findPathGo_pairwise_rank_lt uf (rankBound uf) x).imp Or.inl
+  have : Std.Symm (fun a b => uf.rank a < uf.rank b ∨ uf.rank b < uf.rank a) :=
+    ⟨fun _ _ => Or.symm⟩
+  exact hpw.forall hu hv hne
 
 private theorem findPathGo_rootD (uf : Batteries.UnionFind) :
     ∀ (fuel : ℕ) (x : Fin uf.size) {u : ℕ},
@@ -279,27 +265,25 @@ private theorem parentD_findAux_eq_findPathGo (uf : Batteries.UnionFind) :
         rw [Batteries.UnionFind.rootD_eq_self.mpr hxroot]
         exact hxroot
       · rfl
-    · let y : Fin uf.size := ⟨uf.arr[x.1].parent, uf.parent'_lt x.1 x.2⟩
-      have hxy : uf.rank x.1 < uf.rank y.1 := uf.rank'_lt x.1 x.2 h
-      have hmax := uf.lt_rankMax x.1
-      have hfuel : uf.rankMax - uf.rank y.1 ≤ fuel := by omega
-      have ih := parentD_findAux_eq_findPathGo uf fuel y i hfuel
-      have hyroot : uf.rootD y.1 = uf.rootD x.1 := by
-        have hp : y.1 = uf.parent x.1 := (Batteries.UnionFind.parentD_eq x.2).symm
-        rw [hp, Batteries.UnionFind.rootD_parent]
-      rw [Batteries.UnionFind.parentD_findAux, findPathGo]
-      rw [ite_eq_right h]
+    · have ih := parentD_findAux_eq_findPathGo uf fuel ⟨uf.arr[x.1].parent, uf.parent'_lt x.1 x.2⟩ i
+        (by
+          dsimp only
+          have hxy := uf.rank'_lt x.1 x.2 h
+          have hmax := uf.lt_rankMax x.1
+          omega)
+      have hyroot : uf.rootD uf.arr[x.1].parent = uf.rootD x.1 := by
+        rw [← Batteries.UnionFind.parentD_eq x.2, Batteries.UnionFind.rootD_parent]
+      rw [Batteries.UnionFind.parentD_findAux, findPathGo, ite_eq_right h]
       by_cases hi : i = x.1
       · subst hi
         rw [ite_eq_left rfl, ite_eq_left List.mem_cons_self]
       · rw [ite_eq_right hi, ih, hyroot]
         simp only [List.mem_cons, hi, false_or]
-        rfl
 
 private theorem parent_compressWithSteps (uf : Batteries.UnionFind) (x : Fin uf.size) (i : ℕ) :
     (compressWithSteps uf x).1.parent i =
       if i ∈ findPath uf x then uf.rootD x.1 else uf.parent i := by
-  rw [compressWithSteps_fst, Batteries.UnionFind.parent, Batteries.UnionFind.find]
+  rw [compressWithSteps_fst, find_parent_eq_parentD_findAux]
   exact parentD_findAux_eq_findPathGo uf (rankBound uf) x i
     (by rw [rankBound_eq_rankMax]; exact Nat.sub_le _ _)
 
@@ -417,12 +401,6 @@ private theorem lt_iterate_ackermann_ackIter_succ {r p : ℕ} (hr : 1 ≤ r) (hr
   rwa [show Nat.find (exists_lt_iterate_ackermann hr hrp) - 1 + 1 =
     Nat.find (exists_lt_iterate_ackermann hr hrp) by omega]
 
-private theorem iterate_mono_steps {f : ℕ → ℕ} (hf : ∀ x, x ≤ f x) (x : ℕ) :
-    Monotone (fun t => f^[t] x) :=
-  monotone_nat_of_le_succ fun t => by
-    rw [Function.iterate_succ_apply']
-    exact hf (f^[t] x)
-
 private theorem le_ackIter_of_iterate_le {r p i : ℕ} (hr : 1 ≤ r) (hrp : r < p)
     (hle : (Nat.ackermann (ackLevel r p))^[i] r ≤ p) : i ≤ ackIter r p := by
   by_contra h
@@ -430,8 +408,8 @@ private theorem le_ackIter_of_iterate_le {r p i : ℕ} (hr : 1 ≤ r) (hrp : r <
   have hlt := lt_iterate_ackermann_ackIter_succ hr hrp
   have hmono : (Nat.ackermann (ackLevel r p))^[ackIter r p + 1] r ≤
       (Nat.ackermann (ackLevel r p))^[i] r :=
-    iterate_mono_steps (f := Nat.ackermann (ackLevel r p))
-      (fun x => Nat.le_of_lt (Nat.lt_ackermann _ x)) r hsucc
+    Function.monotone_iterate_of_id_le (f := Nat.ackermann (ackLevel r p))
+      (fun x => Nat.le_of_lt (Nat.lt_ackermann _ x)) hsucc r
   omega
 
 private noncomputable def nonRootPhi (q r p : ℕ) : ℕ :=
@@ -521,12 +499,6 @@ private noncomputable def potentialCore (zeroSingletons : Bool) (q d : ℕ)
     (uf : Batteries.UnionFind) : ℕ :=
   ∑ i ∈ Finset.range uf.size, nodePotential zeroSingletons q d uf i
 
-private theorem sum_const_nat (s : Finset ℕ) (c : ℕ) : ∑ _ ∈ s, c = s.card * c := by
-  induction s using Finset.induction_on with
-  | empty => simp
-  | insert a s ha ih =>
-    rw [Finset.sum_insert ha, Finset.card_insert_of_notMem ha, ih, Nat.succ_mul, Nat.add_comm]
-
 private theorem potentialCore_true_ofSize (q d n : ℕ) :
     potentialCore true q d (ofSize n) = 0 := by
   unfold potentialCore nodePotential
@@ -537,7 +509,7 @@ private theorem potentialCore_false_ofSize (q d n : ℕ) :
   unfold potentialCore nodePotential
   simp only [size_ofSize, parent_ofSize, ↓reduceIte, Bool.false_and, Bool.false_eq_true,
     rank_ofSize, Nat.zero_add]
-  rw [sum_const_nat, Finset.card_range]
+  rw [Finset.sum_const, Finset.card_range, Nat.nsmul_eq_mul]
 
 private theorem findSteps_add_potentialCore_le {uf : Batteries.UnionFind}
     (hvalid : ValidRank uf) {q d : ℕ} (hd : 1 ≤ d)
@@ -646,7 +618,7 @@ private theorem findSteps_add_potentialCore_le {uf : Batteries.UnionFind}
     have hboole :
         ∑ u ∈ Finset.range uf.size, (if u ∈ S_drop then (1 : ℕ) else 0) = S_drop.card := by
       rw [← Finset.sum_filter (fun u => u ∈ S_drop) (fun _ => (1 : ℕ)), hfilter_eq,
-        sum_const_nat, Nat.mul_one]
+        Finset.sum_const, Nat.nsmul_eq_mul, Nat.mul_one]
     unfold potentialCore
     rw [hsz]
     rw [Finset.sum_add_distrib, hboole] at hsum_le
@@ -802,9 +774,7 @@ private theorem link_pot_core {uf : Batteries.UnionFind}
     1 + potentialCore zs q d (uf.link x y hy) ≤
       (if zs then 2 * d * q + q else q) + potentialCore zs q d uf := by
   by_cases hxy : x.1 = y.1
-  · have heq : uf.link x y hy = uf := unionFind_ext (by
-      simp [Batteries.UnionFind.arr_link, Batteries.UnionFind.linkAux, hxy])
-    rw [heq]
+  · rw [link_self uf hy hxy]
     split_ifs <;> omega
   · have hvalid' : ValidRank (uf.link x y hy) := hvalid.link hx hy
     have hsize : (uf.link x y hy).size = uf.size := Batteries.UnionFind.linkAux_size
@@ -859,129 +829,130 @@ private theorem link_pot_core {uf : Batteries.UnionFind}
         rw [Nat.mul_assoc, Nat.mul_comm d q, Nat.two_mul]
       split_ifs at haux_res <;> omega
 
+private theorem two_finds_core {n : ℕ} (s : State n) (x y : Fin n)
+    (hrank : ValidRank s.uf) {q d : ℕ} (hd : 1 ≤ d)
+    (hbound : Nat.log 2 n + d < Nat.ackermann q d) (zs : Bool) :
+    let x' : Fin s.uf.size := ⟨x.1, by rw [s.size_eq]; exact x.2⟩
+    let c₁ := compressWithSteps s.uf x'
+    let y' : Fin c₁.1.size :=
+      ⟨y.1, by rw [compressWithSteps_size s.uf x', s.size_eq]; exact y.2⟩
+    let c₂ := compressWithSteps c₁.1 y'
+    ValidRank c₂.1 ∧ c₂.1.size = n ∧
+      (c₁.2.2 + c₂.2.2) + potentialCore zs q d c₂.1 ≤
+        (2 * q + 2) + potentialCore zs q d s.uf := by
+  intro x' c₁ y' c₂
+  have hvalid₁ : ValidRank c₁.1 := hrank.compressWithSteps x'
+  have hvalid₂ : ValidRank c₂.1 := hvalid₁.compressWithSteps y'
+  have hsz₂ : c₂.1.size = n :=
+    (compressWithSteps_size c₁.1 y').trans ((compressWithSteps_size s.uf x').trans s.size_eq)
+  have hf1 := findSteps_add_potentialCore_le hrank hd (by rwa [s.size_eq]) zs x'
+  have hf2 := findSteps_add_potentialCore_le hvalid₁ hd
+    (by rwa [(compressWithSteps_size s.uf x').trans s.size_eq]) zs y'
+  have hs1 : c₁.2.2 = findSteps s.uf x' :=
+    congrArg (fun p => p.2.2) (compressWithSteps_eq s.uf x')
+  have hs2 : c₂.2.2 = findSteps c₁.1 y' :=
+    congrArg (fun p => p.2.2) (compressWithSteps_eq c₁.1 y')
+  refine ⟨hvalid₂, hsz₂, ?_⟩
+  dsimp only [c₁, c₂] at hf1 hf2 hs1 hs2 ⊢
+  omega
+
 private theorem two_finds_union_step_core {n : ℕ} {s : State n} (x y : Fin n)
     (hrank : ValidRank s.uf) {q d : ℕ} (hq : 1 ≤ q) (hd : 1 ≤ d)
     (hbound : Nat.log 2 n + d < Nat.ackermann q d) (zs : Bool) :
     (step s (.union x y)).trace + potentialCore zs q d (step s (.union x y)).state.uf ≤
       (2 * (q + 1) + (if zs then 2 * d * q + q else q)) + potentialCore zs q d s.uf := by
+  obtain ⟨hvalid₂, hsz₂, hfinds⟩ := two_finds_core s x y hrank hd hbound zs
   unfold step
   dsimp only
   let x' : Fin s.uf.size := ⟨x.1, by rw [s.size_eq]; exact x.2⟩
   set c₁ := compressWithSteps s.uf x'
-  have hsz₁ : c₁.1.size = n := (compressWithSteps_size s.uf x').trans s.size_eq
-  let y' : Fin c₁.1.size := ⟨y.1, by rw [hsz₁]; exact y.2⟩
+  let y' : Fin c₁.1.size :=
+    ⟨y.1, by rw [compressWithSteps_size s.uf x', s.size_eq]; exact y.2⟩
   set c₂ := compressWithSteps c₁.1 y'
-  have hsz₂ : c₂.1.size = n := (compressWithSteps_size c₁.1 y').trans hsz₁
   let rx : Fin c₂.1.size := ⟨c₁.2.1.1, by
     rw [compressWithSteps_size c₁.1 y', compressWithSteps_size s.uf x']
     exact c₁.2.1.2⟩
-  let ry : Fin c₂.1.size := ⟨c₂.2.1.1, by
-    rw [compressWithSteps_size c₁.1 y']
-    exact c₂.2.1.2⟩
+  let ry : Fin c₂.1.size := ⟨c₂.2.1.1, by rw [compressWithSteps_size c₁.1 y']; exact c₂.2.1.2⟩
   have hxroot : c₂.1.parent rx.1 = rx.1 := by
-    have hr1 : c₁.2.1.1 = s.uf.rootD x.1 := compressWithSteps_root s.uf x'
     have hroot1 : c₁.1.rootD c₁.2.1.1 = c₁.2.1.1 := by
-      rw [rootD_compressWithSteps, hr1, Batteries.UnionFind.rootD_rootD]
+      rw [rootD_compressWithSteps, congrArg (fun p => (p.2.1 : ℕ)) (compressWithSteps_eq s.uf x'),
+        Batteries.UnionFind.rootD_rootD]
     have hroot2 : c₂.1.rootD c₁.2.1.1 = c₁.2.1.1 := by
       change (compressWithSteps c₁.1 y').1.rootD c₁.2.1.1 = c₁.2.1.1
       rw [rootD_compressWithSteps, hroot1]
     exact Batteries.UnionFind.rootD_eq_self.mp hroot2
   have hyroot : c₂.1.parent ry.1 = ry.1 := by
-    have hr2 : c₂.2.1.1 = c₁.1.rootD y.1 := compressWithSteps_root c₁.1 y'
     have hroot2 : c₂.1.rootD c₂.2.1.1 = c₂.2.1.1 := by
       change (compressWithSteps c₁.1 y').1.rootD c₂.2.1.1 = c₂.2.1.1
-      rw [rootD_compressWithSteps, hr2, Batteries.UnionFind.rootD_rootD]
+      rw [rootD_compressWithSteps, congrArg (fun p => (p.2.1 : ℕ)) (compressWithSteps_eq c₁.1 y'),
+        Batteries.UnionFind.rootD_rootD]
     exact Batteries.UnionFind.rootD_eq_self.mp hroot2
-  have hvalid₁ : ValidRank c₁.1 := hrank.compressWithSteps x'
-  have hvalid₂ : ValidRank c₂.1 := hvalid₁.compressWithSteps y'
-  have hbound₀ : Nat.log 2 s.uf.size + d < Nat.ackermann q d := by rwa [s.size_eq]
-  have hbound₁ : Nat.log 2 c₁.1.size + d < Nat.ackermann q d := by rwa [hsz₁]
-  have hbound₂ : Nat.log 2 c₂.1.size + d < Nat.ackermann q d := by rwa [hsz₂]
-  have hf1 := findSteps_add_potentialCore_le hrank hd hbound₀ zs x'
-  have hf2 := findSteps_add_potentialCore_le hvalid₁ hd hbound₁ zs y'
-  have hlink := link_pot_core hvalid₂ hq hd hbound₂ hxroot hyroot zs
-  have hs1 : c₁.2.2 = findSteps s.uf x' := compressWithSteps_steps s.uf x'
-  have hs2 : c₂.2.2 = findSteps c₁.1 y' := compressWithSteps_steps c₁.1 y'
+  have hlink := link_pot_core hvalid₂ hq hd (by rwa [hsz₂]) hxroot hyroot zs
   change (c₁.2.2 + c₂.2.2 + 1) + potentialCore zs q d (c₂.1.link rx ry _) ≤ _
-  dsimp only [c₁, c₂] at hf1 hf2 hlink hs1 hs2 ⊢
+  dsimp only [c₁, c₂, x', y'] at hfinds hlink ⊢
   omega
 
 private theorem two_finds_same_step_core {n : ℕ} {s : State n} (x y : Fin n)
     (hrank : ValidRank s.uf) {q d : ℕ} (hd : 1 ≤ d)
     (hbound : Nat.log 2 n + d < Nat.ackermann q d) (zs : Bool) :
     (step s (.same x y)).trace + potentialCore zs q d (step s (.same x y)).state.uf ≤
-      (2 * q + 2) + potentialCore zs q d s.uf := by
-  unfold step
-  dsimp only
-  let x' : Fin s.uf.size := ⟨x.1, by rw [s.size_eq]; exact x.2⟩
-  set c₁ := compressWithSteps s.uf x'
-  have hsz₁ : c₁.1.size = n := (compressWithSteps_size s.uf x').trans s.size_eq
-  let y' : Fin c₁.1.size := ⟨y.1, by rw [hsz₁]; exact y.2⟩
-  set c₂ := compressWithSteps c₁.1 y'
-  have hvalid₁ : ValidRank c₁.1 := hrank.compressWithSteps x'
-  have hbound₀ : Nat.log 2 s.uf.size + d < Nat.ackermann q d := by rwa [s.size_eq]
-  have hbound₁ : Nat.log 2 c₁.1.size + d < Nat.ackermann q d := by rwa [hsz₁]
-  have hf1 := findSteps_add_potentialCore_le hrank hd hbound₀ zs x'
-  have hf2 := findSteps_add_potentialCore_le hvalid₁ hd hbound₁ zs y'
-  have hs1 : c₁.2.2 = findSteps s.uf x' := compressWithSteps_steps s.uf x'
-  have hs2 : c₂.2.2 = findSteps c₁.1 y' := compressWithSteps_steps c₁.1 y'
-  change (c₁.2.2 + c₂.2.2) + potentialCore zs q d c₂.1 ≤ _
-  dsimp only [c₁, c₂] at hf1 hf2 hs1 hs2 ⊢
-  omega
+      (2 * q + 2) + potentialCore zs q d s.uf :=
+  (two_finds_core s x y hrank hd hbound zs).2.2
 
-/-! ### Public Tarjan potentials, amortized certificates, and client bounds -/
+private theorem amortized_potentialCore (n : ℕ) (zs : Bool) {q d : ℕ}
+    (hq : 1 ≤ q) (hd : 1 ≤ d) (hbound : Nat.log 2 n + d < Nat.ackermann q d)
+    {pot : Partition n → State n → ℕ} {chg : Partition n → Op n → ℕ}
+    (hpot_eq : ∀ p s, pot p s = potentialCore zs q d s.uf)
+    (hchg_eq : ∀ p o, chg p o = match o with
+      | .same _ _ => 2 * q + 2
+      | .union _ _ => 2 * (q + 1) + (if zs then 2 * d * q + q else q)
+      | .numComponents => 1) :
+    Amortized (impl n) id pot chg := by
+  refine Amortized.ofFn fun hr _ he => ?_
+  rw [impl_rep] at hr
+  have hstate : (step _ _).state = _ := congrArg StepResult.state he
+  have hsteps : (step _ _).trace = _ := congrArg StepResult.trace he
+  dsimp only at hstate hsteps
+  rw [id, ← hsteps, ← hstate, hpot_eq, hpot_eq, hchg_eq]
+  cases ‹Op n› with
+  | numComponents => exact Nat.le_refl _
+  | same x y => exact two_finds_same_step_core x y hr.validRank hd hbound zs
+  | union x y => exact two_finds_union_step_core x y hr.validRank hq hd hbound zs
 
-/-- Potential function on `Fin n` used for Tarjan's single-parameter `O(α(n))` analysis.
+/-! ### Public potentials, amortized certificates, and client step bounds -/
+
+/-- Potential function on `Fin n` used for the single-parameter `O(α(n))` step analysis.
 Singletons carry zero potential, so `tarjanPotential n _ (init n) = 0`. -/
 noncomputable def tarjanPotential (n : ℕ) (_ : Partition n) (s : State n) : ℕ :=
   potentialCore true (Nat.inverseAckermann n) 1 s.uf
 
-/-- Per-operation inverse-Ackermann amortized charge on `Fin n`: `2 * α(n) + 2` for `Op.same`,
+/-- Per-operation single-parameter amortized charge on `Fin n`: `2 * α(n) + 2` for `Op.same`,
 `5 * α(n) + 2` for `Op.union`, and `1` for `Op.numComponents`. -/
 @[expose] def tarjanCharge (n : ℕ) (_ : Partition n) : Op n → ℕ
   | .same _ _ => 2 * Nat.inverseAckermann n + 2
   | .union _ _ => 5 * Nat.inverseAckermann n + 2
   | .numComponents => 1
 
-/-- Every disjoint-set operation has single-parameter Tarjan charge at most `5 * α(n) + 2`. -/
+/-- Every disjoint-set operation has single-parameter charge at most `5 * α(n) + 2`. -/
 theorem tarjanCharge_le (n : ℕ) (p : Partition n) (o : Op n) :
     tarjanCharge n p o ≤ 5 * Nat.inverseAckermann n + 2 := by
   have h1 := Nat.one_le_inverseAckermann n
   cases o <;> simp only [tarjanCharge] <;> omega
 
-/-- Initial single-parameter Tarjan potential at `init n` is `0`. -/
+/-- Initial single-parameter potential at `init n` is `0`. -/
 @[simp] theorem tarjanPotential_init (n : ℕ) (p : Partition n) :
     tarjanPotential n p (init n) = 0 :=
   potentialCore_true_ofSize _ 1 n
 
-/-- Tarjan's (1975) single-parameter `O(α(n))` amortized step certificate over `impl n`. -/
+/-- Single-parameter `O(α(n))` amortized abstract step certificate over `impl n`. -/
 theorem tarjanAmortized (n : ℕ) :
-    Amortized (impl n) id (tarjanPotential n) (tarjanCharge n) := by
-  refine Amortized.ofFn fun hr _ he => ?_
-  have hstate : (step _ _).state = _ := congrArg StepResult.state he
-  have hsteps : (step _ _).trace = _ := congrArg StepResult.trace he
-  dsimp only at hstate hsteps
-  rw [id, ← hsteps, ← hstate]
-  have hvalid := hr.validRank
-  have hq : 1 ≤ Nat.inverseAckermann n := Nat.one_le_inverseAckermann n
-  have hbound : Nat.log 2 n + 1 < Nat.ackermann (Nat.inverseAckermann n) 1 :=
-    Nat.log_add_one_lt_ackermann_inverseAckermann n
-  cases ‹Op n› with
-  | numComponents =>
-    exact Nat.le_refl _
-  | same x y =>
-    simpa only [tarjanPotential, tarjanCharge] using
-      two_finds_same_step_core x y hvalid (Nat.le_refl 1) hbound true
-  | union x y =>
-    have h := two_finds_union_step_core x y hvalid hq (Nat.le_refl 1) hbound true
-    simp only [↓reduceIte, Nat.mul_one] at h
-    have hq_eq : 2 * (Nat.inverseAckermann n + 1) +
-        (2 * Nat.inverseAckermann n + Nat.inverseAckermann n) =
-        5 * Nat.inverseAckermann n + 2 := by omega
-    rw [hq_eq] at h
-    exact h
+    Amortized (impl n) id (tarjanPotential n) (tarjanCharge n) :=
+  amortized_potentialCore n true (Nat.one_le_inverseAckermann n) (Nat.le_refl 1)
+    (Nat.log_add_one_lt_ackermann_inverseAckermann n)
+    (fun _ _ => rfl)
+    (fun _ o => by cases o <;> simp [tarjanCharge]; omega)
 
-/-- Uniform single-parameter amortized step certificate `5 * α(n) + 2` over `impl n`. -/
+/-- Uniform single-parameter amortized abstract step certificate `5 * α(n) + 2` over `impl n`. -/
 theorem tarjanUniformAmortized (n : ℕ) :
     Amortized (impl n) id (tarjanPotential n) (fun _ _ => 5 * Nat.inverseAckermann n + 2) where
   step hr hv he := by
@@ -990,7 +961,7 @@ theorem tarjanUniformAmortized (n : ℕ) :
 
 /-- Running the concrete union-find interpreter from `init n` agrees with abstract `Partition n`
 semantics, preserves `Rep`, and satisfies both the exact per-operation and uniform `5 * α(n) + 2`
-Tarjan amortized step bounds. -/
+abstract step bounds (excluding `init n`). -/
 theorem tarjan_run_correct {n : ℕ} {β : Type} (client : (spec n).Client β) :
     let (value, finalState, history) := (spec n).runClient (Partition.discrete n) client
     (run (init n) client).value = value ∧ Rep finalState (run (init n) client).state ∧
@@ -998,19 +969,21 @@ theorem tarjan_run_correct {n : ℕ} {β : Type} (client : (spec n).Client β) :
         (spec n).totalCost (tarjanCharge n) (Partition.discrete n) history ∧
       total id (run (init n) client).traces ≤
         history.length * (5 * Nat.inverseAckermann n + 2) := by
+  have hrep0 : (impl n).rep (Partition.discrete n) (init n) := by rw [impl_rep]; exact rep_init n
   have hv := (spec n).validHistory_of_forall_valid (fun _ _ => trivial)
     (Partition.discrete n) ((spec n).clientHistory (Partition.discrete n) client)
   have hexec := Execution.executes_run step client (init n)
-  have hc := (impl n).correct_client (rep_init n) hv hexec
-  have hclient := (tarjanAmortized n).client (rep_init n) hv hexec
-  have hconst := (tarjanUniformAmortized n).client_const (rep_init n) hv hexec
+  have hc := (impl n).correct_client hrep0 hv hexec
+  have hclient := (tarjanAmortized n).client hrep0 hv hexec
+  have hconst := (tarjanUniformAmortized n).client_const hrep0 hv hexec
+  rw [impl_rep] at hc
   rw [tarjanPotential_init] at hclient hconst
   dsimp only at hclient hconst ⊢
   exact ⟨hc.1, hc.2, le_trans (Nat.le_add_right _ _) hclient,
     le_trans (Nat.le_add_right _ _) hconst⟩
 
-/-- Rank-shifted potential function parameterized by `d` on `Fin n` used for Tarjan's
-two-parameter `O(m α(m, n))` analysis. Initial potential at `init n` is
+/-- Rank-shifted potential function parameterized by `d` on `Fin n` used for the two-parameter
+`O(m α(m, n))` abstract step analysis. Initial potential at `init n` is
 `n * (inverseAckermannAt d n * max 1 d)`. -/
 noncomputable def tarjanPotentialAt (d n : ℕ) (_ : Partition n) (s : State n) : ℕ :=
   potentialCore false (Nat.inverseAckermannAt d n) (max 1 d) s.uf
@@ -1028,38 +1001,18 @@ theorem tarjanChargeAt_le (d n : ℕ) (p : Partition n) (o : Op n) :
   have h1 := Nat.one_le_inverseAckermannAt d n
   cases o <;> simp only [tarjanChargeAt] <;> omega
 
-/-- Initial rank-shifted Tarjan potential at `init n`. -/
+/-- Initial rank-shifted potential at `init n`. -/
 @[simp] theorem tarjanPotentialAt_init (d n : ℕ) (p : Partition n) :
     tarjanPotentialAt d n p (init n) = n * (Nat.inverseAckermannAt d n * max 1 d) :=
   potentialCore_false_ofSize _ _ n
 
-/-- Rank-shifted amortized step certificate over `impl n`. -/
+/-- Rank-shifted amortized abstract step certificate over `impl n`. -/
 theorem tarjanAmortizedAt (d n : ℕ) :
-    Amortized (impl n) id (tarjanPotentialAt d n) (tarjanChargeAt d n) := by
-  refine Amortized.ofFn fun hr _ he => ?_
-  have hstate : (step _ _).state = _ := congrArg StepResult.state he
-  have hsteps : (step _ _).trace = _ := congrArg StepResult.trace he
-  dsimp only at hstate hsteps
-  rw [id, ← hsteps, ← hstate]
-  have hvalid := hr.validRank
-  have hq : 1 ≤ Nat.inverseAckermannAt d n := Nat.one_le_inverseAckermannAt d n
-  have hd : 1 ≤ max 1 d := Nat.le_max_left 1 d
-  have hbound : Nat.log 2 n + max 1 d <
-      Nat.ackermann (Nat.inverseAckermannAt d n) (max 1 d) :=
-    Nat.log_add_lt_ackermann_inverseAckermannAt d n
-  cases ‹Op n› with
-  | numComponents =>
-    exact Nat.le_refl _
-  | same x y =>
-    simpa only [tarjanPotentialAt, tarjanChargeAt] using
-      two_finds_same_step_core x y hvalid hd hbound false
-  | union x y =>
-    have h := two_finds_union_step_core x y hvalid hq hd hbound false
-    simp only [Bool.false_eq_true, ↓reduceIte] at h
-    have hq_eq : 2 * (Nat.inverseAckermannAt d n + 1) + Nat.inverseAckermannAt d n =
-        3 * Nat.inverseAckermannAt d n + 2 := by omega
-    rw [hq_eq] at h
-    exact h
+    Amortized (impl n) id (tarjanPotentialAt d n) (tarjanChargeAt d n) :=
+  amortized_potentialCore n false (Nat.one_le_inverseAckermannAt d n) (Nat.le_max_left 1 d)
+    (Nat.log_add_lt_ackermann_inverseAckermannAt d n)
+    (fun _ _ => rfl)
+    (fun _ o => by cases o <;> simp [tarjanChargeAt]; omega)
 
 /-- Uniform rank-shifted amortized step certificate `3 * α_d(n) + 2` over `impl n`. -/
 theorem tarjanUniformAmortizedAt (d n : ℕ) :
@@ -1069,10 +1022,10 @@ theorem tarjanUniformAmortizedAt (d n : ℕ) :
     obtain ⟨s', hstep, hr', hpot⟩ := (tarjanAmortizedAt d n).step hr hv he
     exact ⟨s', hstep, hr', hpot.trans (Nat.add_le_add_right (tarjanChargeAt_le d n _ _) _)⟩
 
-/-- **Tarjan (1975) two-parameter `O(m α(m, n))` theorem**: for every universe size `n` and every
-adaptive client on `Fin n` issuing `m = history.length` operations from `init n`, the concrete
-`Batteries.UnionFind` execution agrees with `Partition n` and executes at most
-`m * (5 * Nat.inverseAckermannTwo m n + 2)` total pointer/link steps. -/
+/-- Two-parameter inverse-Ackermann abstract step bound (step toward `#3558` and `#5441`): for
+every universe size `n` and adaptive client on `Fin n` issuing `m = history.length` operations from
+`init n`, the concrete `Batteries.UnionFind` execution agrees with `Partition n` and records at
+most `m * (5 * Nat.inverseAckermannTwo m n + 2)` pointer/link steps (excluding `init n`). -/
 theorem tarjan_run_two_param {n : ℕ} {β : Type} (client : (spec n).Client β) :
     let (value, finalState, history) := (spec n).runClient (Partition.discrete n) client
     (run (init n) client).value = value ∧ Rep finalState (run (init n) client).state ∧
@@ -1087,10 +1040,11 @@ theorem tarjan_run_two_param {n : ℕ} {β : Type} (client : (spec n).Client β)
     simpa only [m, Nat.inverseAckermannTwo_of_lt hlt] using hrun.2.2.2
   · refine ⟨hrun.1, hrun.2.1, ?_⟩
     let d := m / n + 1
+    have hrep0 : (impl n).rep (Partition.discrete n) (init n) := by rw [impl_rep]; exact rep_init n
     have hv := (spec n).validHistory_of_forall_valid (fun _ _ => trivial)
       (Partition.discrete n) ((spec n).clientHistory (Partition.discrete n) client)
     have hexec := Execution.executes_run step client (init n)
-    have hconst := (tarjanUniformAmortizedAt d n).client_const (rep_init n) hv hexec
+    have hconst := (tarjanUniformAmortizedAt d n).client_const hrep0 hv hexec
     rw [tarjanPotentialAt_init] at hconst
     dsimp only at hconst
     have hnd : n * max 1 d ≤ 2 * m := by
@@ -1131,9 +1085,9 @@ theorem tarjan_run_two_param {n : ℕ} {β : Type} (client : (spec n).Client β)
           omega
     exact hcalc
 
-/-- Strict linear step-count corollary of Tarjan's two-parameter bound: whenever
-`n * Nat.log 2 n ≤ m`, every `m`-operation adaptive client on `Fin n` executes at most `7 * m`
-pointer/link steps. -/
+/-- Linear abstract step-count corollary of `tarjan_run_two_param`: whenever `n * Nat.log 2 n ≤ m`,
+every `m`-operation adaptive client on `Fin n` records at most `7 * m` pointer/link steps
+(excluding `init n`). -/
 theorem tarjan_run_linear_of_dense {n : ℕ} {β : Type} (client : (spec n).Client β)
     (hdense : n * Nat.log 2 n ≤ ((spec n).clientHistory (Partition.discrete n) client).length) :
     total id (run (init n) client).traces ≤

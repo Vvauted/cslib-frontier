@@ -1,7 +1,7 @@
 /-
-Copyright (c) 2026 vvauted. All rights reserved.
+Copyright (c) 2026 Samuel Schlesinger, vvauted. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: vvauted
+Authors: Samuel Schlesinger, vvauted
 -/
 
 module
@@ -10,30 +10,36 @@ module
 public import CslibFrontier.Init
 public import Mathlib.Data.Nat.Log
 public import Mathlib.Logic.Function.Iterate
+import Mathlib.Order.Iterate
 
 /-!
 # Ackermann function and inverse-Ackermann bounds
 
-This module defines the rapid-growing Ackermann-style diagonal hierarchy `Nat.ackermann k j` and
-its bounded inverses `Nat.inverseAckermannAt d n`, `Nat.inverseAckermann n`, and
-`Nat.inverseAckermannTwo m n` used in amortized disjoint-set analysis.
+This module defines the diagonal Ackermann hierarchy `Nat.ackermann k j` from [CLRS2009]
+Section 21.4 (pp. 573–581) together with rank-shifted inverses `Nat.inverseAckermannAt d n`,
+`Nat.inverseAckermann n`, and `Nat.inverseAckermannTwo m n` used in amortized disjoint-set step
+analyses (toward #3558 and #5441).
 
 Every definition is structurally recursive, so small values evaluate by `decide`. For `k = 0`,
 `ackermann 0 j = j + 1`; for `k + 1`, `ackermann (k + 1) j = (ackermann k)^[j + 1] j`, matching
-the variant used in Tarjan (1975) and Kozen (1992) shifted so that `ackermann 1 j = 2 * j + 1`,
-`ackermann 2 1 = 7`, and `ackermann 3 1 = 2047`. Note that `ackermann k 0 = 1` for every `k`, so
-strict monotonicity in `k` and unbounded growth require `1 ≤ j`. Shifting the diagonal offset by
+[CLRS2009] Section 21.4 (so `ackermann 1 j = 2 * j + 1`, `ackermann 2 1 = 7`, and
+`ackermann 3 1 = 2047`). This differs from `Mathlib.Computability.Ackermann` (`ack`, the
+Péter–Robinson recurrence with `ack 1 n = n + 2` and `ack 3 n = 2 ^ (n + 3) - 3`) and from
+`CslibFrontier.Foundations.Data.Nat.LogStar` (`Nat.twoTower` / `Nat.logStar`, the single-level
+tower of twos and iterated logarithm). Because `ackermann k 0 = 1` for every `k`, strict
+monotonicity in `k` and unbounded growth require `1 ≤ j`. Shifting the diagonal offset by
 `d' := max 1 d ≥ 1`, `inverseAckermannAt d n` returns the least `k ≥ 1` with
-`Nat.log 2 n + d' < ackermann k d'`. Taking `d = 1` yields the single-parameter function
-`inverseAckermann n`, and taking `d = m / n + 1` yields Tarjan's two-parameter function
-`inverseAckermannTwo m n`.
+`Nat.log 2 n + d' < ackermann k d'`. Taking `d = 1` yields the single-parameter inverse
+`inverseAckermann n`, and taking `d = m / n + 1` yields a two-parameter analogue
+`inverseAckermannTwo m n` (using shift `d = m / n + 1` in the [CLRS2009] recurrence, differing by
+small constants from [Tarjan1975]'s `4 * ⌈m / n⌉` threshold convention).
 
 ## Main definitions
 
-* `Nat.ackermann`: two-argument Ackermann hierarchy by structural recursion.
+* `Nat.ackermann`: two-argument `(j + 1)`-fold Ackermann hierarchy by structural recursion.
 * `Nat.inverseAckermannAt`: least `k ≥ 1` with `Nat.log 2 n + max 1 d < ackermann k (max 1 d)`.
 * `Nat.inverseAckermann`: single-parameter inverse Ackermann `inverseAckermannAt 1 n`.
-* `Nat.inverseAckermannTwo`: Tarjan two-parameter inverse Ackermann
+* `Nat.inverseAckermannTwo`: shifted two-parameter inverse Ackermann
   `inverseAckermannAt (m / n + 1) n`.
 
 ## Main results
@@ -48,9 +54,12 @@ strict monotonicity in `k` and unbounded growth require `1 ≤ j`. Shifting the 
 
 ## References
 
+* [T. H. Cormen, C. E. Leiserson, R. L. Rivest, and C. Stein, *Introduction to Algorithms* (3rd
+  ed.), MIT Press, 2009, Section 21.4, pp. 573–581][CLRS2009].
 * [R. E. Tarjan, *Efficiency of a Good But Not Linear Set Union Algorithm*, JACM 22(2),
-  1975][Tarjan1975].
-* [D. C. Kozen, *The Design and Analysis of Algorithms*, Lectures 10–11, 1992][Kozen1992].
+  pp. 215–225, 1975][Tarjan1975].
+* [D. C. Kozen, *The Design and Analysis of Algorithms*, Lectures 10–11, pp. 48–57,
+  1992][Kozen1992].
 -/
 
 public section
@@ -80,8 +89,8 @@ namespace Nat
 @[expose] def inverseAckermann (n : ℕ) : ℕ :=
   inverseAckermannAt 1 n
 
-/-- Tarjan's two-parameter inverse Ackermann function
-`α(m, n) = inverseAckermannAt (m / n + 1) n`. -/
+/-- Shifted two-parameter inverse Ackermann function
+`α(m, n) = inverseAckermannAt (m / n + 1) n`, a constant-shift analogue of Tarjan's `α(m, n)`. -/
 @[expose] def inverseAckermannTwo (m n : ℕ) : ℕ :=
   inverseAckermannAt (m / n + 1) n
 
@@ -120,31 +129,14 @@ theorem ackermann_three_one : ackermann 3 1 = 2047 := by
   rw [ackermann_succ, Function.iterate_succ_apply', Function.iterate_one, ackermann_two_one,
     ackermann_two]
 
-private theorem le_iterate_of_lt {f : ℕ → ℕ} (hlt : ∀ x, x < f x) :
-    ∀ t x, x ≤ f^[t] x
-  | 0, _ => Nat.le_refl _
-  | t + 1, x => by
-    rw [Function.iterate_succ_apply]
-    exact (Nat.le_of_lt (hlt x)).trans (le_iterate_of_lt hlt t (f x))
-
-private theorem lt_iterate_of_lt {f : ℕ → ℕ} (hlt : ∀ x, x < f x) {t : ℕ} (ht : 1 ≤ t)
-    (x : ℕ) : x < f^[t] x := by
-  cases t with
-  | zero => omega
-  | succ t =>
-    rw [Function.iterate_succ_apply]
-    exact (hlt x).trans_le (le_iterate_of_lt hlt t (f x))
-
-private theorem iterate_strictMono_steps {f : ℕ → ℕ} (hlt : ∀ x, x < f x) (x : ℕ) :
-    StrictMono (fun t => f^[t] x) :=
-  strictMono_nat_of_lt_succ fun t => by
-    rw [Function.iterate_succ_apply']
-    exact hlt (f^[t] x)
-
 /-- Every diagonal value strictly exceeds its second argument. -/
 theorem lt_ackermann : ∀ k j : ℕ, j < ackermann k j
   | 0, j => Nat.lt_succ_self j
-  | k + 1, j => lt_iterate_of_lt (lt_ackermann k) (Nat.succ_pos j) j
+  | k + 1, j => by
+    rw [ackermann_succ, Function.iterate_succ_apply]
+    exact (lt_ackermann k j).trans_le
+      (Function.id_le_iterate_of_id_le (fun x => Nat.le_of_lt (lt_ackermann k x)) j
+        (ackermann k j))
 
 /-- For fixed level `k`, `ackermann k` is strictly increasing. -/
 theorem ackermann_strictMono_right : ∀ k : ℕ, StrictMono (ackermann k)
@@ -153,7 +145,7 @@ theorem ackermann_strictMono_right : ∀ k : ℕ, StrictMono (ackermann k)
     have ih := ackermann_strictMono_right k
     have h1 : (ackermann k)^[j₁ + 1] j₁ < (ackermann k)^[j₁ + 1] j₂ := ih.iterate (j₁ + 1) hj
     have h2 : (ackermann k)^[j₁ + 1] j₂ < (ackermann k)^[j₂ + 1] j₂ :=
-      iterate_strictMono_steps (lt_ackermann k) j₂ (Nat.succ_lt_succ hj)
+      ih.strictMono_iterate_of_lt_map (lt_ackermann k j₂) (Nat.succ_lt_succ hj)
     exact h1.trans h2
 
 /-- For fixed level `k`, `ackermann k` is monotone. -/
@@ -163,7 +155,8 @@ theorem ackermann_monotone_right (k : ℕ) : Monotone (ackermann k) :=
 /-- `ackermann` is nondecreasing in the level `k`. -/
 theorem ackermann_le_succ_left (k j : ℕ) : ackermann k j ≤ ackermann (k + 1) j := by
   rw [ackermann_succ, Function.iterate_succ_apply']
-  exact ackermann_monotone_right k (le_iterate_of_lt (lt_ackermann k) j j)
+  exact ackermann_monotone_right k
+    (Function.id_le_iterate_of_id_le (fun x => Nat.le_of_lt (lt_ackermann k x)) j j)
 
 /-- For fixed `j`, `k ↦ ackermann k j` is monotone. -/
 theorem ackermann_monotone_left (j : ℕ) : Monotone (fun k => ackermann k j) :=
@@ -172,8 +165,10 @@ theorem ackermann_monotone_left (j : ℕ) : Monotone (fun k => ackermann k j) :=
 /-- For `1 ≤ j`, advancing the level strictly increases `ackermann k j`. -/
 theorem ackermann_lt_succ_left (k : ℕ) {j : ℕ} (hj : 1 ≤ j) :
     ackermann k j < ackermann (k + 1) j := by
-  rw [ackermann_succ, Function.iterate_succ_apply']
-  exact ackermann_strictMono_right k (lt_iterate_of_lt (lt_ackermann k) hj j)
+  rw [ackermann_succ]
+  simpa only [Function.iterate_one] using
+    (ackermann_strictMono_right k).strictMono_iterate_of_lt_map (lt_ackermann k j)
+      (Nat.lt_succ_iff.mpr hj)
 
 /-- For `1 ≤ j`, `k ↦ ackermann k j` is strictly increasing. -/
 theorem ackermann_strictMono_left {j : ℕ} (hj : 1 ≤ j) : StrictMono (fun k => ackermann k j) :=

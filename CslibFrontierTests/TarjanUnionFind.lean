@@ -1,7 +1,7 @@
 /-
-Copyright (c) 2026 vvauted. All rights reserved.
+Copyright (c) 2026 Samuel Schlesinger, vvauted. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: vvauted
+Authors: Samuel Schlesinger, vvauted
 -/
 
 module
@@ -10,7 +10,7 @@ module
 public import CslibFrontier.DataStructure.DisjointSet.Tarjan
 
 /-!
-# Worked Tarjan inverse-Ackermann union-find examples
+# Worked inverse-Ackermann union-find step-bound examples
 
 These kernel-checked examples exercise:
 
@@ -18,8 +18,8 @@ These kernel-checked examples exercise:
    `tarjan_run_two_param`.
 2. Balanced tree construction and repeated compressed queries on `Fin 4` against both
    `tarjanCharge` and `tarjan_run_two_param`.
-3. Direct application of `tarjanAmortized` and `tarjanAmortizedAt` using `impl_rep_iff`.
-4. The dense strict-linear corollary `tarjan_run_linear_of_dense` when `n * Nat.log 2 n ≤ m`.
+3. Direct application of `tarjanAmortized` and `tarjanAmortizedAt` using `impl_rep`.
+4. The dense linear step corollary `tarjan_run_linear_of_dense` when `n * Nat.log 2 n ≤ m`.
 -/
 
 public section
@@ -64,15 +64,15 @@ example :
             ((spec 4).clientHistory (Partition.discrete 4) chainAndQueries).length 4 + 2) :=
   ⟨rfl, (tarjan_run_correct chainAndQueries).2.2.2, (tarjan_run_two_param chainAndQueries).2.2⟩
 
--- Direct `Amortized.client` usage via `impl_rep_iff` and `tarjanPotential_init`.
+-- Direct `Amortized.client` usage via `impl_rep` and `tarjanPotential_init`.
 example :
     total id (run (init 4) chainAndQueries).traces +
         tarjanPotential 4 ((spec 4).clientState (Partition.discrete 4) chainAndQueries)
           (run (init 4) chainAndQueries).state ≤
       (spec 4).totalCost (tarjanCharge 4) (Partition.discrete 4)
         ((spec 4).clientHistory (Partition.discrete 4) chainAndQueries) := by
-  have hr : (impl 4).rep (Partition.discrete 4) (init 4) :=
-    (impl_rep_iff 4 (Partition.discrete 4) (init 4)).mpr (rep_init 4)
+  have hr : (impl 4).rep (Partition.discrete 4) (init 4) := by
+    rw [impl_rep]; exact rep_init 4
   have hv := (spec 4).validHistory_of_forall_valid (fun _ _ => trivial)
     (Partition.discrete 4) ((spec 4).clientHistory (Partition.discrete 4) chainAndQueries)
   have hc := (tarjanAmortized 4).client hr hv (Execution.executes_run step chainAndQueries (init 4))
@@ -123,8 +123,8 @@ example :
       (spec 4).totalCost (tarjanChargeAt 3 4) (Partition.discrete 4)
         ((spec 4).clientHistory (Partition.discrete 4) denseEightClient) +
         4 * (Nat.inverseAckermannAt 3 4 * 3) := by
-  have hr : (impl 4).rep (Partition.discrete 4) (init 4) :=
-    (impl_rep_iff 4 (Partition.discrete 4) (init 4)).mpr (rep_init 4)
+  have hr : (impl 4).rep (Partition.discrete 4) (init 4) := by
+    rw [impl_rep]; exact rep_init 4
   have hv := (spec 4).validHistory_of_forall_valid (fun _ _ => trivial)
     (Partition.discrete 4) ((spec 4).clientHistory (Partition.discrete 4) denseEightClient)
   have hc :=
