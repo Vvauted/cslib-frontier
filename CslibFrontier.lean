@@ -10569,6 +10569,7 @@ public import CslibFrontier.Probability.UniformNat
 public import CslibFrontier.Probability.UniformOrder
 public import CslibFrontier.Probability.UniversalHash
 public import CslibFrontier.Probability.UniversalHash.MultiSample
+public import CslibFrontier.Tactic.CertificatePreparation
 public import CslibFrontier.Tactic.CircuitBound
 public import CslibFrontier.Tactic.CircuitBound.Init
 public import CslibFrontier.Tactic.CommuteLeft
