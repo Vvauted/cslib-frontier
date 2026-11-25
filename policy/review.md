@@ -266,5 +266,8 @@ when the approved head had also merged a newer `main`: the script then replays f
 the lower head and that `main`, and names it in the result. Anyone, including
 the author, may post the script's result line, which names both heads and the exact command. The
 non-author who queues the new head runs that command again rather than relying on the posted line.
+A restack whose only differences from the approved head are entry-wise merges of `references.bib`
+or `manual/sources.md` keeps its approval whenever the script reports it identical (its docstring
+names the files it merges by entry): nobody reviews it again.
 When the script reports differences, review the paths and diffs it prints as a delta, under the
 carry-forward rule above.
