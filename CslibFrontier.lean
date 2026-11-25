@@ -3273,6 +3273,7 @@ public import CslibFrontier.Computability.Machines.Turing.MultiTape.Internal.Nat
 public import CslibFrontier.Computability.PropertyTesting.DenseGraph.Bipartite
 public import CslibFrontier.Computability.WangTile.Compactness
 public import CslibFrontier.Algorithms.Ellipsoid.Basic
+public import CslibFrontier.Computability.Complexity.RealAlgebraic.ControlledBoundedSum
 public import CslibFrontier.Foundations.Combinatorics.Hypergeometric.Miss
 public import CslibFrontier.Foundations.Data.Nat.Bitwise.SumTree
 public import CslibFrontier.Foundations.Data.BitString.ShortWords
