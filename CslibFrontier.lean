@@ -1472,6 +1472,7 @@ public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Tape.Run
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Tape.Task
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Tape.WordCode
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Capacity
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Cardinalities
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Counts
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.EndUnits
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.EverHeld
@@ -1481,6 +1482,9 @@ public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPla
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Moves
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Norms
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Plan
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.ProgramChoices
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.ProgramLoads
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.ProgramUnits
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Relays
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Rules
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.StageBounds
@@ -2350,6 +2354,7 @@ public import CslibFrontier.Computability.Circuit.Simulation
 public import CslibFrontier.Computability.Circuit.SimulationContext
 public import CslibFrontier.Computability.Circuit.SimulationDepth
 public import CslibFrontier.Computability.Circuit.SlpCost
+public import CslibFrontier.Computability.Circuit.SlpCostPow
 public import CslibFrontier.Computability.Circuit.SlpStep
 public import CslibFrontier.Computability.Circuit.SourceComplexity
 public import CslibFrontier.Computability.Circuit.SpanProgram.Basic
