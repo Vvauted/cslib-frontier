@@ -1451,6 +1451,7 @@ public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Interpre
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Interpreter.Postpone
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Interpreter.Step
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Laws.Existence
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Pieces.Program
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Poincare.Lengths
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Poincare.Poincare
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Poincare.Windows
@@ -8198,6 +8199,7 @@ public import CslibFrontier.Foundations.Combinatorics.SimpleGraph.WeisfeilerLema
 public import CslibFrontier.Foundations.Combinatorics.SmallSubsets
 public import CslibFrontier.Foundations.Combinatorics.Sperner
 public import CslibFrontier.Foundations.Combinatorics.Sperner.Kuhn
+public import CslibFrontier.Foundations.Combinatorics.StagedTree
 public import CslibFrontier.Foundations.Combinatorics.SubsetPairCount
 public import CslibFrontier.Foundations.Combinatorics.Subsets.Geometric
 public import CslibFrontier.Foundations.Combinatorics.Sunflower
