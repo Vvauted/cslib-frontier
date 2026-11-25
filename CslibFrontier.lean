@@ -1625,6 +1625,7 @@ public import CslibFrontier.Computability.Circuit.Boolean.FormalComplexityMeasur
 public import CslibFrontier.Computability.Circuit.Boolean.FormalComplexityMeasure.Certificate
 public import CslibFrontier.Computability.Circuit.Boolean.Formula
 public import CslibFrontier.Computability.Circuit.Boolean.Formula.Andreev
+public import CslibFrontier.Computability.Circuit.Boolean.Formula.ConstantFree
 public import CslibFrontier.Computability.Circuit.Boolean.Formula.Poly
 public import CslibFrontier.Computability.Circuit.Boolean.Formula.Restriction
 public import CslibFrontier.Computability.Circuit.Boolean.Formula.Subbotovskaya
@@ -1728,6 +1729,11 @@ public import CslibFrontier.Computability.Circuit.Boolean.Layered.Padding.PolyTi
 public import CslibFrontier.Computability.Circuit.Boolean.Layered.PolyTime
 public import CslibFrontier.Computability.Circuit.Boolean.Layered.Size
 public import CslibFrontier.Computability.Circuit.Boolean.Lookup
+public import CslibFrontier.Computability.Circuit.Boolean.Lupanov.FormulaAsymptotics
+public import CslibFrontier.Computability.Circuit.Boolean.Lupanov.FormulaBounds
+public import CslibFrontier.Computability.Circuit.Boolean.Lupanov.FormulaConstruction
+public import CslibFrontier.Computability.Circuit.Boolean.Lupanov.FormulaSelectors
+public import CslibFrontier.Computability.Circuit.Boolean.Lupanov.FormulaSynthesis
 public import CslibFrontier.Computability.Circuit.Boolean.MachineSimulation
 public import CslibFrontier.Computability.Circuit.Boolean.Majority
 public import CslibFrontier.Computability.Circuit.Boolean.MajorityNonlinear
@@ -8301,6 +8307,7 @@ public import CslibFrontier.Foundations.Data.BitString.MajorityVote
 public import CslibFrontier.Foundations.Data.BitString.MultiplicativeEnumeration
 public import CslibFrontier.Foundations.Data.BitString.Neg
 public import CslibFrontier.Foundations.Data.BitString.OddPairs
+public import CslibFrontier.Foundations.Data.BitString.OpenSpherePartition
 public import CslibFrontier.Foundations.Data.BitString.Pad10Star
 public import CslibFrontier.Foundations.Data.BitString.PadBlocks
 public import CslibFrontier.Foundations.Data.BitString.Parity
