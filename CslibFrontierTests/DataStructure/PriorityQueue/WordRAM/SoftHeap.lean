@@ -24,8 +24,9 @@ These kernel-checked tests exercise `Cslib.DataStructure.PriorityQueue.WordRAM.S
 4. Concrete rank-9 corrupted heap witness at `r = 8` (`rankThresholdForEps (1 / 16)`) exercising
    `SHInv.origKey_le_ckey`, `shInv_corrupted_le_eps`, `shInv_corrupted_le`, and non-empty
    `shCollectCorrupted_spec`.
-5. Non-vacuous concrete `w = 16` instantiations of `exists_softHeap_standard_program` and
-   `exists_softHeap_standard_program_eps` (`ε = 1 / 4`) verifying `Runs`, `.halt`, `WellFormed`,
+5. Non-vacuous concrete `w = 16` instantiations of
+   `exists_singleSoftHeap_batch_standard_program` and
+   `exists_singleSoftHeap_batch_standard_program_eps` (`ε = 1 / 4`) verifying `Runs`, `.halt`,
    exact memory output arrays via `SHBatchExtract.readFrom`, corruption bounds, and step bounds.
 -/
 
@@ -438,13 +439,39 @@ example :
     omega
   exact ⟨_, _, rfl, rfl, hnew_val, hmem0, hm'⟩
 
+private theorem entry_ckey_eq_of_zero_corrupted {st : List SHBatchEntry}
+    (horig : ∀ e ∈ st, e.origKey ≤ e.ckey)
+    (hcor0 : (st.filter (fun e => decide (e.origKey < e.ckey))).length = 0) :
+    ∀ e ∈ st, e.ckey = e.origKey := by
+  intro e he
+  have hfilter_nil : st.filter (fun x => decide (x.origKey < x.ckey)) = [] :=
+    List.length_eq_zero_iff.mp hcor0
+  by_contra hne
+  have hlt : decide (e.origKey < e.ckey) = true :=
+    decide_eq_true (Nat.lt_of_le_of_ne (horig e he) (Ne.symm hne))
+  have hmem : e ∈ st.filter (fun x => decide (x.origKey < x.ckey)) :=
+    List.mem_filter.mpr ⟨he, hlt⟩
+  rw [hfilter_nil] at hmem
+  exact List.not_mem_nil hmem
+
+private theorem forall₂_map_val_origKey :
+    ∀ {xs ys : List SHBatchEntry},
+      List.Forall₂
+        (fun a b : SHBatchEntry => a.val = b.val ∧ a.origKey = b.origKey ∧ a.ckey ≤ b.ckey)
+        xs ys →
+      ys.map (fun e => (e.val, e.origKey)) = xs.map (fun e => (e.val, e.origKey))
+  | [], [], .nil => rfl
+  | _ :: _, _ :: _, .cons h hl => by
+    simp only [List.map_cons, h.1, h.2.1, forall₂_map_val_origKey hl]
+
 /-- Concrete batch soft-heap input (`r = 5`, 2 inserts, 3 extract-mins). -/
 @[expose] def batchEx1 : SHBatchInput :=
   ⟨5, [.insert 42 100, .insert 7 50, .extractMin, .extractMin, .extractMin]⟩
 
-/-- Concrete `w = 16` instantiation of `exists_softHeap_standard_program`:
+/-- Concrete `w = 16` instantiation of `exists_singleSoftHeap_batch_standard_program`:
 inserts `(42, 100)` and `(7, 50)` at `rankThreshold = 5`, performs 3 `extractMin`s, and checks
-exact extract slots in `(memoryState frontier y).mem`, `corCount = 0`, `WellFormed`, and steps. -/
+exact extracted `(found, val, key)` records (`⟨1, 7, 50⟩`, `⟨1, 42, 100⟩`, `⟨0, 0, 0⟩`),
+`corCount = 0`, `WellFormed`, and steps. -/
 theorem softHeap_standard_concrete :
     ∃ r C pc : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
       ∃ frontier : Fin r, ∃ out : Fin 3 → Fin r,
@@ -453,11 +480,12 @@ theorem softHeap_standard_concrete :
         step 16 prog ⟨pc, y⟩ = .halt res.extBase ∧
         Memory.WellFormed 16 (memoryState frontier y) ∧
         res.corCount = 0 ∧
-        (SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 0).found = 1 ∧
-        (SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 1).found = 1 ∧
+        SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 0 = ⟨1, 7, 50⟩ ∧
+        SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 1 = ⟨1, 42, 100⟩ ∧
         SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 2 = ⟨0, 0, 0⟩ ∧
         n + 1 ≤ C * 16 := by
-  obtain ⟨r, C, pc, prog, hnw, hrf, frontier, out, hmain⟩ := exists_softHeap_standard_program
+  obtain ⟨r, C, pc, prog, hnw, hrf, frontier, out, hmain⟩ :=
+    exists_singleSoftHeap_batch_standard_program
   have hw : Fits 16 batchEx1.wordBound := by decide
   obtain ⟨y, n, hruns, hhalt, hwf, _, _,
       ⟨trace, hexts, _, hcor_len, hcor_bnd⟩, hsteps⟩ := hmain batchEx1 hw
@@ -471,43 +499,119 @@ theorem softHeap_standard_concrete :
     rw [List.head?_eq_getElem?] at hh
     rw [hh] at hst0
     exact (Option.some.inj hst0).symm
+  dsimp only [SHBatchStepRel] at hsp0
   simp only [batchEx1, List.getElem?_cons_zero] at hsp0
-  have hlen1 : st1.length = 1 := by
-    have hl := hsp0.1.length_eq
-    simp only [List.length_map, List.length_cons, hst0_nil, List.map_nil, List.length_nil] at hl
-    exact hl
+  rcases hsp0 with ⟨e42, st1_r, hv42, hk42, hperm1, hf2_1, _⟩
+  have hp1_pair : (st1.map (fun e => (e.val, e.origKey))).Perm [(42, 100)] := by
+    have hpm := hperm1.map (fun e => (e.val, e.origKey))
+    rw [List.map_cons, hv42, hk42, forall₂_map_val_origKey hf2_1, hst0_nil, List.map_nil] at hpm
+    exact hpm
   obtain ⟨st1', st2, hst1', hst2, hsp1⟩ := trace.step_spec 1 (by decide)
   rw [hst1] at hst1'
   cases Option.some.inj hst1'
+  dsimp only [SHBatchStepRel] at hsp1
   simp only [batchEx1, List.getElem?_cons_succ, List.getElem?_cons_zero] at hsp1
-  have hlen2 : st2.length = 2 := by
-    have hl := hsp1.1.length_eq
-    simp only [List.length_map, List.length_cons, hlen1] at hl
-    exact hl
+  rcases hsp1 with ⟨e7, st2_r, hv7, hk7, hperm2, hf2_2, _⟩
+  have hp2_pair : (st2.map (fun e => (e.val, e.origKey))).Perm [(7, 50), (42, 100)] := by
+    have hpm := hperm2.map (fun e => (e.val, e.origKey))
+    rw [List.map_cons, hv7, hk7, forall₂_map_val_origKey hf2_2] at hpm
+    exact hpm.trans (List.Perm.cons (7, 50) hp1_pair)
+  have hck2 : ∀ e ∈ st2, e.ckey = e.origKey := by
+    have hcb := trace.states_corrupted_bound 2 (by decide) st2 hst2
+    have hc_cnt : (batchEx1.ops.take 2).countP SHOp.isInsert = 2 := by decide
+    change 2 ^ 5 * (st2.filter (fun e => decide (e.origKey < e.ckey))).length ≤
+      12 * (batchEx1.ops.take 2).countP SHOp.isInsert at hcb
+    rw [hc_cnt] at hcb
+    exact entry_ckey_eq_of_zero_corrupted
+      (trace.states_origKey_le 2 (by decide) st2 hst2) (by omega)
+  have he7_mem : (⟨7, 50, 50⟩ : SHBatchEntry) ∈ st2 := by
+    have hm : (7, 50) ∈ st2.map (fun e => (e.val, e.origKey)) :=
+      hp2_pair.mem_iff.mpr List.mem_cons_self
+    rcases List.mem_map.mp hm with ⟨e, he_in, hpair⟩
+    have hck := hck2 e he_in
+    obtain ⟨h1v, h1k⟩ := Prod.ext_iff.mp hpair
+    cases e; simp only at h1v h1k hck; subst h1v h1k hck; exact he_in
+  have hst2_mem : ∀ e ∈ st2, e = ⟨7, 50, 50⟩ ∨ e = ⟨42, 100, 100⟩ := by
+    intro e he
+    have hm : (e.val, e.origKey) ∈ [(7, 50), (42, 100)] :=
+      hp2_pair.mem_iff.mp (List.mem_map_of_mem he)
+    have hck := hck2 e he
+    rcases List.mem_cons.mp hm with h1 | h2
+    · left
+      obtain ⟨h1v, h1k⟩ := Prod.ext_iff.mp h1
+      cases e; simp only at h1v h1k hck; subst h1v h1k hck; rfl
+    · right
+      obtain ⟨h2v, h2k⟩ := Prod.ext_iff.mp (List.mem_singleton.mp h2)
+      cases e; simp only at h2v h2k hck; subst h2v h2k hck; rfl
   obtain ⟨st2', st3, hst2', hst3, hsp2⟩ := trace.step_spec 2 (by decide)
   rw [hst2] at hst2'
   cases Option.some.inj hst2'
+  dsimp only [SHBatchStepRel] at hsp2
+  have hop2 : batchEx1.ops[2]? = some .extractMin := rfl
+  rw [hop2] at hsp2
   rcases hsp2 with ⟨ex0, hex0, _, hne2⟩
-  have hst2_ne : st2 ≠ [] := by intro h; rw [h, List.length_nil] at hlen2; omega
-  obtain ⟨e0, _, hex0_eq, _, _, hperm2⟩ := hne2 hst2_ne
+  have hst2_ne : st2 ≠ [] := List.ne_nil_of_mem he7_mem
+  obtain ⟨e0, st2_rest, st3_perm, hst2_perm, hex0_eq, _, hmin0, hst3_perm, hf2_3⟩ :=
+    hne2 hst2_ne
+  have he0_in : e0 ∈ st2 := hst2_perm.mem_iff.mpr List.mem_cons_self
+  have he0_eq : e0 = ⟨7, 50, 50⟩ := by
+    have hle50 : e0.ckey ≤ 50 := hmin0 ⟨7, 50, 50⟩ he7_mem
+    rcases hst2_mem e0 he0_in with rfl | rfl
+    · rfl
+    · simp only at hle50; omega
+  have hex0_val : ex0 = ⟨1, 7, 50⟩ := by rw [hex0_eq, he0_eq]
+  have hp3_pair : (st3.map (fun e => (e.val, e.origKey))).Perm [(42, 100)] := by
+    have hpm : ((7, 50) :: st2_rest.map (fun e => (e.val, e.origKey))).Perm
+        [(7, 50), (42, 100)] := by
+      have h1 := (hst2_perm.symm.map (fun e => (e.val, e.origKey))).trans hp2_pair
+      simpa only [List.map_cons, he0_eq] using h1
+    have hrest_pair := hpm.cons_inv
+    have h3 := hst3_perm.map (fun e => (e.val, e.origKey))
+    rw [forall₂_map_val_origKey hf2_3] at h3
+    exact h3.trans hrest_pair
+  have hck3 : ∀ e ∈ st3, e.ckey = e.origKey := by
+    have hcb := trace.states_corrupted_bound 3 (by decide) st3 hst3
+    have hc_cnt : (batchEx1.ops.take 3).countP SHOp.isInsert = 2 := by decide
+    change 2 ^ 5 * (st3.filter (fun e => decide (e.origKey < e.ckey))).length ≤
+      12 * (batchEx1.ops.take 3).countP SHOp.isInsert at hcb
+    rw [hc_cnt] at hcb
+    exact entry_ckey_eq_of_zero_corrupted
+      (trace.states_origKey_le 3 (by decide) st3 hst3) (by omega)
   have hlen3 : st3.length = 1 := by
-    have hl := hperm2.length_eq
-    simp only [List.length_map, List.length_cons, hlen2] at hl
-    omega
+    have hl := hp3_pair.length_eq
+    simp only [List.length_map, List.length_singleton] at hl
+    exact hl
   obtain ⟨st3', st4, hst3', hst4, hsp3⟩ := trace.step_spec 3 (by decide)
   rw [hst3] at hst3'
   cases Option.some.inj hst3'
+  dsimp only [SHBatchStepRel] at hsp3
+  have hop3 : batchEx1.ops[3]? = some .extractMin := rfl
+  rw [hop3] at hsp3
   rcases hsp3 with ⟨ex1, hex1, _, hne3⟩
   have hst3_ne : st3 ≠ [] := by intro h; rw [h, List.length_nil] at hlen3; omega
-  obtain ⟨e1, _, hex1_eq, _, _, hperm3⟩ := hne3 hst3_ne
+  obtain ⟨e1, st3_rest, st4_perm, hst3_perm2, hex1_eq, _, _, hst4_perm, hf2_4⟩ :=
+    hne3 hst3_ne
+  have he1_in : e1 ∈ st3 := hst3_perm2.mem_iff.mpr List.mem_cons_self
+  have he1_eq : e1 = ⟨42, 100, 100⟩ := by
+    have hm : (e1.val, e1.origKey) ∈ [(42, 100)] :=
+      hp3_pair.mem_iff.mp (List.mem_map_of_mem he1_in)
+    have hck := hck3 e1 he1_in
+    obtain ⟨h1v, h1k⟩ := Prod.ext_iff.mp (List.mem_singleton.mp hm)
+    cases e1; simp only at h1v h1k hck; subst h1v h1k hck; rfl
+  have hex1_val : ex1 = ⟨1, 42, 100⟩ := by rw [hex1_eq, he1_eq]
   have hlen4 : st4.length = 0 := by
-    have hl := hperm3.length_eq
-    simp only [List.length_map, List.length_cons, hlen3] at hl
+    have hl1 := hst3_perm2.length_eq
+    have hl2 := hst4_perm.length_eq
+    have hl3 := hf2_4.length_eq
+    simp only [List.length_cons] at hl1
     omega
   have hst4_nil : st4 = [] := List.length_eq_zero_iff.mp hlen4
   obtain ⟨st4', st5, hst4', _, hsp4⟩ := trace.step_spec 4 (by decide)
   rw [hst4] at hst4'
   cases Option.some.inj hst4'
+  dsimp only [SHBatchStepRel] at hsp4
+  have hop4 : batchEx1.ops[4]? = some .extractMin := rfl
+  rw [hop4] at hsp4
   rcases hsp4 with ⟨ex2, hex2, hemp4, _⟩
   have hex2_eq : ex2 = ⟨0, 0, 0⟩ := (hemp4 hst4_nil).1
   have hread : ∀ k < 3,
@@ -541,8 +645,8 @@ theorem softHeap_standard_concrete :
     exact hsteps
   refine ⟨r, C, pc, prog, hnw, hrf, frontier, out, y, n, hruns, hhalt, hwf, hcor0,
     ?_, ?_, ?_, hsteps'⟩
-  · rw [hr0, hex0_eq]
-  · rw [hr1, hex1_eq]
+  · rw [hr0, hex0_val]
+  · rw [hr1, hex1_val]
   · rw [hr2, hex2_eq]
 
 /-- Concrete batch soft-heap input (`ε = 1 / 4`, 3 inserts, 1 extract-min). -/
@@ -550,9 +654,9 @@ theorem softHeap_standard_concrete :
   ⟨rankThresholdForEps (1 / 4 : ℚ),
     [.insert 11 30, .insert 22 10, .insert 33 20, .extractMin]⟩
 
-/-- Concrete `w = 16` instantiation of `exists_softHeap_standard_program_eps` at `ε = 1 / 4`:
-verifies `rankThresholdForEps (1 / 4) = 6`, `(res.corCount : ℚ) ≤ (1 / 4 : ℚ) * 3`,
-`res.corCount = 0`, non-empty extract with `10 ≤ key`, and `n + 1 ≤ C * 23`. -/
+/-- Concrete `w = 16` instantiation of `exists_singleSoftHeap_batch_standard_program_eps` at
+`ε = 1 / 4`: verifies `rankThresholdForEps (1 / 4) = 6`, `(res.corCount : ℚ) ≤ (1 / 4 : ℚ) * 3`,
+`res.corCount = 0`, exact extracted record `⟨1, 22, 10⟩`, and `n + 1 ≤ C * 23`. -/
 theorem softHeap_standard_eps_concrete :
     ∃ r C pc : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
       ∃ frontier : Fin r, ∃ out : Fin 3 → Fin r,
@@ -562,11 +666,10 @@ theorem softHeap_standard_eps_concrete :
         Memory.WellFormed 16 (memoryState frontier y) ∧
         (res.corCount : ℚ) ≤ (1 / 4 : ℚ) * 3 ∧
         res.corCount = 0 ∧
-        (SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 0).found = 1 ∧
-        10 ≤ (SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 0).key ∧
+        SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 0 = ⟨1, 22, 10⟩ ∧
         n + 1 ≤ C * 23 := by
   obtain ⟨r, C, pc, prog, hnw, hrf, frontier, out, hmain⟩ :=
-    exists_softHeap_standard_program_eps
+    exists_singleSoftHeap_batch_standard_program_eps
   have hrt6 : rankThresholdForEps (1 / 4 : ℚ) = 6 := by
     have hceil : Nat.ceil (12 / (1 / 4 : ℚ)) = 48 := by
       rw [show (12 / (1 / 4 : ℚ) : ℚ) = ((48 : ℕ) : ℚ) by norm_num, Nat.ceil_natCast]
@@ -577,7 +680,7 @@ theorem softHeap_standard_eps_concrete :
     decide
   have hw : Fits 16 batchExEps.wordBound := by rw [hwb]; decide
   obtain ⟨y, n, hruns, hhalt, hwf, _, _,
-      ⟨trace, hexts, _, _, hcor_eps⟩, hsteps⟩ :=
+      ⟨trace, hexts, _, _, hcor_eps, hper_step⟩, hsteps⟩ :=
     hmain (1 / 4 : ℚ) (by norm_num) batchExEps rfl hw
   let res : SHBatchResult := ⟨y.regs (out 0), y.regs (out 1), y.regs (out 2)⟩
   have hni : batchExEps.numInserts = 3 := by decide
@@ -596,59 +699,75 @@ theorem softHeap_standard_eps_concrete :
     rw [List.head?_eq_getElem?] at hh
     rw [hh] at hst0
     exact (Option.some.inj hst0).symm
+  dsimp only [SHBatchStepRel] at hsp0
   simp only [batchExEps, List.getElem?_cons_zero] at hsp0
-  have hlen1 : st1.length = 1 := by
-    have hl := hsp0.1.length_eq
-    simp only [List.length_map, List.length_cons, hst0_nil, List.map_nil, List.length_nil] at hl
-    exact hl
-  have hmin1 : ∀ e ∈ st1, 10 ≤ e.origKey := by
-    intro e he
-    have hm : (e.val, e.origKey) ∈ [(11, 30)] := by
-      have hp := hsp0.1.mem_iff.mp (List.mem_map_of_mem he)
-      simpa only [hst0_nil, List.map_nil] using hp
-    simp only [List.mem_singleton] at hm
-    have hok := congrArg Prod.snd hm
-    omega
+  rcases hsp0 with ⟨e1, st1_r, hv1, hk1, hperm1, hf2_1, _⟩
+  have hp1_pair : (st1.map (fun e => (e.val, e.origKey))).Perm [(11, 30)] := by
+    have hpm := hperm1.map (fun e => (e.val, e.origKey))
+    rw [List.map_cons, hv1, hk1, forall₂_map_val_origKey hf2_1, hst0_nil, List.map_nil] at hpm
+    exact hpm
   obtain ⟨st1', st2, hst1', hst2, hsp1⟩ := trace.step_spec 1 (by decide)
   rw [hst1] at hst1'
   cases Option.some.inj hst1'
+  dsimp only [SHBatchStepRel] at hsp1
   simp only [batchExEps, List.getElem?_cons_succ, List.getElem?_cons_zero] at hsp1
-  have hlen2 : st2.length = 2 := by
-    have hl := hsp1.1.length_eq
-    simp only [List.length_map, List.length_cons, hlen1] at hl
-    exact hl
-  have hmin2 : ∀ e ∈ st2, 10 ≤ e.origKey := by
-    intro e he
-    have hm := hsp1.1.mem_iff.mp (List.mem_map_of_mem he)
-    rcases List.mem_cons.mp hm with heq | htail
-    · have hok := congrArg Prod.snd heq; omega
-    · rcases List.mem_map.mp htail with ⟨e', he', hee'⟩
-      have := hmin1 e' he'
-      have hok := congrArg Prod.snd hee'
-      omega
+  rcases hsp1 with ⟨e2, st2_r, hv2, hk2, hperm2, hf2_2, _⟩
+  have hp2_pair : (st2.map (fun e => (e.val, e.origKey))).Perm [(22, 10), (11, 30)] := by
+    have hpm := hperm2.map (fun e => (e.val, e.origKey))
+    rw [List.map_cons, hv2, hk2, forall₂_map_val_origKey hf2_2] at hpm
+    exact hpm.trans (List.Perm.cons (22, 10) hp1_pair)
   obtain ⟨st2', st3, hst2', hst3, hsp2⟩ := trace.step_spec 2 (by decide)
   rw [hst2] at hst2'
   cases Option.some.inj hst2'
+  dsimp only [SHBatchStepRel] at hsp2
   simp only [batchExEps, List.getElem?_cons_succ, List.getElem?_cons_zero] at hsp2
-  have hlen3 : st3.length = 3 := by
-    have hl := hsp2.1.length_eq
-    simp only [List.length_map, List.length_cons, hlen2] at hl
-    exact hl
-  have hmin3 : ∀ e ∈ st3, 10 ≤ e.origKey := by
-    intro e he
-    have hm := hsp2.1.mem_iff.mp (List.mem_map_of_mem he)
-    rcases List.mem_cons.mp hm with heq | htail
-    · have hok := congrArg Prod.snd heq; omega
-    · rcases List.mem_map.mp htail with ⟨e', he', hee'⟩
-      have := hmin2 e' he'
-      have hok := congrArg Prod.snd hee'
-      omega
+  rcases hsp2 with ⟨e3, st3_r, hv3, hk3, hperm3, hf2_3, _⟩
+  have hp3_pair :
+      (st3.map (fun e => (e.val, e.origKey))).Perm [(33, 20), (22, 10), (11, 30)] := by
+    have hpm := hperm3.map (fun e => (e.val, e.origKey))
+    rw [List.map_cons, hv3, hk3, forall₂_map_val_origKey hf2_3] at hpm
+    exact hpm.trans (List.Perm.cons (33, 20) hp2_pair)
+  have hck3 : ∀ e ∈ st3, e.ckey = e.origKey := by
+    have hps := hper_step 3 (by decide) st3 hst3
+    have hc_cnt : (batchExEps.ops.take 3).countP SHOp.isInsert = 3 := by decide
+    rw [hc_cnt] at hps
+    have hlen_cor0 : (st3.filter (fun e => decide (e.origKey < e.ckey))).length = 0 := by
+      by_contra hne_cor
+      have h1 : (1 : ℚ) ≤ ((st3.filter (fun e => decide (e.origKey < e.ckey))).length : ℚ) := by
+        exact_mod_cast Nat.pos_of_ne_zero hne_cor
+      norm_num at hps
+      linarith
+    exact entry_ckey_eq_of_zero_corrupted
+      (trace.states_origKey_le 3 (by decide) st3 hst3) hlen_cor0
+  have he22_mem : (⟨22, 10, 10⟩ : SHBatchEntry) ∈ st3 := by
+    have hm : (22, 10) ∈ st3.map (fun e => (e.val, e.origKey)) :=
+      hp3_pair.mem_iff.mpr (List.mem_cons_of_mem _ List.mem_cons_self)
+    rcases List.mem_map.mp hm with ⟨e, he_in, hpair⟩
+    have hck := hck3 e he_in
+    obtain ⟨h1v, h1k⟩ := Prod.ext_iff.mp hpair
+    cases e; simp only at h1v h1k hck; subst h1v h1k hck; exact he_in
   obtain ⟨st3', st4, hst3', _, hsp3⟩ := trace.step_spec 3 (by decide)
   rw [hst3] at hst3'
   cases Option.some.inj hst3'
+  dsimp only [SHBatchStepRel] at hsp3
+  have hop3 : batchExEps.ops[3]? = some .extractMin := rfl
+  rw [hop3] at hsp3
   rcases hsp3 with ⟨ex0, hex0, _, hne3⟩
-  have hst3_ne : st3 ≠ [] := by intro h; rw [h, List.length_nil] at hlen3; omega
-  obtain ⟨e0, he0_in, hex0_eq, he0_le, _, _⟩ := hne3 hst3_ne
+  have hst3_ne : st3 ≠ [] := List.ne_nil_of_mem he22_mem
+  obtain ⟨e0, _, _, hst3_perm, hex0_eq, _, hmin0, _, _⟩ := hne3 hst3_ne
+  have he0_in : e0 ∈ st3 := hst3_perm.mem_iff.mpr List.mem_cons_self
+  have he0_eq : e0 = ⟨22, 10, 10⟩ := by
+    have hle10 : e0.ckey ≤ 10 := hmin0 ⟨22, 10, 10⟩ he22_mem
+    have hm : (e0.val, e0.origKey) ∈ [(33, 20), (22, 10), (11, 30)] :=
+      hp3_pair.mem_iff.mp (List.mem_map_of_mem he0_in)
+    have hck := hck3 e0 he0_in
+    rcases List.mem_cons.mp hm with h33 | hrest
+    · obtain ⟨hv, hk⟩ := Prod.ext_iff.mp h33; cases e0; simp only at hv hk hck hle10; omega
+    · rcases List.mem_cons.mp hrest with h22 | h11
+      · obtain ⟨hv, hk⟩ := Prod.ext_iff.mp h22
+        cases e0; simp only at hv hk hck; subst hv hk hck; rfl
+      · obtain ⟨hv, hk⟩ := Prod.ext_iff.mp (List.mem_singleton.mp h11)
+        cases e0; simp only at hv hk hck hle10; omega
   have hread0 :
       trace.extracts[0]? =
         some (SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 0) := by
@@ -662,17 +781,11 @@ theorem softHeap_standard_eps_concrete :
   have hr0 : SHBatchExtract.readFrom (memoryState frontier y).mem res.extBase 0 = ex0 := by
     rw [hcnt0] at hex0
     exact Option.some.inj (hread0.symm.trans hex0)
-  have hkey10 : 10 ≤ ex0.key := by
-    have := hmin3 e0 he0_in
-    rw [hex0_eq]
-    dsimp only
-    omega
   have hsteps' : n + 1 ≤ C * 23 := by
     rw [hni, hne, hrt6] at hsteps
     exact hsteps
   refine ⟨r, C, pc, prog, hnw, hrf, frontier, out, y, n, hruns, hhalt, hwf,
-    hcor_eps', hcor0, ?_, ?_, hsteps'⟩
-  · rw [hr0, hex0_eq]
-  · rw [hr0]; exact hkey10
+    hcor_eps', hcor0, ?_, hsteps'⟩
+  rw [hr0, hex0_eq, he0_eq]
 
 end CslibFrontierTests.SoftHeap

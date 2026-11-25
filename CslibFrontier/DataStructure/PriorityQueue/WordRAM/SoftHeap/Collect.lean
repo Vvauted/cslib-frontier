@@ -13,7 +13,6 @@ public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
 -- `import all` reads `Program`'s private `collectItems*`/`collectNode*` (and `shCollectCorrupted`
 -- body), plus `Model`'s private `SHTree.ind`, `ItemListRep.pop`, and `whileSafe_*` lemmas.
--- body), plus `Model`'s private `SHTree.ind`, `ItemListRep.pop`, and `whileSafe_*` lemmas.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame

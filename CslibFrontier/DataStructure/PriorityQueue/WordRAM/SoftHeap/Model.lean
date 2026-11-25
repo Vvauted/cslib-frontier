@@ -13,8 +13,6 @@ public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
 -- `import all` reads `Program`'s private `updateSuffixMin*`, `extractPopItem`, and
 -- `shInsertLinkRoot`, plus the unexposed `allocPool` body.
--- `shInsertLinkRoot`, plus the unexposed `allocPool` body.
--- `shInsertLinkRoot`, plus the unexposed `allocPool` body.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 import CslibFrontier.Foundations.Data.List.Range
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame
@@ -902,20 +900,6 @@ private theorem list_nodup_append_disj {α : Type} {xs ys : List α}
     fun x hx hy => (List.nodup_append.mp h).2.2 x hx x hy rfl⟩
 
 
-private theorem vec3_0 (a b c : ℕ) : (![a, b, c] : Fin 3 → ℕ) 0 = a := rfl
-private theorem vec3_1 (a b c : ℕ) : (![a, b, c] : Fin 3 → ℕ) 1 = b := rfl
-private theorem vec3_2 (a b c : ℕ) : (![a, b, c] : Fin 3 → ℕ) 2 = c := rfl
-private theorem vec4_0 (a b c d : ℕ) : (![a, b, c, d] : Fin 4 → ℕ) 0 = a := rfl
-private theorem vec4_1 (a b c d : ℕ) : (![a, b, c, d] : Fin 4 → ℕ) 1 = b := rfl
-private theorem vec4_2 (a b c d : ℕ) : (![a, b, c, d] : Fin 4 → ℕ) 2 = c := rfl
-private theorem vec4_3 (a b c d : ℕ) : (![a, b, c, d] : Fin 4 → ℕ) 3 = d := rfl
-private theorem vec5_0 (a b c d e : ℕ) : (![a, b, c, d, e] : Fin 5 → ℕ) 0 = a := rfl
-private theorem vec5_1 (a b c d e : ℕ) : (![a, b, c, d, e] : Fin 5 → ℕ) 1 = b := rfl
-private theorem vec5_2 (a b c d e : ℕ) : (![a, b, c, d, e] : Fin 5 → ℕ) 2 = c := rfl
-private theorem vec5_3 (a b c d e : ℕ) : (![a, b, c, d, e] : Fin 5 → ℕ) 3 = d := rfl
-private theorem vec5_4 (a b c d e : ℕ) : (![a, b, c, d, e] : Fin 5 → ℕ) 4 = e := rfl
-
-
 private theorem SHTree.allItems_node (id r ck : ℕ) (items : List SHItem)
     (l r' : Option SHTree) :
     (SHTree.node id r ck items l r').allItems =
@@ -957,38 +941,6 @@ private theorem whileSafe_of_not {δ σ : Type}
   cases n <;> simp [whileSafe, hg]
 
 
-private theorem vec2_0 (a b : ℕ) : (![a, b] : Fin 2 → ℕ) 0 = a := rfl
-private theorem vec2_1 (a b : ℕ) : (![a, b] : Fin 2 → ℕ) 1 = b := rfl
-private theorem vec6_0 (a b c d e f : ℕ) : (![a, b, c, d, e, f] : Fin 6 → ℕ) 0 = a := rfl
-private theorem vec6_1 (a b c d e f : ℕ) : (![a, b, c, d, e, f] : Fin 6 → ℕ) 1 = b := rfl
-private theorem vec6_2 (a b c d e f : ℕ) : (![a, b, c, d, e, f] : Fin 6 → ℕ) 2 = c := rfl
-private theorem vec6_3 (a b c d e f : ℕ) : (![a, b, c, d, e, f] : Fin 6 → ℕ) 3 = d := rfl
-private theorem vec6_4 (a b c d e f : ℕ) : (![a, b, c, d, e, f] : Fin 6 → ℕ) 4 = e := rfl
-private theorem vec6_5 (a b c d e f : ℕ) : (![a, b, c, d, e, f] : Fin 6 → ℕ) 5 = f := rfl
-private theorem vec7_0 (a b c d e f g : ℕ) : (![a, b, c, d, e, f, g] : Fin 7 → ℕ) 0 = a := rfl
-private theorem vec7_1 (a b c d e f g : ℕ) : (![a, b, c, d, e, f, g] : Fin 7 → ℕ) 1 = b := rfl
-private theorem vec7_2 (a b c d e f g : ℕ) : (![a, b, c, d, e, f, g] : Fin 7 → ℕ) 2 = c := rfl
-private theorem vec7_3 (a b c d e f g : ℕ) : (![a, b, c, d, e, f, g] : Fin 7 → ℕ) 3 = d := rfl
-private theorem vec7_4 (a b c d e f g : ℕ) : (![a, b, c, d, e, f, g] : Fin 7 → ℕ) 4 = e := rfl
-private theorem vec7_5 (a b c d e f g : ℕ) : (![a, b, c, d, e, f, g] : Fin 7 → ℕ) 5 = f := rfl
-private theorem vec7_6 (a b c d e f g : ℕ) : (![a, b, c, d, e, f, g] : Fin 7 → ℕ) 6 = g := rfl
-private theorem vec8_0 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 0 = a := rfl
-private theorem vec8_1 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 1 = b := rfl
-private theorem vec8_2 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 2 = c := rfl
-private theorem vec8_3 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 3 = d := rfl
-private theorem vec8_4 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 4 = e := rfl
-private theorem vec8_5 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 5 = f := rfl
-private theorem vec8_6 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 6 = g := rfl
-private theorem vec8_7 (a b c d e f g h : ℕ) :
-    (![a, b, c, d, e, f, g, h] : Fin 8 → ℕ) 7 = h := rfl
-
 /-- Potential of an empty soft-heap root list is `0`. -/
 @[simp] theorem totalPhi_nil (rt : ℕ) : totalPhi rt [] = 0 := by
   simp [totalPhi]
@@ -1008,34 +960,6 @@ private theorem targetSize_le_two_pow (rt r : ℕ) : targetSize rt r ≤ 2 ^ r :
   · rw [targetSize_le_threshold hr]; exact Nat.one_le_two_pow
   · simp only [targetSize, hr, ↓reduceIte]
     exact Nat.pow_le_pow_right (by decide) (by omega)
-
-private theorem SHTree.Valid.countRank_pos_le {rt lb : ℕ} {t : SHTree}
-    (ht : t.Valid rt lb) {k : ℕ} (hk : 0 < t.countRank k) : k ≤ t.rank := by
-  induction t using SHTree.ind generalizing lb with
-  | node id r ck items l r' ihL ihR =>
-    rcases ht with ⟨_, _, _, _, _, _, hl_r, hl_v, hr_r, hr_v⟩
-    rw [SHTree.countRank_node] at hk
-    dsimp only [SHTree.rank]
-    by_cases heq : r = k
-    · exact heq ▸ le_rfl
-    · simp only [heq, ↓reduceIte, Nat.zero_add] at hk
-      rcases Nat.lt_or_lt_of_ne (by omega : l.elim 0 (SHTree.countRank k) +
-          r'.elim 0 (SHTree.countRank k) ≠ 0) with hneg | hpos
-      · exact absurd hneg (Nat.not_lt_zero _)
-      · by_cases hl0 : 0 < l.elim 0 (SHTree.countRank k)
-        · cases l with
-          | none => simp at hl0
-          | some c =>
-            have hck := ihL c rfl (hl_v c rfl) hl0
-            have := hl_r c rfl
-            omega
-        · have hr0 : 0 < r'.elim 0 (SHTree.countRank k) := by omega
-          cases r' with
-          | none => simp at hr0
-          | some c =>
-            have hck := ihR c rfl (hr_v c rfl) hr0
-            have := hr_r c rfl
-            omega
 
 private theorem rootList_pre_length_le_rank {pre suf : List SHTree} {x : SHTree}
     (hpw : (pre ++ [x] ++ suf).Pairwise (fun a b => a.rank < b.rank)) :
@@ -1254,14 +1178,14 @@ private theorem updateSuffixMinStep_spec {w nodeBase prev : ℕ} {s : Memory.Sta
     have hv : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s (updateSuffixMinStep ![nodeBase, x.rootId])) := by
       dsimp only [updateSuffixMinStep]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
       simp only [hx_10, ↓reduceIte]
       exact validHistory_write_bind (by omega) hx_fit (validHistory_read_bind (by dsimp; omega)
         (validHistory_pure w _ _))
     have hm : memoryCost (updateSuffixMinStep ![nodeBase, x.rootId]) s ≤ 6 := by
       dsimp only [updateSuffixMinStep]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
       simp only [hx_10, ↓reduceIte]
       rw [memoryCost_bind', memoryCost_write, clientState_write, memoryCost_read]
@@ -1269,7 +1193,7 @@ private theorem updateSuffixMinStep_spec {w nodeBase prev : ℕ} {s : Memory.Sta
     have hres : (Memory.spec 0).clientResult s (updateSuffixMinStep ![nodeBase, x.rootId]) =
         prev := by
       dsimp only [updateSuffixMinStep]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       repeat rw [clientResult_bind_read]
       simp only [hx_10, ↓reduceIte]
       rw [StateTransitionSpec.clientResult_bind, clientState_write]
@@ -1278,7 +1202,7 @@ private theorem updateSuffixMinStep_spec {w nodeBase prev : ℕ} {s : Memory.Sta
     have hs' : (Memory.spec 0).clientState s (updateSuffixMinStep ![nodeBase, x.rootId]) =
         ⟨Function.update s.mem (nodeBase + 12 * x.rootId + 11) x.rootId, s.frontier⟩ := by
       dsimp only [updateSuffixMinStep]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       repeat rw [clientState_bind_read]
       simp only [hx_10, ↓reduceIte]
       rw [clientState_bind_write, clientState_read]
@@ -1309,7 +1233,7 @@ private theorem updateSuffixMinStep_spec {w nodeBase prev : ℕ} {s : Memory.Sta
       have hv : (Memory.spec w).ValidHistory s
           ((Memory.spec w).clientHistory s (updateSuffixMinStep ![nodeBase, x.rootId])) := by
         dsimp only [updateSuffixMinStep]
-        simp only [vec2_0, vec2_1]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         simp only [hx_10', hy_ne0, ↓reduceIte]
         refine validHistory_read_bind (by omega) ?_
@@ -1320,7 +1244,7 @@ private theorem updateSuffixMinStep_spec {w nodeBase prev : ℕ} {s : Memory.Sta
         · exact validHistory_write_bind (by omega) hsm_fit (validHistory_read (by dsimp; omega))
       have hm : memoryCost (updateSuffixMinStep ![nodeBase, x.rootId]) s ≤ 6 := by
         dsimp only [updateSuffixMinStep]
-        simp only [vec2_0, vec2_1]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         simp only [hx_10', hy_ne0, ↓reduceIte]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
@@ -1329,7 +1253,7 @@ private theorem updateSuffixMinStep_spec {w nodeBase prev : ℕ} {s : Memory.Sta
       have hres : (Memory.spec 0).clientResult s (updateSuffixMinStep ![nodeBase, x.rootId]) =
           prev := by
         dsimp only [updateSuffixMinStep]
-        simp only [vec2_0, vec2_1]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
         repeat rw [clientResult_bind_read]
         simp only [hx_10', hy_ne0, ↓reduceIte]
         repeat rw [clientResult_bind_read]
@@ -1341,7 +1265,7 @@ private theorem updateSuffixMinStep_spec {w nodeBase prev : ℕ} {s : Memory.Sta
           ⟨Function.update s.mem (nodeBase + 12 * x.rootId + 11)
             ((suffixMinTree (x :: y :: suf')).elim 0 SHTree.rootId), s.frontier⟩ := by
         dsimp only [updateSuffixMinStep]
-        simp only [vec2_0, vec2_1]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
         repeat rw [clientState_bind_read]
         simp only [hx_10', hy_ne0, ↓reduceIte]
         repeat rw [clientState_bind_read]
@@ -1503,18 +1427,18 @@ private theorem updateSuffixMinUp_spec {w nodeBase fuel : ℕ} {s : Memory.State
           (fun x => updateSuffixMinStep ![nodeBase, x.2]) () fuel
           (pre.getLast?.elim 0 SHTree.rootId)) := by
     dsimp only [updateSuffixMinUp]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [StateTransitionSpec.clientState_bind]
     rfl
   have hm : memoryCost (updateSuffixMinUp ![nodeBase, pre.getLast?.elim 0 SHTree.rootId, fuel]) s ≤
       6 * pre.length := by
     dsimp only [updateSuffixMinUp]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [memoryCost_bind', memoryCost_pure, add_zero]
     exact hm_bw
   refine ⟨?_, ⟨h16, hsafe_bw⟩, hm, ?_, ?_, ?_⟩
   · dsimp only [updateSuffixMinUp]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     exact validHistory_bind_step hv_bw (validHistory_pure w _ _)
   · rw [hstate]; exact hfr_bw
   · intro a ha; rw [hstate] at ha; exact hmem_bw a ha
@@ -1599,8 +1523,8 @@ theorem SHInv.origKey_le_ckey {w ic₀ nc₀ maxItems maxNodes : ℕ}
   rcases List.mem_flatMap.mp hp with ⟨t, ht, hpt⟩
   exact (hinv.trees_valid t ht).origKey_le_allEntries p hpt
 
-/-- Global Chazelle corruption bound under `SHInv`: at arbitrary threshold `h.rankThreshold`,
-`2 ^ h.rankThreshold * #corrupted ≤ 12 * (h.itemCount - ic₀)`. -/
+/-- Global corruption bound under `SHInv` (from this module's `12 / 2 ^ r` `sizeCap`
+recurrence): `2 ^ h.rankThreshold * #corrupted ≤ 12 * (h.itemCount - ic₀)` for any threshold. -/
 theorem shInv_corrupted_le {w ic₀ nc₀ maxItems maxNodes : ℕ}
     {h : SHHandle} {roots : List SHTree} {created : ℕ → ℕ} {s : Memory.State}
     (hinv : SHInv w ic₀ nc₀ maxItems maxNodes h roots created s) :
@@ -1627,26 +1551,8 @@ theorem shInv_corrupted_le_eps {ε : ℚ} (hε : 0 < ε)
     (hinv : SHInv w ic₀ nc₀ maxItems maxNodes h roots created s)
     (hrt : h.rankThreshold = rankThresholdForEps ε) :
     (((forestEntries roots).filter (fun p => decide (p.1.origKey < p.2))).length : ℚ) ≤
-      ε * ((h.itemCount - ic₀ : ℕ) : ℚ) := by
-  have hnat := shInv_corrupted_le hinv
-  rw [hrt] at hnat
-  have hq : (2 ^ rankThresholdForEps ε : ℚ) *
-      (((forestEntries roots).filter (fun p => decide (p.1.origKey < p.2))).length : ℚ) ≤
-      12 * ((h.itemCount - ic₀ : ℕ) : ℚ) := by
-    exact_mod_cast hnat
-  have hpow_pos : (0 : ℚ) < (2 ^ rankThresholdForEps ε : ℚ) := by positivity
-  have hr : 12 ≤ (2 ^ rankThresholdForEps ε : ℚ) * ε :=
-    (div_le_iff₀ hε).mp (twelve_div_le_two_pow_rankThresholdForEps ε)
-  have hmul : (2 ^ rankThresholdForEps ε : ℚ) *
-      (((forestEntries roots).filter (fun p => decide (p.1.origKey < p.2))).length : ℚ) ≤
-      (2 ^ rankThresholdForEps ε : ℚ) * (ε * ((h.itemCount - ic₀ : ℕ) : ℚ)) := by
-    calc (2 ^ rankThresholdForEps ε : ℚ) *
-          (((forestEntries roots).filter (fun p => decide (p.1.origKey < p.2))).length : ℚ)
-        ≤ 12 * ((h.itemCount - ic₀ : ℕ) : ℚ) := hq
-      _ ≤ ((2 ^ rankThresholdForEps ε : ℚ) * ε) * ((h.itemCount - ic₀ : ℕ) : ℚ) :=
-          mul_le_mul_of_nonneg_right hr (Nat.cast_nonneg _)
-      _ = (2 ^ rankThresholdForEps ε : ℚ) * (ε * ((h.itemCount - ic₀ : ℕ) : ℚ)) := by ring
-  exact (mul_le_mul_iff_right₀ hpow_pos).mp hmul
+      ε * ((h.itemCount - ic₀ : ℕ) : ℚ) :=
+  rat_le_eps_mul_of_pow_mul_le hε (hrt ▸ shInv_corrupted_le hinv)
 
 /-- `SHInv` is preserved under memory updates outside `InSHPool` that keep `WellFormed` and
 `frontier`. -/

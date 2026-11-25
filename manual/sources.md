@@ -1245,8 +1245,9 @@ Shuchi Chawla, Jason D. Hartline, David L. Malec and Balasubramanian Sivan.
 
 Bernard Chazelle.
 "The Soft Heap: An Approximate Priority Queue with Optimal Error Rate."
-*Journal of the ACM* 47(6), 1012–1027, 2000 (bibliography key `Chazelle2000`). https://doi.org/10.1145/355541.355554 . Bibliographic metadata and the soft-heap model (`sift`/`fill-up`, error parameter `0 < ε ≤ 1 / 2`, `O(1)` amortized `delete`/`meld`/`findmin`, `O(log(1 / ε))` amortized `insert`, and at most `ε n` corrupted items) were checked via DOI records and Princeton/secondary summaries on 2026-11-26 UTC; the typeset JACM PDF was not opened on disk, so no internal theorem number or printed page locator is claimed.
-Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) for an unregistered single-heap Word-RAM step (`insert`, `extractMin`, and `collectCorrupted`, without `meld` or arbitrary-handle `delete`) parameterized by arbitrary rank threshold `r : ℕ` and `rankThresholdForEps ε` (`0 < ε : ℚ`).
+*Journal of the ACM* 47(6), 1012–1027, 2000 (bibliography key `Chazelle2000`). https://doi.org/10.1145/355541.355554 . Bibliographic metadata and the soft-heap model (`sift`/`fill-up`, error parameter `0 < ε ≤ 1 / 2`, `O(1)` amortized `delete`/`meld`/`findmin`, `O(log(1 / ε))` amortized `insert`, and at most `ε n` corrupted items) were checked via DOI records and Princeton/secondary summaries on 2026-11-25 UTC; the typeset JACM PDF was not opened on disk, so no internal theorem number or printed page locator is claimed.
+Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) for a single-heap Word-RAM soft-heap step toward [#8624](https://github.com/cslib-community/cslib-frontier/issues/8624) (`insert`, `extractMin`, and `collectCorrupted`, without `meld` or arbitrary-handle `delete`) parameterized by arbitrary rank threshold `r : ℕ` and `rankThresholdForEps ε` (`0 < ε : ℚ`).
+The `12 / 2 ^ r` `sizeCap` recurrence (`shInv_corrupted_le`), `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ`, and `+(r : ℚ)` baseline credit in `itemPhi` are that module's self-contained parameterization rather than locators claimed from `Chazelle2000`.
 
 <a id="chendeng06"></a>
 ## chendeng06
@@ -3076,6 +3077,14 @@ Volker Kaibel and Stefan Weltge.
 *Discrete & Computational Geometry* 53(2), 397–401, 2015. https://doi.org/10.1007/s00454-014-9655-9 ; arXiv:1307.3543, https://arxiv.org/abs/1307.3543 . Checked against arXiv:1307.3543v6 (25 Feb 2016) on 2026-11-11 UTC: Section 2 (valid subsets of `D(n)`, Lemma 1 for the valid face `F_a`, Lemma 2 for the covering of `D(n)` of size `f`, Theorem 1 proving `xc(CORR(n)) ≥ 1.5^n` via `̺(n) ≤ 2^n`) and Section 3 (the rectangle covering number of `UDISJ(n)` and nondeterministic communication lower bound `log₂(1.5^n)`).
 Journal pagination was taken from bibliographic search records.
 
+<a id="kaplanzwick2009"></a>
+## kaplanzwick2009
+
+Haim Kaplan and Uri Zwick.
+"A Simpler Implementation and Analysis of Chazelle's Soft Heaps."
+*Proceedings of the Twentieth Annual ACM-SIAM Symposium on Discrete Algorithms (SODA 2009)*, 477–485, 2009 (bibliography key `KaplanZwick2009`). https://doi.org/10.1137/1.9781611973068.53 . Bibliographic metadata and the binary-tree soft-heap simplification were checked via SIAM DOI records and secondary summaries on 2026-11-25 UTC; the proceedings PDF was not opened on disk, so no internal theorem number or printed page locator beyond the bibliographic page span is claimed.
+Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) for the binary-tree `defill` design with `targetSize r k = 2 ^ ((k - r + 1) / 2)` toward [#8624](https://github.com/cslib-community/cslib-frontier/issues/8624), while the `12 / 2 ^ r` `sizeCap` recurrence, `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ`, and `+(r : ℚ)` baseline credit in `itemPhi` are that module's self-contained parameterization.
+
 <a id="kargerstein96"></a>
 ## kargerstein96
 
@@ -4477,8 +4486,8 @@ Bibliographic metadata checked via DOI and search summaries on 2026-11-22 UTC; t
 
 Seth Pettie and Vijaya Ramachandran.
 "An Optimal Minimum Spanning Tree Algorithm."
-*Journal of the ACM* 49(1), 16–34, 2002 (bibliography key `PettieRamachandran2002`). https://doi.org/10.1145/505241.505243 . Bibliographic metadata and Lemma 2.2 (for `0 < ε < 1 / 2`, `O(1)` amortized complexity per soft-heap operation except `O(log(1 / ε))` for `insert`, with at most `ε n` corrupted items at any given time) were checked via DOI records and University of Michigan / secondary summaries on 2026-11-26 UTC; the typeset JACM PDF was not opened on disk, so printed page and subsection locators are not claimed.
-Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) as a single-heap Word-RAM soft-heap step (`insert`, `extractMin`, `collectCorrupted`, without `meld` or arbitrary `delete`, and proving `n + 1 ≤ C * (I.numInserts * (rankThresholdForEps ε + 1) + I.numExtracts + 1)` for all `0 < ε : ℚ` via `rankThresholdForEps ε = Nat.log 2 (Nat.ceil (12 / ε)) + 1`), rather than the paper's full MST algorithm or `meld`/`delete` interface.
+*Journal of the ACM* 49(1), 16–34, 2002 (bibliography key `PettieRamachandran2002`). https://doi.org/10.1145/505241.505243 ; cited from https://web.eecs.umich.edu/~pettie/papers/jacm-optmsf.pdf (19 pp., printed pp. 16–34, SHA-256 `7dbcbf34a3470d607aaaa982063f105d1f02aee0e85bc43e21c80e316d24d6d5`), inspected on 2026-11-25 UTC for Section 2.4, p. 19, Lemma 2.2 (for `0 < ε < 1 / 2`, `O(1)` amortized complexity per soft-heap operation except `O(log(1 / ε))` for `insert`, with at most `ε n` corrupted items at any given time) and Section 3.2, pp. 21–22, Figure 1 and Lemma 3.3 (including the remark after Lemma 3.3 on p. 22 noting that `Partition` never employs `meld`).
+Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) toward [#8624](https://github.com/cslib-community/cslib-frontier/issues/8624) as a single-heap Word-RAM soft-heap batch step (`insert`, `extractMin`, `collectCorrupted`, without `meld` or arbitrary-handle `delete`) via `exists_singleSoftHeap_batch_standard_program` and `exists_singleSoftHeap_batch_standard_program_eps` (certifying per-step corruption bounds and `ckey` monotonicity in `SHBatchTrace`, with `rankThresholdForEps ε` extending Lemma 2.2's `0 < ε < 1 / 2` to all `0 < ε : ℚ`), rather than the paper's full MSF algorithm.
 
 <a id="pighizzini2009"></a>
 ## pighizzini2009

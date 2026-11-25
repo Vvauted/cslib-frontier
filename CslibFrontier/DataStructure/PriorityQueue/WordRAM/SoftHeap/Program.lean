@@ -12,6 +12,8 @@ public import CslibFrontier.Computability.WordRAM.Realization.Absorb
 public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
 public import CslibFrontier.Computability.WordRAM.Realization.WordEncoding.Equiv
+import CslibFrontier.Computability.WordRAM.Realization.WhileAbsorb
+import CslibFrontier.Computability.WordRAM.Realization.LoopCongr
 import CslibFrontier.Tactic.Realize
 import CslibFrontier.DataStructure.Memory.Frame
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame
@@ -702,20 +704,6 @@ private def shInsertRawSafe (w : ℕ) (d : Fin 9 → ℕ) (s : Memory.State) : P
     whileSafe (fun (_ : ℕ × ℕ × ℕ × ℕ) (a : ℕ × ℕ × ℕ × ℕ) => combineStateCont a ≠ 0)
       combineStep combineStepSafe w (d 0, d 1, d 8, d 7) (d 7) (d 4 + 1, d 2, d 4 + 1, 1) s₁
 
-private theorem whileSafe_imp {δ σ : Type} (cond : δ → σ → Prop) [∀ d a, Decidable (cond d a)]
-    (step : δ × σ → Memory.Prog σ) {safe₁ safe₂ : ℕ → δ × σ → Memory.State → Prop}
-    {w : ℕ} {d : δ} {fuel : ℕ} {a : σ} {s : Memory.State}
-    (himp : ∀ a' s', safe₁ w (d, a') s' → safe₂ w (d, a') s')
-    (h : whileSafe cond step safe₁ w d fuel a s) :
-    whileSafe cond step safe₂ w d fuel a s := by
-  induction fuel generalizing a s with
-  | zero => exact h
-  | succ fuel ih =>
-    by_cases hcond : cond d a
-    · simp only [whileSafe, hcond, ↓reduceIte] at h ⊢
-      exact ⟨himp a s h.1, ih h.2⟩
-    · simp [whileSafe, hcond]
-
 private theorem realizes_shInsertRaw : Realizes .exact
     shInsertRaw (.refl _) (WordEncoding.encode (α := ℕ × ℕ × ℕ))
     shInsertRawSafe (fun _ _ => 0) := by
@@ -726,11 +714,8 @@ private theorem realizes_shInsertRaw : Realizes .exact
     | exact h.1.of_le (by decide)
     | exact h.2.1
     | exact h.2.2.1
-    | exact fun _ => whileSafe_imp _ combineStep
-        (safe₁ := combineStepSafe)
-        (safe₂ := fun w x s =>
-          combineStepSafe w ((d 0, d 1, d 8, d 7), x.2.1, x.2.2.1, x.2.2.2.1, x.2.2.2.2) s)
-        (fun ⟨_, _, _, _⟩ _ hs => hs) h.2.2.2
+    | exact fun _ => whileSafe_imp _ _ (fun _ => Iff.rfl) (fun _ => rfl)
+        (fun ⟨_, _, _, _⟩ _ _ hs => hs) h.2.2.2
 
 /-- Payload value argument `val` in `shInsert` input `(h, val, origKey, fuel)`. -/
 private abbrev shInsertVal (d : SHHandle × ℕ × ℕ × ℕ) : ℕ := d.2.1
@@ -1163,16 +1148,6 @@ private def shCollectCorruptedRawSafe (w : ℕ) (d : Fin 7 → ℕ) (s : Memory.
     iterationSafe collectNodeStep collectNodeStepSafe
       w (d 0, d 1, d 4, d 6) (d 3 - d 2) (d 2 + 1, d 5) s
 
-private theorem iterationSafe_comp {δ δ' σ : Type} (f : δ → δ')
-    (step : δ' × σ → Memory.Prog σ) (safe : ℕ → δ' × σ → Memory.State → Prop)
-    {w : ℕ} {d : δ} {n : ℕ} {a : σ} {s : Memory.State}
-    (h : iterationSafe step safe w (f d) n a s) :
-    iterationSafe (fun x : δ × σ => step (f x.1, x.2))
-      (fun w x s => safe w (f x.1, x.2) s) w d n a s := by
-  induction n generalizing a s with
-  | zero => trivial
-  | succ n ih => exact ⟨h.1, ih h.2⟩
-
 private theorem realizes_shCollectCorruptedRaw : Realizes .exact
     shCollectCorruptedRaw (.refl _) (WordEncoding.encode (α := ℕ))
     shCollectCorruptedRawSafe (fun _ _ => 0) := by
@@ -1181,7 +1156,7 @@ private theorem realizes_shCollectCorruptedRaw : Realizes .exact
   all_goals first
     | exact h.2.2.1
     | exact h.2.1
-    | exact iterationSafe_comp (fun d : Fin 7 → ℕ => (d 0, d 1, d 4, d 6)) _ _ h.2.2.2
+    | exact iterationSafe_imp h.2.2.2 (fun _ => rfl) (fun _ _ hs => hs)
 
 /-- Starting node index bound `nodeStart` in `shCollectCorrupted` input
 `(h, nodeStart, outBase, outCount, fuel)`. -/

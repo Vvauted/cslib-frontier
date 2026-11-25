@@ -13,7 +13,6 @@ public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
 -- `import all` reads `Program`'s `defillPickChild`, `defillSplice`, `defillFinish`, `defillStep`
 -- (and `defill` body), plus `Model`'s `ItemListRep.*`, `TreeMemRep.*`, `SHTree.*` lemmas.
--- (and `defill` body), plus `Model`'s `ItemListRep.*`, `TreeMemRep.*`, `SHTree.*` lemmas.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame
@@ -313,7 +312,8 @@ private theorem defillPickChild_spec {rt w itemBase nodeBase : ℕ} {s : Memory.
           (by have := hn_lt cr.rootId (by simp [SHTree.rootId_mem_nodeIds]); omega)
         have h0_fit : Fits w 0 := h16.of_le (by omega)
         dsimp only [defillPickChild]
-        simp only [vec4_0, vec4_1, vec4_2, vec4_3, Option.elim_none, Option.elim_some, ↓reduceIte]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val,
+          Option.elim_none, Option.elim_some, ↓reduceIte]
         have hs_eq : (Memory.spec 0).clientState s
             (do
               Memory.write (nodeBase + 12 * id + 6) cr.rootId
@@ -342,8 +342,8 @@ private theorem defillPickChild_spec {rt w itemBase nodeBase : ℕ} {s : Memory.
       cases r' with
       | none =>
         dsimp only [defillPickChild]
-        simp only [vec4_0, vec4_1, vec4_2, vec4_3, Option.elim_some, Option.elim_none,
-          hcl_ne, ↓reduceIte]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val,
+          Option.elim_some, Option.elim_none, hcl_ne, ↓reduceIte]
         exact ⟨validHistory_read (by omega), by rw [memoryCost_read]; decide, rfl,
           fun _ _ _ => rfl, cl, none, Or.inl ⟨rfl, rfl⟩, h6, h6, h7,
           fun _ h => by cases h⟩
@@ -357,7 +357,8 @@ private theorem defillPickChild_spec {rt w itemBase nodeBase : ℕ} {s : Memory.
         have hcl_fit : Fits w cl.rootId := hmem.fits_of_lt_frontier (by omega)
         have hcr_fit : Fits w cr.rootId := hmem.fits_of_lt_frontier (by omega)
         dsimp only [defillPickChild]
-        simp only [vec4_0, vec4_1, vec4_2, vec4_3, Option.elim_some, hcl_ne, hcr_ne, ↓reduceIte]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val,
+          Option.elim_some, hcl_ne, hcr_ne, ↓reduceIte]
         by_cases hcmp : cr.ckey < cl.ckey
         · have hs_eq : (Memory.spec 0).clientState s
               (do
@@ -517,7 +518,7 @@ private theorem defillSplice_spec {rt w itemBase nodeBase : ℕ} {s : Memory.Sta
         have hhv_nil : (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s
             (defillSplice ![itemBase, nodeBase, id₁, id₂, ([] : List SHItem).length])) := by
           dsimp only [defillSplice]
-          simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega)
             (validHistory_read_bind (by omega) (validHistory_read_bind (by omega)
               (validHistory_read_bind (by omega) ?_))))
@@ -533,7 +534,7 @@ private theorem defillSplice_spec {rt w itemBase nodeBase : ℕ} {s : Memory.Sta
         have hm_nil : memoryCost
             (defillSplice ![itemBase, nodeBase, id₁, id₂, ([] : List SHItem).length]) s ≤ 13 := by
           dsimp only [defillSplice]
-          simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
           rw [hc0, hc3, hcur4]
           simp only [↓reduceIte, memoryCost_bind', memoryCost_write]
@@ -551,7 +552,7 @@ private theorem defillSplice_spec {rt w itemBase nodeBase : ℕ} {s : Memory.Sta
             let m₆ := Function.update m₅ (nodeBase + 12 * id₂ + 5) 0
             ⟨Function.update m₆ (nodeBase + 12 * id₂ + 3) 0, s.frontier⟩ := by
           dsimp only [defillSplice]
-          simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           repeat rw [clientState_bind_read]
           rw [hc0, hc3, hcur4]
           simp only [↓reduceIte]
@@ -631,7 +632,7 @@ private theorem defillSplice_spec {rt w itemBase nodeBase : ℕ} {s : Memory.Sta
         have hhv_cons : (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s
             (defillSplice ![itemBase, nodeBase, id₁, id₂, items₁.length])) := by
           dsimp only [defillSplice]
-          simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega)
             (validHistory_read_bind (by omega) (validHistory_read_bind (by omega)
               (validHistory_read_bind (by omega) ?_))))
@@ -648,7 +649,7 @@ private theorem defillSplice_spec {rt w itemBase nodeBase : ℕ} {s : Memory.Sta
         have hm_cons : memoryCost
             (defillSplice ![itemBase, nodeBase, id₁, id₂, items₁.length]) s ≤ 13 := by
           dsimp only [defillSplice]
-          simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
           rw [hc0, hc3]
           simp only [hcur4_ne, ↓reduceIte, memoryCost_bind', memoryCost_read, memoryCost_write]
@@ -665,7 +666,7 @@ private theorem defillSplice_spec {rt w itemBase nodeBase : ℕ} {s : Memory.Sta
             let m₆ := Function.update m₅ (nodeBase + 12 * id₂ + 5) 0
             ⟨Function.update m₆ (nodeBase + 12 * id₂ + 3) 0, s.frontier⟩ := by
           dsimp only [defillSplice]
-          simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           repeat rw [clientState_bind_read]
           rw [hc0, hc3]
           simp only [hcur4_ne, ↓reduceIte]
@@ -752,7 +753,7 @@ private theorem defillFinish_spec {w nodeBase : ℕ} {s : Memory.State}
   have hv : (Memory.spec w).ValidHistory s
       ((Memory.spec w).clientHistory s (defillFinish ![nodeBase, curId, cId])) := by
     dsimp only [defillFinish]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
     rw [h6, h7]
     by_cases hleaf : cLeft = 0 ∧ cRight = 0
@@ -772,7 +773,7 @@ private theorem defillFinish_spec {w nodeBase : ℕ} {s : Memory.State}
       else
         ⟨Function.update s.mem (nodeBase + 12 * cId + 8) curId, s.frontier⟩ := by
     dsimp only [defillFinish]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [clientState_bind_read, h6, clientState_bind_read, h7]
     by_cases hleaf : cLeft = 0 ∧ cRight = 0
     · have hlc : (cLeft = 0 ∧ cRight = 0) = True := eq_true hleaf
@@ -785,7 +786,7 @@ private theorem defillFinish_spec {w nodeBase : ℕ} {s : Memory.State}
   have hres_eq : (Memory.spec 0).clientResult s (defillFinish ![nodeBase, curId, cId]) =
       if cLeft = 0 ∧ cRight = 0 then curId else cId := by
     dsimp only [defillFinish]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [clientResult_bind_read, h6, clientResult_bind_read, h7]
     by_cases hleaf : cLeft = 0 ∧ cRight = 0
     · have hlc : (cLeft = 0 ∧ cRight = 0) = True := eq_true hleaf
@@ -795,7 +796,7 @@ private theorem defillFinish_spec {w nodeBase : ℕ} {s : Memory.State}
   have hm_eq : memoryCost (defillFinish ![nodeBase, curId, cId]) s =
       if cLeft = 0 ∧ cRight = 0 then 5 else 3 := by
     dsimp only [defillFinish]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read, h6,
       memoryCost_bind', memoryCost_read, clientResult_read, clientState_read, h7]
     by_cases hleaf : cLeft = 0 ∧ cRight = 0
@@ -1376,7 +1377,7 @@ private theorem defillStep_ps_spec {rt w itemBase nodeBase : ℕ} {t₀ cur : SH
   have hv_step : (Memory.spec w).ValidHistory s
       ((Memory.spec w).clientHistory s (defillStep ![itemBase, nodeBase, cur.rootId])) := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega)
       (validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)))
     have hcond_eq := eq_true hcond_mem
@@ -1396,7 +1397,7 @@ private theorem defillStep_ps_spec {rt w itemBase nodeBase : ℕ} {t₀ cur : SH
       memoryCost (defillSplice ![itemBase, nodeBase, cur.rootId, c.rootId, cur.items.length]) s₁ +
       memoryCost (defillFinish ![nodeBase, cur.rootId, c.rootId]) s₂ := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
     have hcond_eq := eq_true hcond_mem
     simp only [hcond_eq, ↓reduceIte]
@@ -1409,7 +1410,7 @@ private theorem defillStep_ps_spec {rt w itemBase nodeBase : ℕ} {t₀ cur : SH
       (defillStep ![itemBase, nodeBase, cur.rootId]) =
       (Memory.spec 0).clientResult s₂ (defillFinish ![nodeBase, cur.rootId, c.rootId]) := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat rw [clientResult_bind_read]
     have hcond_eq := eq_true hcond_mem
     simp only [hcond_eq, ↓reduceIte]
@@ -1423,7 +1424,7 @@ private theorem defillStep_ps_spec {rt w itemBase nodeBase : ℕ} {t₀ cur : SH
   have hs_step : (Memory.spec 0).clientState s (defillStep ![itemBase, nodeBase, cur.rootId]) =
       s₃ := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat rw [clientState_bind_read]
     have hcond_eq := eq_true hcond_mem
     simp only [hcond_eq, ↓reduceIte]
@@ -2497,27 +2498,27 @@ private theorem defillStep_ascend_spec {rt w itemBase nodeBase : ℕ} {t₀ cur 
   have hv_step : (Memory.spec w).ValidHistory s
       ((Memory.spec w).clientHistory s (defillStep ![itemBase, nodeBase, cur.rootId])) := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega)
       (validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)))
     simp only [hcond_f, ↓reduceIte]
     exact validHistory_read (by omega)
   have hcost_eq : memoryCost (defillStep ![itemBase, nodeBase, cur.rootId]) s = 5 := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
     simp only [hcond_f, ↓reduceIte, memoryCost_read]
   have hs_eq : (Memory.spec 0).clientState s (defillStep ![itemBase, nodeBase, cur.rootId]) =
       s := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat rw [clientState_bind_read]
     simp only [hcond_f, ↓reduceIte]
     rfl
   have hres_eq : (Memory.spec 0).clientResult s (defillStep ![itemBase, nodeBase, cur.rootId]) =
       s.mem (nodeBase + 12 * cur.rootId + 8) := by
     dsimp only [defillStep]
-    simp only [vec3_0, vec3_1, vec3_2]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat rw [clientResult_bind_read]
     simp only [hcond_f, ↓reduceIte]
     rfl
@@ -2823,21 +2824,21 @@ theorem defill_spec {rt w itemBase nodeBase fuel : ℕ} {t₀ : SHTree} {s : Mem
       (Memory.spec 0).clientState s₁ (boundedWhile (fun (_ : Unit) (x : ℕ) => x ≠ 0)
         (fun x => defillStep ![itemBase, nodeBase, x.2]) () fuel t₀.rootId) := by
     dsimp only [defill]
-    simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [clientState_bind_write, StateTransitionSpec.clientState_bind]
     rfl
   have hm_defill : memoryCost (defill ![itemBase, nodeBase, t₀.rootId, fuel]) s =
       1 + memoryCost (boundedWhile (fun (_ : Unit) (x : ℕ) => x ≠ 0)
         (fun x => defillStep ![itemBase, nodeBase, x.2]) () fuel t₀.rootId) s₁ := by
     dsimp only [defill]
-    simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [memoryCost_bind', memoryCost_write, clientState_write, memoryCost_bind',
       memoryCost_pure, add_zero]
   dsimp only
   refine ⟨?_, ⟨h16, hsafe_bw⟩, ?_, ?_, t', hrootId, hrank, hval, ?_, hck, hnd', hsub', ?_,
     hcrk', hperm', hck_mono, ?_, ?_⟩
   · dsimp only [defill]
-    simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     exact validHistory_write_bind (by omega) h0_fit (validHistory_bind_step hv_bw
       (validHistory_pure w _ _))
   · rw [hs_defill]; exact hfr_bw

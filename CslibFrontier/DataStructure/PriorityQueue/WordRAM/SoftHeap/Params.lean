@@ -13,6 +13,8 @@ public import Mathlib.Algebra.Field.Rat
 public import Mathlib.Data.Nat.Log
 public import Mathlib.Data.Rat.Floor
 public import Mathlib.Order.Interval.Finset.Nat
+import CslibFrontier.Foundations.Data.Nat.HalvingRecurrence
+import CslibFrontier.Foundations.Data.Nat.Power
 import Mathlib.Data.Rat.Cast.Order
 import Mathlib.Data.Rat.Lemmas
 import Mathlib.Algebra.BigOperators.Ring.Finset
@@ -25,12 +27,13 @@ import Mathlib.Tactic.Ring
 /-!
 # Soft-Heap Rank Parameters, Corruption Bound, and Item Potential
 
-Unregistered single-heap Word-RAM parameter and potential step following [Chazelle2000] and
-[PettieRamachandran2002], Lemma 2.2 (supporting `insert`, `extractMin`, and `collectCorrupted`,
-without `meld` or arbitrary-handle `delete`). Provides parametric rank threshold `r : ℕ` (with
-`rankThresholdForEps ε` for arbitrary rational `ε > 0`), node size bounds (`targetSize`, `sizeCap`),
-the exponential corruption bound `corrupt_sum_bound` / `corrupt_sum_bound_eps`, and the exact
-rational item potential `itemPhi`.
+Single-heap Word-RAM parameter and potential step toward #8624, after [Chazelle2000],
+[KaplanZwick2009], and [PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2. Supports
+`insert`, `extractMin`, and `collectCorrupted` without `meld` or arbitrary-handle `delete`,
+following Kaplan and Zwick's binary-tree `defill` simplification
+(`targetSize r k = 2 ^ ((k - r + 1) / 2)`). The `12 / 2 ^ r` `sizeCap` recurrence,
+`rankThresholdForEps ε` for arbitrary `0 < ε : ℚ` (extending PR02 Lemma 2.2's `0 < ε < 1 / 2`),
+and the `+(r : ℚ)` baseline credit in `itemPhi` are this module's self-contained parameterization.
 
 ## Main definitions
 
@@ -47,8 +50,8 @@ rational item potential `itemPhi`.
 
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.corrupt_sum_bound`:
   `2 ^ r * ∑ k ∈ Finset.Icc (r + 1) K, C k * sizeCap r k ≤ 12 * C 0`.
-* `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.corrupt_sum_bound_eps`:
-  rational corruption sum bound at threshold `rankThresholdForEps ε`.
+* `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.rat_le_eps_mul_of_pow_mul_le`,
+  `corrupt_sum_bound_eps`: rational corruption bound at threshold `rankThresholdForEps ε`.
 * `Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap.itemPhi_sub_succ`: exact telescoping rank
   potential drop `itemPhi r k - itemPhi r (k + 1) = 1 / targetSize r k`.
 
@@ -56,8 +59,10 @@ rational item potential `itemPhi`.
 
 * [B. Chazelle, *The Soft Heap: An Approximate Priority Queue with Optimal Error Rate*,
   Journal of the ACM 47(6), 2000][Chazelle2000]
+* [H. Kaplan and U. Zwick, *A Simpler Implementation and Analysis of Chazelle's Soft Heaps*,
+  SODA 2009, pp. 477–485][KaplanZwick2009]
 * [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
-  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Lemma 2.2.
+  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2.
 -/
 
 public section
@@ -142,15 +147,12 @@ private theorem targetSize_odd_step (r t : ℕ) : targetSize r (r + 2 * t + 1) =
 
 /-- Every rank `k` satisfies `k ≤ targetSize r k + r`. -/
 theorem rank_le_targetSize_add (r k : ℕ) : k ≤ targetSize r k + r := by
-  have hpow : ∀ t : ℕ, 2 * t ≤ 2 ^ t := by
-    intro t
-    induction t with
-    | zero => omega
-    | succ t ih =>
-      rcases (by omega : t = 0 ∨ t = 1 ∨ 2 ≤ t) with rfl | rfl | ht
-      · decide
-      · decide
-      · rw [Nat.pow_succ]; omega
+  have hpow : ∀ t : ℕ, 2 * t ≤ 2 ^ t := fun t => by
+    rcases (by omega : t = 0 ∨ t = 1 ∨ t = 2 ∨ 3 ≤ t) with rfl | rfl | rfl | ht
+    · decide
+    · decide
+    · decide
+    · exact (Nat.two_mul_lt_two_pow ht).le
   by_cases hk : k ≤ r
   · omega
   · rcases Nat.even_or_odd (k - r) with ⟨t, ht⟩ | ⟨t, ht⟩
@@ -243,18 +245,6 @@ private theorem targetSize_add_corruptPot_le {r k : ℕ} (hk : r ≤ k) :
     simp only [corruptPot, hmod0, hmod1, ↓reduceIte, hts, hts1]
     omega
 
-/-- Geometric halving step `2 * C (k + 1) ≤ C k` yields `2 ^ r * C r ≤ C 0` for all `r`. -/
-theorem pow_mul_le_of_step {C : ℕ → ℕ} (hstep : ∀ k, 2 * C (k + 1) ≤ C k) :
-    ∀ r : ℕ, 2 ^ r * C r ≤ C 0
-  | 0 => by simp
-  | r + 1 => by
-      have ih := pow_mul_le_of_step hstep r
-      have hr := hstep r
-      calc 2 ^ (r + 1) * C (r + 1)
-          = 2 ^ r * (2 * C (r + 1)) := by ring
-        _ ≤ 2 ^ r * C r := Nat.mul_le_mul_left _ hr
-        _ ≤ C 0 := ih
-
 /-- General geometric corruption bound: if `2 * C (k + 1) ≤ C k` for all `k`, then
 `2 ^ r * ∑ k ∈ Finset.Icc (r + 1) K, C k * sizeCap r k ≤ 12 * C 0`. -/
 theorem corrupt_sum_bound (r : ℕ) (C : ℕ → ℕ) (K : ℕ)
@@ -297,7 +287,7 @@ theorem corrupt_sum_bound (r : ℕ) (C : ℕ → ℕ) (K : ℕ)
             _ ≤ C j * corruptPot r j := Nat.mul_le_mul_right _ h2
         rw [Nat.mul_add] at hmul
         omega
-  have hpow : 2 ^ r * C r ≤ C 0 := pow_mul_le_of_step hstep r
+  have hpow : 2 ^ r * C r ≤ C 0 := Nat.pow_mul_le_of_step hstep r
   by_cases hK : K ≤ r
   · have hemp : Finset.Icc (r + 1) K = ∅ := by
       ext x; simp only [Finset.mem_Icc, Finset.notMem_empty, iff_false]; omega
@@ -321,27 +311,31 @@ theorem corrupt_sum_bound (r : ℕ) (C : ℕ → ℕ) (K : ℕ)
       _ = 12 * (2 ^ r * C r) := by ring
       _ ≤ 12 * C 0 := Nat.mul_le_mul_left 12 hpow
 
+/-- Converts an integer corruption bound `2 ^ rankThresholdForEps ε * c ≤ 12 * n` into
+`(c : ℚ) ≤ ε * (n : ℚ)` for any `0 < ε`. -/
+theorem rat_le_eps_mul_of_pow_mul_le {ε : ℚ} (hε : 0 < ε) {c n : ℕ}
+    (h : 2 ^ rankThresholdForEps ε * c ≤ 12 * n) : (c : ℚ) ≤ ε * (n : ℚ) := by
+  have hb_q : (2 ^ rankThresholdForEps ε : ℚ) * (c : ℚ) ≤ 12 * (n : ℚ) := by
+    exact_mod_cast h
+  have hpow_pos : (0 : ℚ) < (2 ^ rankThresholdForEps ε : ℚ) := by positivity
+  have hr : 12 / ε ≤ (2 ^ rankThresholdForEps ε : ℚ) :=
+    twelve_div_le_two_pow_rankThresholdForEps ε
+  have h12 : 12 ≤ (2 ^ rankThresholdForEps ε : ℚ) * ε := (div_le_iff₀ hε).mp hr
+  have hmul : (2 ^ rankThresholdForEps ε : ℚ) * (c : ℚ) ≤
+      (2 ^ rankThresholdForEps ε : ℚ) * (ε * (n : ℚ)) := by
+    calc (2 ^ rankThresholdForEps ε : ℚ) * (c : ℚ) ≤ 12 * (n : ℚ) := hb_q
+      _ ≤ ((2 ^ rankThresholdForEps ε : ℚ) * ε) * (n : ℚ) :=
+          mul_le_mul_of_nonneg_right h12 (Nat.cast_nonneg _)
+      _ = (2 ^ rankThresholdForEps ε : ℚ) * (ε * (n : ℚ)) := by ring
+  exact (mul_le_mul_iff_right₀ hpow_pos).mp hmul
+
 /-- Rational error-rate specialization: setting `r = rankThresholdForEps ε` for any `0 < ε` yields
 total capacity above rank `r` at most `ε * C 0`. -/
 theorem corrupt_sum_bound_eps {ε : ℚ} (hε : 0 < ε) (C : ℕ → ℕ) (K : ℕ)
     (hstep : ∀ k, 2 * C (k + 1) ≤ C k) :
     ((∑ k ∈ Finset.Icc (rankThresholdForEps ε + 1) K,
-        C k * sizeCap (rankThresholdForEps ε) k : ℕ) : ℚ) ≤ ε * (C 0 : ℚ) := by
-  let r := rankThresholdForEps ε
-  have hb_nat := corrupt_sum_bound r C K hstep
-  have hb_q : (2 ^ r : ℚ) * ((∑ k ∈ Finset.Icc (r + 1) K, C k * sizeCap r k : ℕ) : ℚ) ≤
-      12 * (C 0 : ℚ) := by
-    exact_mod_cast hb_nat
-  have hpow_pos : (0 : ℚ) < (2 ^ r : ℚ) := by positivity
-  have hr : 12 / ε ≤ (2 ^ r : ℚ) := twelve_div_le_two_pow_rankThresholdForEps ε
-  have h12 : 12 ≤ (2 ^ r : ℚ) * ε := (div_le_iff₀ hε).mp hr
-  have hmul : (2 ^ r : ℚ) * ((∑ k ∈ Finset.Icc (r + 1) K, C k * sizeCap r k : ℕ) : ℚ) ≤
-      (2 ^ r : ℚ) * (ε * (C 0 : ℚ)) := by
-    calc (2 ^ r : ℚ) * ((∑ k ∈ Finset.Icc (r + 1) K, C k * sizeCap r k : ℕ) : ℚ)
-        ≤ 12 * (C 0 : ℚ) := hb_q
-      _ ≤ ((2 ^ r : ℚ) * ε) * (C 0 : ℚ) := mul_le_mul_of_nonneg_right h12 (Nat.cast_nonneg _)
-      _ = (2 ^ r : ℚ) * (ε * (C 0 : ℚ)) := by ring
-  exact (mul_le_mul_iff_right₀ hpow_pos).mp hmul
+        C k * sizeCap (rankThresholdForEps ε) k : ℕ) : ℚ) ≤ ε * (C 0 : ℚ) :=
+  rat_le_eps_mul_of_pow_mul_le hε (corrupt_sum_bound (rankThresholdForEps ε) C K hstep)
 
 /-- Closed-form amortized item rank potential `itemPhi r k`, including an `(r : ℚ)` credit baseline
 that pays for root-list suffix-min repairs so `shExtractMin` stays `O(1)` independently of `r`. -/

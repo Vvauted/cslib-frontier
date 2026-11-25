@@ -12,10 +12,10 @@ public import CslibFrontier.Computability.WordRAM.Realization.Absorb
 public import CslibFrontier.Computability.WordRAM.Realization.While
 public import CslibFrontier.Computability.WordRAM.Realization.Loop
 -- `import all` reads `Program`'s `shInsertInit`/`combine*`/`shInsertRaw`/`shInsertLinkRoot`
--- (and `shInsert` body), plus `Model`'s `InPoolRaw`, `suffixMinTree_spec`, and `vec*` lemmas.
--- (and `shInsert` body), plus `Model`'s `InPoolRaw`, `suffixMinTree_spec`, and `vec*` lemmas.
+-- (and `shInsert` body), plus `Model`'s `InPoolRaw` and `suffixMinTree_spec` lemmas.
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Program
 import all CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Model
+import CslibFrontier.Foundations.Data.Nat.HalvingRecurrence
 import CslibFrontier.Computability.WordRAM.Realization.ProgFrame
 import CslibFrontier.DataStructure.Memory.Frame
 import Mathlib.Data.Rat.Cast.Order
@@ -45,25 +45,6 @@ public section
 namespace Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap
 
 open Cslib.WordRAM Cslib.WordRAM.Realization Cslib.DataStructure Cslib.DataStructure.Memory
-
-private theorem vec9_0 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 0 = a := rfl
-private theorem vec9_1 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 1 = b := rfl
-private theorem vec9_2 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 2 = c := rfl
-private theorem vec9_3 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 3 = d := rfl
-private theorem vec9_4 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 4 = e := rfl
-private theorem vec9_5 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 5 = f := rfl
-private theorem vec9_6 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 6 = g := rfl
-private theorem vec9_7 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 7 = h := rfl
-private theorem vec9_8 (a b c d e f g h i : ℕ) :
-    (![a, b, c, d, e, f, g, h, i] : Fin 9 → ℕ) 8 = i := rfl
 
 private theorem shInsertInit_spec {rt w itemBase nodeBase itemIdx nodeIdx val origKey : ℕ}
     {s : Memory.State} (h16 : Fits w 16) (_hwf : Memory.WellFormed w s)
@@ -110,7 +91,7 @@ private theorem shInsertInit_spec {rt w itemBase nodeBase itemIdx nodeIdx val or
   have hsplit : shInsertInit ![itemBase, nodeBase, itemIdx, nodeIdx, val, origKey] =
       (p_it >>= fun _ => p_nd) := by
     dsimp only [shInsertInit, p_it, p_nd]
-    simp only [vec6_0, vec6_1, vec6_2, vec6_3, vec6_4, vec6_5]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rfl
   have hv_it : (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s p_it) := by
     dsimp only [p_it]
@@ -275,7 +256,7 @@ private theorem combineWriteParent_spec {w nodeBase z y p rank target : ℕ} {s 
   have hv : (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s
       (combineWriteParent ![nodeBase, z, y, p, rank, target])) := by
     dsimp only [combineWriteParent]
-    simp only [vec6_0, vec6_1, vec6_2, vec6_3, vec6_4, vec6_5]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine validHistory_write_bind (by omega) h0_fit ?_
     refine validHistory_write_bind (by dsimp; omega) hrk_fit ?_
     refine validHistory_write_bind (by dsimp; omega) htg_fit ?_
@@ -290,7 +271,7 @@ private theorem combineWriteParent_spec {w nodeBase z y p rank target : ℕ} {s 
     exact validHistory_write (by dsimp; omega) h0_fit
   have hm : memoryCost (combineWriteParent ![nodeBase, z, y, p, rank, target]) s = 12 := by
     dsimp only [combineWriteParent]
-    simp only [vec6_0, vec6_1, vec6_2, vec6_3, vec6_4, vec6_5]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat (rw [memoryCost_bind', memoryCost_write, clientState_write])
     rw [memoryCost_write]
   obtain ⟨s', hs'_eq⟩ : ∃ s', s' = (Memory.spec 0).clientState s
@@ -311,7 +292,7 @@ private theorem combineWriteParent_spec {w nodeBase z y p rank target : ℕ} {s 
         (nodeBase + 12 * p + 10) 0)
         (nodeBase + 12 * p + 11) 0, s.frontier⟩ := by
     rw [hs'_eq]; dsimp only [combineWriteParent]
-    simp only [vec6_0, vec6_1, vec6_2, vec6_3, vec6_4, vec6_5]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat rw [clientState_bind_write]
     rw [clientState_write]
   refine ⟨hv, hm, ?_, ?_, ?_⟩
@@ -360,7 +341,7 @@ private theorem combineInitParent_spec {rt w nodeBase z y p zRank : ℕ} {s : Me
   have hprog : combineInitParent ![nodeBase, z, y, p, zRank, targetSize rt zRank, rt] =
       combineWriteParent ![nodeBase, z, y, p, zRank + 1, targetSize rt (zRank + 1)] := by
     dsimp only [combineInitParent]
-    simp only [vec7_0, vec7_1, vec7_2, vec7_3, vec7_4, vec7_5, vec7_6]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [targetSize_succ rt zRank]
     by_cases h1 : zRank + 1 ≤ rt
     · simp only [h1, ↓reduceIte]
@@ -396,25 +377,25 @@ private theorem combinePopFront_spec {w nodeBase : ℕ} {s : Memory.State}
     have hv : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s (combinePopFront ![nodeBase, y.rootId])) := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       refine validHistory_read_bind (by omega) ?_
       simp only [hy_10, ne_eq, not_true_eq_false, ↓reduceIte]
       exact validHistory_pure w _ _
     have hm : memoryCost (combinePopFront ![nodeBase, y.rootId]) s ≤ 2 := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read]
       simp only [hy_10, ne_eq, not_true_eq_false, ↓reduceIte, memoryCost_pure]
       decide
     have hres : (Memory.spec 0).clientResult s (combinePopFront ![nodeBase, y.rootId]) = 0 := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       rw [clientResult_bind_read]
       simp only [hy_10, ne_eq, not_true_eq_false, ↓reduceIte]
       rfl
     have hs' : (Memory.spec 0).clientState s (combinePopFront ![nodeBase, y.rootId]) = s := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       rw [clientState_bind_read]
       simp only [hy_10, ne_eq, not_true_eq_false, ↓reduceIte]
       rfl
@@ -432,13 +413,13 @@ private theorem combinePopFront_spec {w nodeBase : ℕ} {s : Memory.State}
     have hv : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s (combinePopFront ![nodeBase, y.rootId])) := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       refine validHistory_read_bind (by omega) ?_
       simp only [hy_10', hr0_ne0, ne_eq, not_false_eq_true, ↓reduceIte]
       exact validHistory_write_bind (by omega) h0_fit (validHistory_pure w _ _)
     have hm : memoryCost (combinePopFront ![nodeBase, y.rootId]) s ≤ 2 := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read]
       simp only [hy_10', hr0_ne0, ne_eq, not_false_eq_true, ↓reduceIte,
         memoryCost_bind', memoryCost_write, memoryCost_pure]
@@ -446,7 +427,7 @@ private theorem combinePopFront_spec {w nodeBase : ℕ} {s : Memory.State}
     have hres : (Memory.spec 0).clientResult s (combinePopFront ![nodeBase, y.rootId]) =
         r0.rootId := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       rw [clientResult_bind_read]
       simp only [hy_10', hr0_ne0, ne_eq, not_false_eq_true, ↓reduceIte]
       rw [StateTransitionSpec.clientResult_bind, clientState_write]
@@ -454,7 +435,7 @@ private theorem combinePopFront_spec {w nodeBase : ℕ} {s : Memory.State}
     have hs' : (Memory.spec 0).clientState s (combinePopFront ![nodeBase, y.rootId]) =
         ⟨Function.update s.mem (nodeBase + 12 * r0.rootId + 9) 0, s.frontier⟩ := by
       dsimp only [combinePopFront]
-      simp only [vec2_0, vec2_1]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one]
       rw [clientState_bind_read]
       simp only [hy_10', hr0_ne0, ne_eq, not_false_eq_true, ↓reduceIte]
       rw [clientState_bind_write, StateTransitionSpec.clientState_pure]
@@ -539,7 +520,7 @@ private theorem combinePreInit_spec {rt w itemBase nodeBase nc fuel : ℕ} {s : 
   have hv : (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s
       (combinePreInit ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt])) := by
     dsimp only [combinePreInit]
-    simp only [vec7_1, vec7_2, vec7_3, vec7_4, vec7_6]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
     refine validHistory_bind_step hv_pop ?_
     rw [hz_rk, hz_tgt, ← hs₁_eq]
@@ -548,7 +529,7 @@ private theorem combinePreInit_spec {rt w itemBase nodeBase nc fuel : ℕ} {s : 
   have hm : memoryCost (combinePreInit ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt]) s ≤
       16 := by
     dsimp only [combinePreInit]
-    simp only [vec7_1, vec7_2, vec7_3, vec7_4, vec7_6]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
     rw [memoryCost_bind', hz_rk, hz_tgt, ← hs₁_eq, memoryCost_bind', memoryCost_pure, add_zero]
     omega
@@ -556,7 +537,7 @@ private theorem combinePreInit_spec {rt w itemBase nodeBase nc fuel : ℕ} {s : 
       (combinePreInit ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt]) =
       rest.head?.elim 0 SHTree.rootId := by
     dsimp only [combinePreInit]
-    simp only [vec7_1, vec7_2, vec7_3, vec7_4, vec7_6]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat rw [clientResult_bind_read]
     rw [StateTransitionSpec.clientResult_bind, hz_rk, hz_tgt, ← hs₁_eq]
     rw [StateTransitionSpec.clientResult_bind, hres_pop]
@@ -564,7 +545,7 @@ private theorem combinePreInit_spec {rt w itemBase nodeBase nc fuel : ℕ} {s : 
   have hs_eq : (Memory.spec 0).clientState s
       (combinePreInit ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt]) = s₂ := by
     dsimp only [combinePreInit]
-    simp only [vec7_1, vec7_2, vec7_3, vec7_4, vec7_6]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     repeat rw [clientState_bind_read]
     rw [StateTransitionSpec.clientState_bind, hz_rk, hz_tgt, ← hs₁_eq]
     rw [StateTransitionSpec.clientState_bind, ← hs₂_eq]
@@ -734,7 +715,7 @@ private theorem combineOne_spec {rt w ic₀ nc₀ maxItems maxNodes itemBase nod
   have hcr'_decay : ∀ k, 2 * created' (k + 1) ≤ created' k := by
     intro k; have := hcr_step' k; omega
   have hpow_le : 2 ^ (z.rank + 1) ≤ maxItems := by
-    have hm := pow_mul_le_of_step hcr'_decay (z.rank + 1)
+    have hm := Nat.pow_mul_le_of_step hcr'_decay (z.rank + 1)
     have hcpos : 1 ≤ created' (z.rank + 1) := by dsimp only [created']; simp
     have h1 : 2 ^ (z.rank + 1) ≤ 2 ^ (z.rank + 1) * created' (z.rank + 1) :=
       Nat.le_mul_of_pos_right _ hcpos
@@ -883,7 +864,8 @@ private theorem combineOne_spec {rt w ic₀ nc₀ maxItems maxNodes itemBase nod
         (combineOne ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt])) := by
     dsimp only [combineOne]
     refine validHistory_bind_step hv_pre ?_
-    rw [vec7_0, vec7_1, vec7_4, vec7_5, ← hs₁_eq]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
+    rw [← hs₁_eq]
     refine validHistory_bind_step hv_def ?_
     exact validHistory_pure w _ _
   have hsafe : combineOneSafe w ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt] s := by
@@ -892,28 +874,30 @@ private theorem combineOne_spec {rt w ic₀ nc₀ maxItems maxNodes itemBase nod
         (Nat.le_mul_of_pos_right _ (Nat.succ_pos maxItems))
     have hrt_fit : Fits w rt := hinv.fits_fuel.of_le hrt_le_fb
     dsimp only [combineOneSafe]
-    simp only [vec7_0, vec7_1, vec7_4, vec7_5, vec7_6]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [← hs₁_eq]
     exact ⟨h16, hp_fit, hrt_fit, hsafe_def⟩
   have hres : (Memory.spec 0).clientResult s
       (combineOne ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt]) =
       (nc + 1, rest.head?.elim 0 SHTree.rootId) := by
     dsimp only [combineOne]
-    rw [StateTransitionSpec.clientResult_bind, vec7_0, vec7_1, vec7_4, vec7_5, ← hs₁_eq, hres_pre]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
+    rw [StateTransitionSpec.clientResult_bind, ← hs₁_eq, hres_pre]
     rw [StateTransitionSpec.clientResult_bind]
     rfl
   have hs_eq : (Memory.spec 0).clientState s
       (combineOne ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt]) = s₂ := by
     dsimp only [combineOne]
-    rw [StateTransitionSpec.clientState_bind, vec7_0, vec7_1, vec7_4, vec7_5, ← hs₁_eq]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
+    rw [StateTransitionSpec.clientState_bind, ← hs₁_eq]
     rw [StateTransitionSpec.clientState_bind, ← hs₂_eq]
     rfl
   have hm : memoryCost (combineOne ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt]) s =
       memoryCost (combinePreInit ![itemBase, nodeBase, z.rootId, y.rootId, nc, fuel, rt]) s +
       memoryCost (defill ![itemBase, nodeBase, nc + 1, fuel]) s₁ := by
     dsimp only [combineOne]
-    rw [memoryCost_bind', vec7_0, vec7_1, vec7_4, vec7_5, ← hs₁_eq,
-      memoryCost_bind', memoryCost_pure, add_zero]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
+    rw [memoryCost_bind', ← hs₁_eq, memoryCost_bind', memoryCost_pure, add_zero]
   have hframe : ∀ a, s₂.mem a ≠ s.mem a →
       InPoolRaw ic₀ nc₀ maxItems maxNodes itemBase nodeBase a := by
     intro a ha
@@ -1536,12 +1520,12 @@ private theorem shInsertLinkRoot_spec {w nodeBase : ℕ} {s : Memory.State}
     have hv : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s (shInsertLinkRoot ![nodeBase, z.rootId, 0])) := by
       dsimp only [shInsertLinkRoot]
-      simp only [vec3_0, vec3_1, vec3_2, ↓reduceIte]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, ↓reduceIte]
       exact validHistory_write_bind (by omega) h0_fit (validHistory_write_bind (by dsimp; omega)
         h0_fit (validHistory_write (by dsimp; omega) hz_fit))
     have hm : memoryCost (shInsertLinkRoot ![nodeBase, z.rootId, 0]) s ≤ 7 := by
       dsimp only [shInsertLinkRoot]
-      simp only [vec3_0, vec3_1, vec3_2, ↓reduceIte]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, ↓reduceIte]
       rw [memoryCost_bind', memoryCost_write, clientState_write, memoryCost_bind',
         memoryCost_write, clientState_write, memoryCost_write]
       decide
@@ -1551,7 +1535,7 @@ private theorem shInsertLinkRoot_spec {w nodeBase : ℕ} {s : Memory.State}
           (nodeBase + 12 * z.rootId + 10) 0)
           (nodeBase + 12 * z.rootId + 11) z.rootId, s.frontier⟩ := by
       dsimp only [shInsertLinkRoot]
-      simp only [vec3_0, vec3_1, vec3_2, ↓reduceIte]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, ↓reduceIte]
       rw [clientState_bind_write, clientState_bind_write, clientState_write]
     refine ⟨hv, hm, ?_, ?_, ?_⟩
     · rw [hs']
@@ -1593,7 +1577,8 @@ private theorem shInsertLinkRoot_spec {w nodeBase : ℕ} {s : Memory.State}
           ((Memory.spec w).clientHistory s
             (shInsertLinkRoot ![nodeBase, z.rootId, r0.rootId])) := by
         dsimp only [shInsertLinkRoot]
-        simp only [vec3_0, vec3_1, vec3_2, hr0_ne0, ↓reduceIte]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, hr0_ne0,
+          ↓reduceIte]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hr0_11]
         refine validHistory_read_bind (by omega) ?_
@@ -1604,7 +1589,8 @@ private theorem shInsertLinkRoot_spec {w nodeBase : ℕ} {s : Memory.State}
         · exact validHistory_write (by dsimp; omega) hsm_fit
       have hm : memoryCost (shInsertLinkRoot ![nodeBase, z.rootId, r0.rootId]) s ≤ 7 := by
         dsimp only [shInsertLinkRoot]
-        simp only [vec3_0, vec3_1, vec3_2, hr0_ne0, ↓reduceIte]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, hr0_ne0,
+          ↓reduceIte]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hr0_11]
         repeat (rw [memoryCost_bind', memoryCost_write, clientState_write])
@@ -1618,7 +1604,8 @@ private theorem shInsertLinkRoot_spec {w nodeBase : ℕ} {s : Memory.State}
             (nodeBase + 12 * z.rootId + 11)
             ((suffixMinTree (z :: r0 :: rest)).elim 0 SHTree.rootId), s.frontier⟩ := by
         dsimp only [shInsertLinkRoot]
-        simp only [vec3_0, vec3_1, vec3_2, hr0_ne0, ↓reduceIte]
+        simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, hr0_ne0,
+          ↓reduceIte]
         repeat rw [clientState_bind_read]
         rw [hr0_11, hz_ck, hsm_ck]
         repeat rw [clientState_bind_write]
@@ -1917,7 +1904,7 @@ theorem shInsert_spec {w ic₀ nc₀ maxItems maxNodes val origKey fuel : ℕ}
         val, origKey, fuel, h.rankThreshold]) =
       (z_end.rootId, h.itemCount + 1, nc_end) := by
     dsimp only [shInsertRaw, combineStateCont, combineStateFirstRoot, combineStateNodeCount]
-    simp only [vec9_0, vec9_1, vec9_2, vec9_3, vec9_4, vec9_5, vec9_6, vec9_7, vec9_8]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [StateTransitionSpec.clientResult_bind, ← hs₁_eq]
     rw [StateTransitionSpec.clientResult_bind, hres_bw, ← hs₂_eq]
     rw [StateTransitionSpec.clientResult_bind]
@@ -1926,7 +1913,7 @@ theorem shInsert_spec {w ic₀ nc₀ maxItems maxNodes val origKey fuel : ℕ}
       (shInsertRaw ![h.itemBase, h.nodeBase, h.firstRoot, h.itemCount, h.nodeCount,
         val, origKey, fuel, h.rankThreshold]) = s₃ := by
     dsimp only [shInsertRaw, combineStateCont, combineStateFirstRoot, combineStateNodeCount]
-    simp only [vec9_0, vec9_1, vec9_2, vec9_3, vec9_4, vec9_5, vec9_6, vec9_7, vec9_8]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [StateTransitionSpec.clientState_bind, ← hs₁_eq]
     rw [StateTransitionSpec.clientState_bind, hres_bw, ← hs₂_eq]
     rw [StateTransitionSpec.clientState_bind, ← hs₃_eq]
@@ -1936,7 +1923,7 @@ theorem shInsert_spec {w ic₀ nc₀ maxItems maxNodes val origKey fuel : ℕ}
         (shInsertRaw ![h.itemBase, h.nodeBase, h.firstRoot, h.itemCount, h.nodeCount,
           val, origKey, fuel, h.rankThreshold])) := by
     dsimp only [shInsertRaw, combineStateCont, combineStateFirstRoot, combineStateNodeCount]
-    simp only [vec9_0, vec9_1, vec9_2, vec9_3, vec9_4, vec9_5, vec9_6, vec9_7, vec9_8]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine validHistory_bind_step hv_init ?_
     rw [← hs₁_eq]
     refine validHistory_bind_step hv_bw ?_
@@ -1945,7 +1932,7 @@ theorem shInsert_spec {w ic₀ nc₀ maxItems maxNodes val origKey fuel : ℕ}
   have hsafe_raw : shInsertRawSafe w ![h.itemBase, h.nodeBase, h.firstRoot, h.itemCount,
       h.nodeCount, val, origKey, fuel, h.rankThreshold] s := by
     dsimp only [shInsertRawSafe, combineStateCont]
-    simp only [vec9_0, vec9_1, vec9_2, vec9_3, vec9_4, vec9_5, vec9_6, vec9_7, vec9_8]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine ⟨h16, hi_fit, hn_fit, ?_⟩
     rw [← hs₁_eq]
     exact hsafe_bw
@@ -1960,7 +1947,7 @@ theorem shInsert_spec {w ic₀ nc₀ maxItems maxNodes val origKey fuel : ℕ}
       memoryCost (shInsertLinkRoot
         ![h.nodeBase, z_end.rootId, rem_end.head?.elim 0 SHTree.rootId]) s₂ := by
     dsimp only [shInsertRaw, combineStateCont, combineStateFirstRoot, combineStateNodeCount]
-    simp only [vec9_0, vec9_1, vec9_2, vec9_3, vec9_4, vec9_5, vec9_6, vec9_7, vec9_8]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     rw [memoryCost_bind', ← hs₁_eq, memoryCost_bind', hres_bw, ← hs₂_eq,
       memoryCost_bind', memoryCost_pure, add_zero, Nat.add_assoc]
   have hmem_raw : ∀ a, s₃.mem a ≠ s.mem a →

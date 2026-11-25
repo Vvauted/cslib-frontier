@@ -46,16 +46,6 @@ namespace Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap
 
 open Cslib.WordRAM Cslib.WordRAM.Realization Cslib.DataStructure Cslib.DataStructure.Memory
 
-private theorem list_mem_split {α : Type} {x : α} {xs : List α} (h : x ∈ xs) :
-    ∃ pre suf, xs = pre ++ [x] ++ suf := by
-  induction xs with
-  | nil => cases h
-  | cons a l ih =>
-    rcases List.mem_cons.mp h with rfl | hl
-    · exact ⟨[], l, rfl⟩
-    · rcases ih hl with ⟨p, s, rfl⟩
-      exact ⟨a :: p, s, rfl⟩
-
 private theorem nodeIds_sub_mid (pre : List SHTree) (t : SHTree) (suf : List SHTree) :
     t.nodeIds.Sublist (forestNodeIds (pre ++ [t] ++ suf)) := by
   have h : pre ++ [t] ++ suf = pre ++ (t :: suf) := List.append_assoc _ _ _
@@ -287,7 +277,7 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
         (nodeBase + 12 * id + 4) nxt) (nodeBase + 12 * id + 5) 0)
         (nodeBase + 12 * id + 3) rest.length, s.frontier⟩ := by
       rw [hs'_eq]; dsimp only [extractPopItem]
-      simp only [vec3_0, vec3_1, vec3_2]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
       repeat rw [clientState_bind_read]
       rw [hck, hhead, hsz, hit0]
       rw [clientState_bind_write]
@@ -298,7 +288,8 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
       rfl
     have hv : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s (extractPopItem ![itemBase, nodeBase, id])) := by
-      dsimp only [extractPopItem]; simp only [vec3_0, vec3_1, vec3_2]
+      dsimp only [extractPopItem]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
       refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
       rw [hhead]
       refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
@@ -310,7 +301,8 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
       refine validHistory_write_bind (by dsimp; omega) hsz_fit ?_
       exact validHistory_pure w _ _
     have hm : memoryCost (extractPopItem ![itemBase, nodeBase, id]) s ≤ 8 := by
-      dsimp only [extractPopItem]; simp only [vec3_0, vec3_1, vec3_2]
+      dsimp only [extractPopItem]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
       repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
       rw [hhead, hsz, hit0, memoryCost_bind', memoryCost_write, clientState_write]
       simp only [show s.mem (itemBase + 3 * it₀.id + 2) = 0 from hnxt, ↓reduceIte,
@@ -318,7 +310,8 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
       decide
     have hres : (Memory.spec 0).clientResult s
         (extractPopItem ![itemBase, nodeBase, id]) = (it₀.val, ck) := by
-      dsimp only [extractPopItem]; simp only [vec3_0, vec3_1, vec3_2]
+      dsimp only [extractPopItem]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
       repeat rw [clientResult_bind_read]
       rw [hck, hhead, hsz, hit0, clientResult_bind_write]
       simp only [show s.mem (itemBase + 3 * it₀.id + 2) = 0 from hnxt, ↓reduceIte,
@@ -370,7 +363,7 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
     have hs'_form : s' = ⟨Function.update (Function.update s.mem
         (nodeBase + 12 * id + 4) nxt) (nodeBase + 12 * id + 3) rest.length, s.frontier⟩ := by
       rw [hs'_eq]; dsimp only [extractPopItem]
-      simp only [vec3_0, vec3_1, vec3_2]
+      simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
       repeat rw [clientState_bind_read]
       rw [hck, hhead, hsz, hit0, clientState_bind_write]
       simp only [show ¬ (s.mem (itemBase + 3 * it₀.id + 2) = 0) from hnxt, ↓reduceIte]
@@ -379,7 +372,8 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
       rfl
     have hv : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s (extractPopItem ![itemBase, nodeBase, id])) := by
-      dsimp only [extractPopItem]; simp only [vec3_0, vec3_1, vec3_2]
+      dsimp only [extractPopItem]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
       refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
       rw [hhead]
       refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
@@ -390,7 +384,8 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
       refine validHistory_write_bind (by dsimp; omega) hsz_fit ?_
       exact validHistory_pure w _ _
     have hm : memoryCost (extractPopItem ![itemBase, nodeBase, id]) s ≤ 8 := by
-      dsimp only [extractPopItem]; simp only [vec3_0, vec3_1, vec3_2]
+      dsimp only [extractPopItem]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
       repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
       rw [hhead, hsz, hit0, memoryCost_bind', memoryCost_write, clientState_write]
       simp only [show ¬ (s.mem (itemBase + 3 * it₀.id + 2) = 0) from hnxt, ↓reduceIte]
@@ -398,7 +393,8 @@ private theorem extractPopItem_spec {rt w itemBase nodeBase id r ck : ℕ}
       decide
     have hres : (Memory.spec 0).clientResult s
         (extractPopItem ![itemBase, nodeBase, id]) = (it₀.val, ck) := by
-      dsimp only [extractPopItem]; simp only [vec3_0, vec3_1, vec3_2]
+      dsimp only [extractPopItem]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
       repeat rw [clientResult_bind_read]
       rw [hck, hhead, hsz, hit0, clientResult_bind_write]
       simp only [show ¬ (s.mem (itemBase + 3 * it₀.id + 2) = 0) from hnxt, ↓reduceIte]
@@ -475,27 +471,31 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
       have hx10' : s.mem (nodeBase + 12 * x.rootId + 10) = 0 := by simpa using hx10
       have hv : (Memory.spec w).ValidHistory s
           ((Memory.spec w).clientHistory s (unlinkLinks ![nodeBase, x.rootId, x.rootId])) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte]
         exact validHistory_pure w _ _
       have hm : memoryCost (unlinkLinks ![nodeBase, x.rootId, x.rootId]) s ≤ 4 := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte, memoryCost_pure]
         decide
       have hres : (Memory.spec 0).clientResult s
           (unlinkLinks ![nodeBase, x.rootId, x.rootId]) = (0, 0) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte]
         rfl
       have hs' : (Memory.spec 0).clientState s
           (unlinkLinks ![nodeBase, x.rootId, x.rootId]) = s := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte]
@@ -511,13 +511,15 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
       have hx10' : s.mem (nodeBase + 12 * x.rootId + 10) = r0.rootId := by simpa using hx10
       have hv : (Memory.spec w).ValidHistory s
           ((Memory.spec w).clientHistory s (unlinkLinks ![nodeBase, x.rootId, x.rootId])) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, not_false_eq_true, ↓reduceIte, not_true_eq_false]
         exact validHistory_write_bind (by omega) h0_fit (validHistory_pure w _ _)
       have hm : memoryCost (unlinkLinks ![nodeBase, x.rootId, x.rootId]) s ≤ 4 := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, not_false_eq_true, ↓reduceIte, not_true_eq_false,
@@ -525,7 +527,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
         decide
       have hres : (Memory.spec 0).clientResult s
           (unlinkLinks ![nodeBase, x.rootId, x.rootId]) = (r0.rootId, 0) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, not_false_eq_true, ↓reduceIte, not_true_eq_false,
@@ -534,7 +537,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
       have hs' : (Memory.spec 0).clientState s
           (unlinkLinks ![nodeBase, x.rootId, x.rootId]) =
           ⟨Function.update s.mem (nodeBase + 12 * r0.rootId + 9) 0, s.frontier⟩ := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, not_false_eq_true, ↓reduceIte, not_true_eq_false]
@@ -583,14 +587,16 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
           ((Memory.spec w).clientHistory s
             (unlinkLinks ![nodeBase, ((pre' ++ [u]) ++ [x] ++ []).head?.elim 0 SHTree.rootId,
               x.rootId])) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte, hu_ne0, not_false_eq_true]
         exact validHistory_write_bind (by omega) h0_fit (validHistory_pure w _ _)
       have hm : memoryCost (unlinkLinks ![nodeBase,
           ((pre' ++ [u]) ++ [x] ++ []).head?.elim 0 SHTree.rootId, x.rootId]) s ≤ 4 := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte, hu_ne0, not_false_eq_true,
@@ -599,7 +605,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
       have hres : (Memory.spec 0).clientResult s
           (unlinkLinks ![nodeBase, ((pre' ++ [u]) ++ [x] ++ []).head?.elim 0 SHTree.rootId,
             x.rootId]) = (((pre' ++ [u]) ++ []).head?.elim 0 SHTree.rootId, u.rootId) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte, hu_ne0, not_false_eq_true]
@@ -610,7 +617,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
           (unlinkLinks ![nodeBase, ((pre' ++ [u]) ++ [x] ++ []).head?.elim 0 SHTree.rootId,
             x.rootId]) =
           ⟨Function.update s.mem (nodeBase + 12 * u.rootId + 10) 0, s.frontier⟩ := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, not_true_eq_false, ↓reduceIte, hu_ne0, not_false_eq_true]
@@ -647,7 +655,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
             (unlinkLinks ![nodeBase,
               ((pre' ++ [u]) ++ [x] ++ r0 :: suf').head?.elim 0 SHTree.rootId,
               x.rootId])) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, hu_ne0, not_false_eq_true, ↓reduceIte]
@@ -655,7 +664,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
           (validHistory_write_bind (by dsimp; omega) hr0_fit (validHistory_pure w _ _))
       have hm : memoryCost (unlinkLinks ![nodeBase,
           ((pre' ++ [u]) ++ [x] ++ r0 :: suf').head?.elim 0 SHTree.rootId, x.rootId]) s ≤ 4 := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, hu_ne0, not_false_eq_true, ↓reduceIte,
@@ -666,7 +676,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
             ((pre' ++ [u]) ++ [x] ++ r0 :: suf').head?.elim 0 SHTree.rootId,
             x.rootId]) =
           (((pre' ++ [u]) ++ r0 :: suf').head?.elim 0 SHTree.rootId, u.rootId) := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, hu_ne0, not_false_eq_true, ↓reduceIte]
@@ -679,7 +690,8 @@ private theorem unlinkLinks_spec {w nodeBase : ℕ} {s : Memory.State}
             x.rootId]) =
           ⟨Function.update (Function.update s.mem (nodeBase + 12 * r0.rootId + 9) u.rootId)
             (nodeBase + 12 * u.rootId + 10) r0.rootId, s.frontier⟩ := by
-        dsimp only [unlinkLinks]; simp only [vec3_0, vec3_1, vec3_2]
+        dsimp only [unlinkLinks]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                    Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hx9', hx10']
         simp only [ne_eq, hr0_ne0, hu_ne0, not_false_eq_true, ↓reduceIte]
@@ -795,33 +807,38 @@ private theorem extractUnlinkLeaf_spec {w nodeBase fuel : ℕ} {s : Memory.State
       ((Memory.spec w).clientHistory s
         (extractUnlinkLeaf ![nodeBase, (pre ++ [x] ++ suf).head?.elim 0 SHTree.rootId,
           x.rootId, fuel])) := by
-    dsimp only [extractUnlinkLeaf]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    dsimp only [extractUnlinkLeaf]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                      Matrix.cons_val]
     refine validHistory_bind_step hv_u ?_
     rw [hres_u, ← hs₁_eq]
     exact validHistory_bind_step hv_s (validHistory_pure w _ _)
   have hsafe : extractUnlinkLeafSafe w
       ![nodeBase, (pre ++ [x] ++ suf).head?.elim 0 SHTree.rootId, x.rootId, fuel] s := by
-    dsimp only [extractUnlinkLeafSafe]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    dsimp only [extractUnlinkLeafSafe]
+    simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
     refine ⟨h16, ?_⟩
     rw [hres_u, ← hs₁_eq]
     exact hsafe_s
   have hm : memoryCost (extractUnlinkLeaf
       ![nodeBase, (pre ++ [x] ++ suf).head?.elim 0 SHTree.rootId, x.rootId, fuel]) s ≤
       4 + 6 * pre.length := by
-    dsimp only [extractUnlinkLeaf]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    dsimp only [extractUnlinkLeaf]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                      Matrix.cons_val]
     rw [memoryCost_bind', hres_u, ← hs₁_eq, memoryCost_bind', memoryCost_pure, add_zero]
     dsimp only
     omega
   have hres : (Memory.spec 0).clientResult s (extractUnlinkLeaf
       ![nodeBase, (pre ++ [x] ++ suf).head?.elim 0 SHTree.rootId, x.rootId, fuel]) =
       (pre ++ suf).head?.elim 0 SHTree.rootId := by
-    dsimp only [extractUnlinkLeaf]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    dsimp only [extractUnlinkLeaf]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                      Matrix.cons_val]
     rw [StateTransitionSpec.clientResult_bind, hres_u, ← hs₁_eq,
       StateTransitionSpec.clientResult_bind]
     rfl
   have hs_eq : (Memory.spec 0).clientState s (extractUnlinkLeaf
       ![nodeBase, (pre ++ [x] ++ suf).head?.elim 0 SHTree.rootId, x.rootId, fuel]) = s₂ := by
-    dsimp only [extractUnlinkLeaf]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+    dsimp only [extractUnlinkLeaf]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                      Matrix.cons_val]
     rw [StateTransitionSpec.clientState_bind, hres_u, ← hs₁_eq,
       StateTransitionSpec.clientState_bind, ← hs₂_eq]
     rfl
@@ -1145,7 +1162,8 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
       have hv : (Memory.spec w).ValidHistory s₁
           ((Memory.spec w).clientHistory s₁
             (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel])) := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hxl_eq, hxr_eq, hsz_eq]
@@ -1153,13 +1171,15 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
         exact hv_u
       have hsafe : extractFixupSafe w
           ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel] s₁ := by
-        dsimp only [extractFixupSafe]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixupSafe]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                         Matrix.cons_val]
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none, List.length_nil]
         exact ⟨h16, fun h => by simp at h, fun _ _ => hsafe_u, fun h => by simp at h⟩
       have hm : memoryCost (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) s₁ ≤
           8 + 6 * pre.length := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none, List.length_nil, and_self, ↓reduceIte]
@@ -1167,14 +1187,16 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
       have hres : (Memory.spec 0).clientResult s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) =
           (pre ++ suf).head?.elim 0 SHTree.rootId := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none, List.length_nil, and_self, ↓reduceIte]
         exact hres_u
       have hs_eq : (Memory.spec 0).clientState s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) = s₂ := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none, List.length_nil, and_self, ↓reduceIte, ← hs₂_eq]
@@ -1327,7 +1349,8 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
       have hv : (Memory.spec w).ValidHistory s₁
           ((Memory.spec w).clientHistory s₁
             (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel])) := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hxl_eq, hxr_eq, hsz_eq]
@@ -1335,26 +1358,30 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
         exact validHistory_pure w _ _
       have hsafe : extractFixupSafe w
           ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel] s₁ := by
-        dsimp only [extractFixupSafe]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixupSafe]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                         Matrix.cons_val]
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none]
         exact ⟨h16, fun h => by simp at h, fun _ h0 => absurd h0 hlen_pos, fun h => by simp at h⟩
       have hm : memoryCost (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) s₁ =
           4 := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none, and_self, hlen_pos, ↓reduceIte, memoryCost_pure]
       have hres : (Memory.spec 0).clientResult s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) = h.firstRoot := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none, and_self, hlen_pos, ↓reduceIte]
         rfl
       have hs_eq : (Memory.spec 0).clientState s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) = s₁ := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq]
         simp only [Option.elim_none, and_self, hlen_pos, ↓reduceIte]
@@ -1624,7 +1651,8 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
       have hv : (Memory.spec w).ValidHistory s₁
           ((Memory.spec w).clientHistory s₁
             (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel])) := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
@@ -1634,7 +1662,8 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
         exact validHistory_bind_step hv_u (validHistory_pure w _ _)
       have hsafe : extractFixupSafe w
           ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel] s₁ := by
-        dsimp only [extractFixupSafe]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixupSafe]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                         Matrix.cons_val]
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         refine ⟨h16, fun _ => hrest_sz_fit, fun h => absurd h hnl_rw, fun _ _ => ⟨?_, ?_⟩⟩
         · exact hsafe_def
@@ -1642,7 +1671,8 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
       have hm : memoryCost (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) s₁ =
           4 + memoryCost (defill ![h.itemBase, h.nodeBase, xId, fuel]) s₁ +
             memoryCost (updateSuffixMinUp ![h.nodeBase, xId, fuel]) s_def := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         simp only [hnl_rw, hlt_tgt, ↓reduceIte, memoryCost_bind', ← hs_def_eq,
@@ -1650,14 +1680,16 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
         omega
       have hres : (Memory.spec 0).clientResult s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) = h.firstRoot := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         simp only [hnl_rw, hlt_tgt, ↓reduceIte, StateTransitionSpec.clientResult_bind]
         rfl
       have hs_eq : (Memory.spec 0).clientState s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) = s₂ := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         simp only [hnl_rw, hlt_tgt, ↓reduceIte]
@@ -2041,7 +2073,8 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
       have hv : (Memory.spec w).ValidHistory s₁
           ((Memory.spec w).clientHistory s₁
             (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel])) := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         refine validHistory_read_bind (by omega) (validHistory_read_bind (by omega) ?_)
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
@@ -2049,26 +2082,30 @@ private theorem extractFixup_spec {w ic₀ nc₀ maxItems maxNodes fuel xId xRan
         exact validHistory_pure w _ _
       have hsafe : extractFixupSafe w
           ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel] s₁ := by
-        dsimp only [extractFixupSafe]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixupSafe]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                         Matrix.cons_val]
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         exact ⟨h16, fun _ => hrest_sz_fit, fun h => absurd h hnl_rw,
           fun _ hc => absurd hc hlt_tgt⟩
       have hm : memoryCost (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) s₁ =
           4 := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat (rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read])
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         simp only [hnl_rw, hlt_tgt, ↓reduceIte, memoryCost_pure]
       have hres : (Memory.spec 0).clientResult s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) = h.firstRoot := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientResult_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         simp only [hnl_rw, hlt_tgt, ↓reduceIte]
         rfl
       have hs_eq : (Memory.spec 0).clientState s₁
           (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) = s₁ := by
-        dsimp only [extractFixup]; simp only [vec5_0, vec5_1, vec5_2, vec5_3, vec5_4]
+        dsimp only [extractFixup]; simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one,
+                                     Matrix.cons_val]
         repeat rw [clientState_bind_read]
         rw [hxl_eq, hxr_eq, hsz_eq, htgt_eq]
         simp only [hnl_rw, hlt_tgt, ↓reduceIte]
@@ -2153,21 +2190,23 @@ theorem shExtractMin_spec {w ic₀ nc₀ maxItems maxNodes fuel : ℕ}
     have hv_raw : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s
           (shExtractMinRaw ![h.itemBase, h.nodeBase, h.firstRoot, fuel])) := by
-      dsimp only [shExtractMinRaw]; simp only [vec4_2, hfr0, ↓reduceIte]
+      dsimp only [shExtractMinRaw]; simp +decide only [Matrix.cons_val, hfr0, ↓reduceIte]
       exact validHistory_pure w _ _
     have hsafe_raw : shExtractMinRawSafe w
         ![h.itemBase, h.nodeBase, h.firstRoot, fuel] s := by
-      dsimp only [shExtractMinRawSafe]; simp only [vec4_2, hfr0]
-      exact ⟨h16, fun hz => absurd rfl hz⟩
+      dsimp only [shExtractMinRawSafe]
+      simp +decide only [Matrix.cons_val, hfr0]
+      exact ⟨h16, False.elim⟩
     have hres_raw : (Memory.spec 0).clientResult s
         (shExtractMinRaw ![h.itemBase, h.nodeBase, h.firstRoot, fuel]) = (0, 0, 0, 0) := by
-      dsimp only [shExtractMinRaw]; simp only [vec4_2, hfr0, ↓reduceIte]; rfl
+      dsimp only [shExtractMinRaw]; simp +decide only [Matrix.cons_val, hfr0, ↓reduceIte]; rfl
     have hs_raw : (Memory.spec 0).clientState s
         (shExtractMinRaw ![h.itemBase, h.nodeBase, h.firstRoot, fuel]) = s := by
-      dsimp only [shExtractMinRaw]; simp only [vec4_2, hfr0, ↓reduceIte]; rfl
+      dsimp only [shExtractMinRaw]; simp +decide only [Matrix.cons_val, hfr0, ↓reduceIte]; rfl
     have hm_raw : memoryCost (shExtractMinRaw ![h.itemBase, h.nodeBase, h.firstRoot, fuel]) s =
         0 := by
-      dsimp only [shExtractMinRaw]; simp only [vec4_2, hfr0, ↓reduceIte, memoryCost_pure]
+      dsimp only [shExtractMinRaw]
+      simp +decide only [Matrix.cons_val, hfr0, ↓reduceIte, memoryCost_pure]
     have hv_sh : (Memory.spec w).ValidHistory s
         ((Memory.spec w).clientHistory s (shExtractMin (h, fuel))) := by
       dsimp only [shExtractMin]
@@ -2198,7 +2237,8 @@ theorem shExtractMin_spec {w ic₀ nc₀ maxItems maxNodes fuel : ℕ}
     | some x =>
       rw [hsm] at hsm_spec
       rcases hsm_spec with ⟨hx_in, hx_min⟩
-      obtain ⟨pre, suf, hroots_eq⟩ := list_mem_split hx_in
+      obtain ⟨pre, suf, hroots_eq⟩ := List.append_of_mem hx_in
+      rw [← List.singleton_append, ← List.append_assoc] at hroots_eq
       have hx_val := hinv.trees_valid x hx_in
       have hfirst_pos : 0 < h.firstRoot := by
         rw [hinv.firstRoot_eq]
@@ -2375,7 +2415,8 @@ theorem shExtractMin_spec {w ic₀ nc₀ maxItems maxNodes fuel : ℕ}
         have hv_raw : (Memory.spec w).ValidHistory s
             ((Memory.spec w).clientHistory s
               (shExtractMinRaw ![h.itemBase, h.nodeBase, h.firstRoot, fuel])) := by
-          dsimp only [shExtractMinRaw]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+          dsimp only [shExtractMinRaw]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           simp only [hfirst_ne0, ↓reduceIte]
           refine validHistory_read_bind (by omega) ?_
           rw [← hsm_rt]
@@ -2385,7 +2426,8 @@ theorem shExtractMin_spec {w ic₀ nc₀ maxItems maxNodes fuel : ℕ}
           exact validHistory_pure w _ _
         have hsafe_raw : shExtractMinRawSafe w
             ![h.itemBase, h.nodeBase, h.firstRoot, fuel] s := by
-          dsimp only [shExtractMinRawSafe]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+          dsimp only [shExtractMinRawSafe]; simp +decide only [Matrix.cons_val_zero,
+                                              Matrix.cons_val_one, Matrix.cons_val]
           refine ⟨h16, fun _ => ?_⟩
           rw [← hsm_rt, ← hs₁_eq]
           exact ⟨hsz_pre, hsafe_fix⟩
@@ -2394,14 +2436,16 @@ theorem shExtractMin_spec {w ic₀ nc₀ maxItems maxNodes fuel : ℕ}
             ((Memory.spec 0).clientResult s₁
               (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]),
               1, it₀.val, xCk) := by
-          dsimp only [shExtractMinRaw]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+          dsimp only [shExtractMinRaw]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           simp only [hfirst_ne0, ↓reduceIte]
           rw [clientResult_bind_read, ← hsm_rt, StateTransitionSpec.clientResult_bind,
             ← hs₁_eq, hres_pop, StateTransitionSpec.clientResult_bind]
           rfl
         have hs_raw : (Memory.spec 0).clientState s
             (shExtractMinRaw ![h.itemBase, h.nodeBase, h.firstRoot, fuel]) = s₂ := by
-          dsimp only [shExtractMinRaw]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+          dsimp only [shExtractMinRaw]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           simp only [hfirst_ne0, ↓reduceIte]
           rw [clientState_bind_read, ← hsm_rt, StateTransitionSpec.clientState_bind, ← hs₁_eq,
             StateTransitionSpec.clientState_bind, ← hs₂_eq]
@@ -2410,7 +2454,8 @@ theorem shExtractMin_spec {w ic₀ nc₀ maxItems maxNodes fuel : ℕ}
             (shExtractMinRaw ![h.itemBase, h.nodeBase, h.firstRoot, fuel]) s =
             1 + memoryCost (extractPopItem ![h.itemBase, h.nodeBase, xId]) s +
               memoryCost (extractFixup ![h.itemBase, h.nodeBase, h.firstRoot, xId, fuel]) s₁ := by
-          dsimp only [shExtractMinRaw]; simp only [vec4_0, vec4_1, vec4_2, vec4_3]
+          dsimp only [shExtractMinRaw]
+          simp +decide only [Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
           simp only [hfirst_ne0, ↓reduceIte]
           rw [memoryCost_bind', memoryCost_read, clientResult_read, clientState_read, ← hsm_rt,
             memoryCost_bind', ← hs₁_eq, memoryCost_bind', memoryCost_pure, add_zero]
