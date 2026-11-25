@@ -7071,6 +7071,7 @@ public import CslibFrontier.Crypto.Protocols.VOLE.BatchMulCheck
 public import CslibFrontier.Crypto.Protocols.VOLE.Circuit
 public import CslibFrontier.Crypto.Protocols.VOLE.CircuitPrivacy
 public import CslibFrontier.Crypto.Protocols.VOLE.CircuitSound
+public import CslibFrontier.Crypto.Protocols.VOLE.HigherDegreeCheck
 public import CslibFrontier.Crypto.Protocols.VOLE.KOSExtractor
 public import CslibFrontier.Crypto.Protocols.VOLE.MaskedMulCheck
 public import CslibFrontier.Crypto.Protocols.VOLE.MulCheck
