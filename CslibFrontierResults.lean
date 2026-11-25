@@ -1,4 +1,5 @@
 import CslibFrontierResults.Entries.ODonnellLowDegreePart
+import CslibFrontierResults.Entries.ODonnellKhintchineKahane
 import CslibFrontierResults.Entries.ExtensiveGames
 import CslibFrontierResults.Entries.ODonnellUncertainty
 import CslibFrontierResults.Entries

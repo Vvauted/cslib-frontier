@@ -7410,6 +7410,7 @@ public import CslibFrontier.Foundations.Data.List.LengthCounting
 public import CslibFrontier.Computability.Complexity.Classes.BPPpath
 public import CslibFrontier.Computability.Circuit.Boolean.Iteration.CounterBatch
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.LogSpace.Subdivision.HozaSize
+public import CslibFrontier.Foundations.BooleanAnalysis.KhintchineKahane
 public import CslibFrontier.Computability.Circuit.Quantum.Oracle.Density
 public import CslibFrontier.MachineLearning.Rademacher.Margin
 public import CslibFrontier.Crypto.Computational.InaccessibleEntropy.Repetition
