@@ -846,6 +846,7 @@ public import CslibFrontier.Algorithms.WordRAM.Dijkstra.Fibonacci
 public import CslibFrontier.Computability.DecisionTree.SpectralNorm
 public import CslibFrontier.Logics.Propositional.Resolution
 public import CslibFrontier.Computability.LogSpaceDerandomization.NormalizedAtomRows.MeanTail
+public import CslibFrontier.Foundations.Analysis.ODE.StateSpace
 public import CslibFrontier.Crypto.Computational.MLDSA.MaskSeedQuery
 public import CslibFrontier.Foundations.Data.Nat.Div
 public import CslibFrontier.Foundations.Data.MvPolynomial.PDerivConst
@@ -6528,6 +6529,7 @@ public import CslibFrontier.Crypto.Protocols.PIR.Basic
 public import CslibFrontier.Computability.Complexity.HardnessEncoding.Program
 public import CslibFrontier.Algorithms.MatrixMultiplication.Schonhage.Parameters
 public import CslibFrontier.Computability.LogSpaceDerandomization.PolynomialAtomRows
+public import CslibFrontier.Foundations.Analysis.ODE.VariationOfConstants
 public import CslibFrontier.Crypto.Primitives.UHF.PrefixFreePRF
 public import CslibFrontier.Computability.Complexity.Classes.TimeSpace.Slowdown
 public import CslibFrontier.Computability.Complexity.FineGrained.DisjointInstances
