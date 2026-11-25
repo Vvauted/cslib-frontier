@@ -7455,6 +7455,7 @@ public import CslibFrontier.DataStructure.Dictionary.WordRAM.SuccinctWhpTickHeal
 public import CslibFrontier.DataStructure.Dictionary.WordRAM.SuccinctWhpTickHealProg.StepDispatch
 public import CslibFrontier.DataStructure.Dictionary.WordRAM.UniformProbing
 public import CslibFrontier.DataStructure.DisjointSet.Spec
+public import CslibFrontier.DataStructure.DisjointSet.Tarjan
 public import CslibFrontier.DataStructure.DisjointSet.UnionFind
 public import CslibFrontier.DataStructure.DynamicArray.WordRAM.Basic
 public import CslibFrontier.DataStructure.FenwickTree.Basic
@@ -8671,6 +8672,7 @@ public import CslibFrontier.Foundations.Data.Nat.Fields
 public import CslibFrontier.Foundations.Data.Nat.FindCode
 public import CslibFrontier.Foundations.Data.Nat.HalvingRecurrence
 public import CslibFrontier.Foundations.Data.Nat.IntermediateValue
+public import CslibFrontier.Foundations.Data.Nat.InverseAckermann
 public import CslibFrontier.Foundations.Data.Nat.IterLog
 public import CslibFrontier.Foundations.Data.Nat.Log
 public import CslibFrontier.Foundations.Data.Nat.LogRpow
