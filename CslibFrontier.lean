@@ -4639,6 +4639,7 @@ public import CslibFrontier.Computability.PCP.Approximation.Hastad.Hardness
 public import CslibFrontier.Logics.Propositional.Algebraic.Nullstellensatz.Tseitin
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.Degree.Sigma
 public import CslibFrontier.Crypto.Computational.LWE.Module.Native
+public import CslibFrontier.Computability.Complexity.RealAlgebraic.ControlledPositivity
 public import CslibFrontier.Computability.Complexity.Problems.Graph
 public import CslibFrontier.Algorithms.Reachability.DoubleCounting.Scan
 public import CslibFrontier.Computability.Circuit.Arithmetic.SubstMatrix
