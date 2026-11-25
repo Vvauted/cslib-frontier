@@ -3837,6 +3837,7 @@ public import CslibFrontier.Crypto.Computational.InaccessibleEntropy.Basic
 public import CslibFrontier.Computability.Complexity.FineGrained.CircuitCounting
 public import CslibFrontier.Algorithms.WordRAM.ExactTriangle.RecordProduct
 public import CslibFrontier.Foundations.BooleanAnalysis.Affinity
+public import CslibFrontier.DataStructure.DisjointSet.Tarjan
 public import CslibFrontier.Foundations.Data.List.GetD
 public import CslibFrontier.Computability.QueryComplexity.Quantum.Grover
 public import CslibFrontier.Foundations.Analysis.Calculus.ParametricIntegralExp
@@ -9677,6 +9678,7 @@ public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Strassen.Acc
 public import CslibFrontier.Computability.Complexity.Classes.Measure.DTIME
 public import CslibFrontier.Computability.LogSpaceDerandomization.HierarchyTaskData
 public import CslibFrontier.DataStructure.FusionTree.WordRAM.Static
+public import CslibFrontier.Foundations.Data.Nat.InverseAckermann
 public import CslibFrontier.Computability.BlumComplexity.Speedup
 public import CslibFrontier.Computability.WordRAM.Realization.Reindex
 public import CslibFrontier.Algorithms.Lean.CYK.Basic
