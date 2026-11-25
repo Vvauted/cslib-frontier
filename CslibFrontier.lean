@@ -6019,6 +6019,7 @@ public import CslibFrontier.Computability.Circuit.Boolean.Braverman.Gates
 public import CslibFrontier.Algorithms.WordRAM.TreeDecomposition.CSP.BagOps
 public import CslibFrontier.Computability.Complexity.Reduction
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Universal.SpaceBudget
+public import CslibFrontier.Computability.Complexity.RealAlgebraic.ControlledIndexedFeasibility
 public import CslibFrontier.Foundations.Data.Fin.Fold
 public import CslibFrontier.Crypto.Protocols.VOLE.ScalarMulCheck
 public import CslibFrontier.Computability.Machines.Turing.TM2.Reverse.Transfer
