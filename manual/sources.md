@@ -3325,7 +3325,9 @@ The section was located from secondary sources and not checked against the print
 <a id="kozen92"></a>
 ## kozen92
 
-Dexter C. Kozen. *The Design and Analysis of Algorithms*. Texts and Monographs in Computer Science, Springer-Verlag, 1992 (bibliography key `Kozen1992`). https://doi.org/10.1007/978-1-4612-4400-4 . Lectures 10–11 ("Union-Find" and "Analysis of Union-Find", pp. 48–57); the book text was not inspected directly in this pass (scope and chapter numbers taken from the bibliographic/table-of-contents record).
+Dexter C. Kozen.
+*The Design and Analysis of Algorithms*.
+Texts and Monographs in Computer Science, Springer-Verlag, 1992 (bibliography key `Kozen1992`). https://doi.org/10.1007/978-1-4612-4400-4 . Lectures 10–11 ("Union-Find" and "Analysis of Union-Find", pp. 48–57); the book text was not inspected directly in this pass (scope and chapter numbers taken from the bibliographic/table-of-contents record).
 
 <a id="kosugexagawa2022"></a>
 ## kosugexagawa2022
@@ -5193,7 +5195,10 @@ Robert Endre Tarjan.
 <a id="tarjan75"></a>
 ## tarjan75
 
-Robert Endre Tarjan. "Efficiency of a Good But Not Linear Set Union Algorithm." *Journal of the ACM* 22(2), 215–225, 1975 (bibliography key `Tarjan1975`). https://doi.org/10.1145/321879.321884 . Bibliographic metadata checked via the DOI record and secondary summaries; the journal PDF was not inspected directly, so internal theorem numbers are not claimed. [Tarjan.lean](../CslibFrontier/DataStructure/DisjointSet/Tarjan.lean) proves an abstract step-count step toward [#3558](https://github.com/cslib-community/cslib-frontier/issues/3558) and [#5441](https://github.com/cslib-community/cslib-frontier/issues/5441) over `UnionFind.impl` (omitting `init n` and using shift `d = m / n + 1` in the [CLRS2009](#clrs09) recurrence rather than Tarjan's `4 * ⌈m / n⌉` convention), not a direct Word-RAM or pointer-machine formalization of the paper.
+Robert Endre Tarjan.
+"Efficiency of a Good But Not Linear Set Union Algorithm."
+*Journal of the ACM* 22(2), 215–225, 1975 (bibliography key `Tarjan1975`). https://doi.org/10.1145/321879.321884 . Bibliographic metadata checked via the DOI record and secondary summaries; the journal PDF was not inspected directly, so internal theorem numbers are not claimed.
+[Tarjan.lean](../CslibFrontier/DataStructure/DisjointSet/Tarjan.lean) proves an abstract step-count step toward [#3558](https://github.com/cslib-community/cslib-frontier/issues/3558) and [#5441](https://github.com/cslib-community/cslib-frontier/issues/5441) over `UnionFind.impl` (omitting `init n` and using shift `d = m / n + 1` in the [CLRS2009](#clrs09) recurrence rather than Tarjan's `4 * ⌈m / n⌉` convention), not a direct Word-RAM or pointer-machine formalization of the paper.
 
 <a id="tarjan77"></a>
 ## tarjan77
