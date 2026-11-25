@@ -5408,6 +5408,7 @@ public import CslibFrontier.Computability.Complexity.Problems.SAT.ExactOne.Drawi
 public import CslibFrontier.Logics.FirstOrder.Problems.SizedGraph
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.OutView
 public import CslibFrontier.Computability.LogSpaceDerandomization.RowCompression.PreloadedIteration
+public import CslibFrontier.Foundations.BooleanAnalysis.Bribery
 public import CslibFrontier.Crypto.Protocols.KEM.FujisakiOkamoto.SpreadNecessity
 public import CslibFrontier.Computability.Circuit.Boolean.Rectifier
 public import CslibFrontier.Computability.Circuit.Monotone.Set
@@ -10092,6 +10093,7 @@ public import CslibFrontier.Foundations.Probability.Gaussian.Multivariate
 public import CslibFrontier.Computability.Complexity.Problems.CSP.RotationSystem.BoundaryRotateProgram
 public import CslibFrontier.GameTheory.Cooperative.MoulinCostSharing
 public import CslibFrontier.Logics.Propositional.Resolution.PigeonholeSpace
+public import CslibFrontier.Foundations.BooleanAnalysis.CoalitionalInfluence
 public import CslibFrontier.DataStructure.WordRAM.Resizable.Randomized.StateTransition
 public import CslibFrontier.Foundations.Control.Monad.FilterM
 public import CslibFrontier.Crypto.Computational.Pseudoentropy.LabelExtraction

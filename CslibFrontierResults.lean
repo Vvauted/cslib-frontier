@@ -12,6 +12,7 @@ import CslibFrontierResults.Entries.VeriPBSubgraphIso
 import CslibFrontierResults.Entries.SergeevAdditiveMultiplicative
 import CslibFrontierResults.Entries.HadamardRigidity
 import CslibFrontierResults.Entries.ODonnellLargeCoefficient
+import CslibFrontierResults.Entries.ODonnellBribery
 import CslibFrontierResults.Entries.NetworkFormation
 import CslibFrontierResults.Entries.DeterminantalUniversality
 import CslibFrontierResults.Entries.SponsoredSearch
