@@ -5627,6 +5627,7 @@ public import CslibFrontier.Crypto.Computational.DiffieHellman.SelfReduction
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Product.ThinEnvelopes
 public import CslibFrontier.Crypto.Protocols.SecretSharing.Shamir.Interpolation
 public import CslibFrontier.Foundations.Data.BitString.AffineSubspace
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Uni.Automaton
 public import CslibFrontier.Computability.Circuit.Boolean.ShallowSymmetric.Construction
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.BigO.Option
 public import CslibFrontier.Computability.Complexity.Problems.Permanent.ThreeSAT.Tracks
