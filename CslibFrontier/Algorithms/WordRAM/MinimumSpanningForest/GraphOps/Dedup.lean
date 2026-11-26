@@ -25,15 +25,14 @@ Linear-time WordRAM edge normalization and deduplication over stride-4 `IndexedE
 
 ## Main definitions
 
-* `CopyIndexedEdgeArgs`, `copyIndexedEdge`: single stride-4 record copy via `Memory.copy`.
-* `dedupSimpleEdgesProg`: self-loop filter, stable two-pass `countingSortProg`, and min scan.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.dedupSimpleEdgesProg`: self-loop filter,
+  stable two-pass `countingSortProg`, and min scan.
 
 ## Main results
 
-* `realizes_copyIndexedEdge`, `copyIndexedEdge_spec`: `Realizes .exact` and `O(1)` framed spec.
-* `realizes_dedupSimpleEdgesProg`, `dedupSimpleEdgesProg_spec`: `Realizes .exact` and `O(m + n)`
-  framed specification matching `dedupSimpleEdges`.
-* `isMinSpanningForest_of_dedupSimpleEdgesProg`: lifts `IsMinSpanningForest` to input edges.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_dedupSimpleEdgesProg`,
+  `dedupSimpleEdgesProg_spec`: `Realizes .exact` and `O(m + n)` framed specification matching
+  `dedupSimpleEdges`.
 -/
 
 public section
@@ -43,7 +42,7 @@ namespace Cslib.Algorithms.WordRAM.MinimumSpanningForest
 open Cslib.DataStructure
 open Cslib.WordRAM
 open Cslib.WordRAM.Realization
-open Cslib.Algorithms.Lean.Kruskal (WeightedEdge IsMinSpanningForest)
+open Cslib.Algorithms.Lean.Kruskal (WeightedEdge)
 open Cslib.Query.MinimumSpanningForest
 open Cslib.Algorithms.WordRAM
   (CountingSortArgs countingSortArgsWords countingSortPure countingSortPure_perm
@@ -53,7 +52,7 @@ open Cslib.Algorithms.WordRAM
 
 /-- Arguments for copying one stride-4 `IndexedEdge` record from `srcBase + 4 * srcIdx` to
 `dstBase + 4 * dstIdx`. -/
-structure CopyIndexedEdgeArgs where
+private structure CopyIndexedEdgeArgs where
   /-- Base address of the source `IndexedEdge` array. -/
   srcBase : ℕ
   /-- Base address of the destination `IndexedEdge` array. -/
@@ -64,22 +63,22 @@ structure CopyIndexedEdgeArgs where
   dstIdx : ℕ
 
 /-- Four-word encoding of `CopyIndexedEdgeArgs` as `(srcBase, dstBase, srcIdx, dstIdx)`. -/
-word_enc_structure encCopyIndexedEdgeArgs : CopyIndexedEdgeArgs where
+private word_enc_structure encCopyIndexedEdgeArgs : CopyIndexedEdgeArgs where
   srcBase : wordWords,
   dstBase : wordWords,
   srcIdx : wordWords,
   dstIdx : wordWords
 
 /-- Word encoding instance for `CopyIndexedEdgeArgs`. -/
-instance : WordEncoding CopyIndexedEdgeArgs := ⟨4, encCopyIndexedEdgeArgs⟩
+private instance : WordEncoding CopyIndexedEdgeArgs := ⟨4, encCopyIndexedEdgeArgs⟩
 
 /-- Copy one stride-4 `IndexedEdge` from `a.srcBase + 4 * a.srcIdx` to
 `a.dstBase + 4 * a.dstIdx` via `Memory.copy`. -/
-def copyIndexedEdge (a : CopyIndexedEdgeArgs) : Memory.Prog Unit :=
+private def copyIndexedEdge (a : CopyIndexedEdgeArgs) : Memory.Prog Unit :=
   Memory.copy (a.srcBase + 4 * a.srcIdx) (a.dstBase + 4 * a.dstIdx) 4
 
 /-- Uniform `Realizes .exact` certificate for `copyIndexedEdge` with `work = 0`. -/
-theorem realizes_copyIndexedEdge : Realizes .exact copyIndexedEdge
+private theorem realizes_copyIndexedEdge : Realizes .exact copyIndexedEdge
     encCopyIndexedEdgeArgs WordEncoding.encode
     (fun w a s => Fits w 16 ∧ a.srcBase + 4 * a.srcIdx + 4 ≤ s.frontier ∧
       a.dstBase + 4 * a.dstIdx + 4 ≤ s.frontier)
@@ -94,7 +93,7 @@ theorem realizes_copyIndexedEdge : Realizes .exact copyIndexedEdge
 /-- Framed specification of `copyIndexedEdge`: copies one stride-4 edge from
 `srcBase + 4 * srcIdx` to `dstBase + 4 * dstIdx` in at most `8` memory operations,
 modifying only `[dstBase + 4 * dstIdx, dstBase + 4 * dstIdx + 4)`. -/
-theorem copyIndexedEdge_spec {w srcBase dstBase srcIdx dstIdx : ℕ} {s : Memory.State}
+private theorem copyIndexedEdge_spec {w srcBase dstBase srcIdx dstIdx : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s)
     (hsrc : srcBase + 4 * srcIdx + 4 ≤ s.frontier)
     (hdst : dstBase + 4 * dstIdx + 4 ≤ s.frontier)
@@ -113,15 +112,6 @@ theorem copyIndexedEdge_spec {w srcBase dstBase srcIdx dstIdx : ℕ} {s : Memory
 
 private theorem allocBlockDirty_clientResult (st : Memory.State) (k : ℕ) :
     (Memory.spec 0).clientResult st (Memory.allocBlockDirty k) = ⟨st.frontier, k⟩ := rfl
-
-private theorem exists_indexedEdges_of_mem_lt {n base m : ℕ} {mem : ℕ → ℕ}
-    (h : ∀ j < m, mem (base + 4 * j) < n ∧ mem (base + 4 * j + 1) < n) :
-    ∃ es : List (IndexedEdge n), es.length = m ∧ HoldsIndexedEdges base es mem := by
-  refine ⟨List.ofFn fun k : Fin m =>
-    ⟨⟨mem (base + 4 * k.val), (h k.val k.isLt).1⟩,
-     ⟨mem (base + 4 * k.val + 1), (h k.val k.isLt).2⟩,
-     mem (base + 4 * k.val + 2), mem (base + 4 * k.val + 3)⟩, by simp, fun i hi => by
-    simp only [List.getElem_ofFn]; trivial⟩
 
 private theorem holdsRecords_zero_mem {base : ℕ} {rows : List (Fin 3 → ℕ)} {mem : ℕ → ℕ}
     (hrows : HoldsRecords 3 base rows mem) (hk : 0 < rows.length) :
@@ -724,20 +714,6 @@ private theorem holdsIndexedEdges_append_single {n outBase : ℕ} {es : List (In
   · obtain rfl : p = idPref.length := by omega
     rw [List.getElem_append_right (le_refl _), List.getElem_singleton]; exact ⟨hu, hv, hw, hid⟩
 
-private theorem holdsIndexedEdges_frame_mem {α : Type} {w c n base : ℕ} {S : Set ℕ}
-    {s : Memory.State} {p : Memory.Prog α} {es : List (IndexedEdge n)} {Q : α → Memory.State → Prop}
-    (h : Memory.FramedTriple w s p c S Q) (hes : HoldsIndexedEdges base es s.mem)
-    (hdisj : Disjoint S (Set.Ico base (base + 4 * es.length)))
-    (halloc : base + 4 * es.length ≤ s.frontier) :
-    Memory.FramedTriple w s p c S fun a s' => Q a s' ∧ HoldsIndexedEdges base es s'.mem :=
-  h.frame_mem hes (fun _ _ hEq hm i hi => by
-    obtain ⟨h0, h1, h2, h3⟩ := hm i hi
-    exact ⟨(hEq (base + 4 * i) ⟨Nat.le_add_right _ _, by omega⟩).symm.trans h0,
-      (hEq (base + 4 * i + 1) ⟨by omega, by omega⟩).symm.trans h1,
-      (hEq (base + 4 * i + 2) ⟨by omega, by omega⟩).symm.trans h2,
-      (hEq (base + 4 * i + 3) ⟨by omega, by omega⟩).symm.trans h3⟩)
-    hdisj (fun _ ha => by simp only [Set.mem_Ico] at ha; omega)
-
 private theorem copy_append_pref_framed {w n edgeBase outBase rowsLen : ℕ}
     {es : List (IndexedEdge n)} {idPref : List (Fin es.length)} {bestIdx : Fin es.length}
     {t : Memory.State} (hwf : Memory.WellFormed w t)
@@ -1101,11 +1077,9 @@ private theorem dedup_out_spec_of_scan {n : ℕ} {es : List (IndexedEdge n)}
   have hnd : (idPref ++ [bestIdx]).Nodup :=
     (hpw_full.imp fun {q₁ q₂} h (heq : q₁ = q₂) => pairOrderLT_irrefl _ (heq ▸ h)).nodup
   have hsub_es : ((idPref ++ [bestIdx]).map fun q => es[q.val]).Subperm es := by
-    have hm := List.subperm_map (fun q : Fin es.length => es[q.val])
+    have hm := List.subperm_map (fun q : Fin es.length => es[q])
       (List.subperm_of_subset hnd fun q _ => List.mem_finRange q)
-    have hfull : (List.finRange es.length).map (fun q : Fin es.length => es[q.val]) = es :=
-      List.ext_getElem (by simp) fun i _ _ => by simp
-    rwa [hfull] at hm
+    simpa [List.map_getElem_finRange] using hm
   refine ⟨hsub_es, by simpa only [List.map_map, Function.comp_def] using
     eq_dedupSimpleEdges_of_pairMin hpw_full hmin_full hcov, fun e he hne => ?_⟩
   rw [List.mem_iff_getElem] at he; obtain ⟨i, hi, rfl⟩ := he
@@ -1486,15 +1460,5 @@ theorem dedupSimpleEdgesProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n
           ∀ e ∈ es, e.u ≠ e.v →
             ∃ e' ∈ esOut, s(e'.u, e'.v) = s(e.u, e.v) ∧ e'.weight ≤ e.weight :=
   (dedupSimpleEdgesProg_word_spec h16 hwf hin hin_lt hfit).2
-
-/-- Any minimum spanning forest of the deduplicated simple output from `dedupSimpleEdgesProg` is a
-minimum spanning forest of the input edge list `es`. -/
-theorem isMinSpanningForest_of_dedupSimpleEdgesProg {n : ℕ}
-    {es esOut : List (IndexedEdge n)}
-    (hded : esOut.map IndexedEdge.toWeighted = dedupSimpleEdges (es.map IndexedEdge.toWeighted))
-    {F : List (WeightedEdge n ℕ)}
-    (hF : IsMinSpanningForest (esOut.map IndexedEdge.toWeighted) F) :
-    IsMinSpanningForest (es.map IndexedEdge.toWeighted) F :=
-  isMinSpanningForest_of_dedupSimpleEdges (es.map IndexedEdge.toWeighted) F (hded ▸ hF)
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest

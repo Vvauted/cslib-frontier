@@ -14,11 +14,9 @@ import CslibFrontier.Computability.WordRAM.Realization.LoopFrame
 /-!
 # Tests for WordRAM Edge Deduplication (`GraphOps.Dedup`)
 
-Kernel-checked tests exercising `copyIndexedEdge_spec`, `realizes_copyIndexedEdge`,
-`dedupSimpleEdgesProg_spec`, `realizes_dedupSimpleEdgesProg`, and
-`isMinSpanningForest_of_dedupSimpleEdgesProg` on:
+Kernel-checked tests exercising `dedupSimpleEdgesProg_spec`, `realizes_dedupSimpleEdgesProg`, and
+`isMinSpanningForest_of_dedupSimpleEdges` on:
 * parallel duplicate edges (including tie-breaking and reversed endpoints) mixed with self-loops,
-* standalone `copyIndexedEdge` execution and disjoint-frame preservation,
 * empty and all-self-loop graphs.
 -/
 
@@ -117,6 +115,7 @@ example :
     s'.mem 0 = 77 ∧
     ∃ esOut : List (IndexedEdge 4),
       esOut.length = 3 ∧
+      esOut = [⟨0, 1, 3, 12⟩, ⟨2, 0, 4, 16⟩, ⟨1, 2, 2, 14⟩] ∧
       esOut.Subperm sampleEdges ∧
       HoldsIndexedEdges out.edgeBase esOut s'.mem ∧
       esOut.map IndexedEdge.toWeighted = sampleDedupExpected ∧
@@ -141,9 +140,29 @@ example :
   have hlen3 : esOut.length = 3 := by
     have h1 := congrArg List.length hded'
     simpa [sampleDedupExpected] using h1
+  have hes_eq : esOut = [⟨0, 1, 3, 12⟩, ⟨2, 0, 4, 16⟩, ⟨1, 2, 2, 14⟩] := by
+    rcases esOut with _ | ⟨e0, _ | ⟨e1, _ | ⟨e2, _ | _⟩⟩⟩ <;>
+      simp only [sampleDedupExpected, List.map_nil, List.map_cons, List.cons.injEq,
+        and_false, reduceCtorEq] at hded'
+    rcases hded' with ⟨hw0, hw1, hw2, _⟩
+    have hm0 : e0 ∈ sampleEdges := hsub.subset (by simp)
+    have hm1 : e1 ∈ sampleEdges := hsub.subset (by simp)
+    have hm2 : e2 ∈ sampleEdges := hsub.subset (by simp)
+    simp only [sampleEdges, List.mem_cons, List.not_mem_nil, or_false] at hm0 hm1 hm2
+    have h0 : e0 = ⟨0, 1, 3, 12⟩ := by
+      rcases hm0 with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+        first | rfl | exact absurd hw0 (by decide)
+    have h1 : e1 = ⟨2, 0, 4, 16⟩ := by
+      rcases hm1 with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+        first | rfl | exact absurd hw1 (by decide)
+    have h2 : e2 = ⟨1, 2, 2, 14⟩ := by
+      rcases hm2 with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+        first | rfl | exact absurd hw2 (by decide)
+    subst h0 h1 h2
+    rfl
   have hmsf : IsMinSpanningForest (sampleEdges.map IndexedEdge.toWeighted)
       (kruskalEdges (esOut.map IndexedEdge.toWeighted)) :=
-    isMinSpanningForest_of_dedupSimpleEdgesProg hded (kruskalEdges_isMinSpanningForest _)
+    isMinSpanningForest_of_dedupSimpleEdges _ _ (hded ▸ kruskalEdges_isMinSpanningForest _)
   have hmem0_step : ((Memory.spec 0).clientState ⟨edgeArrayMem 4 sampleEdges (fun _ => 77), 32⟩
       (dedupSimpleEdgesProg ⟨4, sampleEdges.length, 4⟩)).mem 0 =
       edgeArrayMem 4 sampleEdges (fun _ => 77) 0 :=
@@ -152,7 +171,7 @@ example :
       (dedupSimpleEdgesProg ⟨4, sampleEdges.length, 4⟩)).mem 0 = 77 :=
     hmem0_step.trans (edgeArrayMem_lt sampleEdges (fun _ => 77) (by decide))
   refine ⟨by simpa using hcost, hvn, hlen.symm.trans hlen3, heb, hs'fr, hmem0, esOut, hlen3,
-    hsub, hholds, hded', hsimp, hmsf⟩
+    hes_eq, hsub, hholds, hded', hsimp, hmsf⟩
 
 example :
     let s : Memory.State := ⟨edgeArrayMem 4 sampleEdges (fun _ => 77), 32⟩
@@ -175,47 +194,6 @@ example :
   rw [hholds.1, hholds.2.1]
   exact ⟨sampleEdges[j].u.isLt, sampleEdges[j].v.isLt⟩
 
-/-- Two-edge fixture for standalone `copyIndexedEdge` verification. -/
-@[expose] def copyPairEdges : List (IndexedEdge 4) :=
-  [⟨0, 1, 9, 20⟩, ⟨2, 3, 5, 21⟩]
-
-example :
-    let s : Memory.State := ⟨edgeArrayMem 4 copyPairEdges (fun _ => 99), 28⟩
-    let prog := copyIndexedEdge ⟨4, 20, 1, 0⟩
-    let s' := (Memory.spec 0).clientState s prog
-    memoryCost prog s ≤ 8 ∧
-    s'.frontier = 28 ∧
-    s'.mem 20 = 2 ∧
-    s'.mem 21 = 3 ∧
-    s'.mem 22 = 5 ∧
-    s'.mem 23 = 21 ∧
-    s'.mem 0 = 99 ∧
-    Realizes .exact copyIndexedEdge encCopyIndexedEdgeArgs WordEncoding.encode
-      (fun w a s => Fits w 16 ∧ a.srcBase + 4 * a.srcIdx + 4 ≤ s.frontier ∧
-        a.dstBase + 4 * a.dstIdx + 4 ≤ s.frontier)
-      (fun _ _ => 0) := by
-  have hwf : Memory.WellFormed 16 ⟨edgeArrayMem 4 copyPairEdges (fun _ => 99), 28⟩ := by
-    refine wellFormed_edgeArrayMem copyPairEdges (fun _ => 99) (by decide)
-      (fun _ => by decide) ?_
-    intro e he
-    simp only [copyPairEdges, List.mem_cons, List.not_mem_nil, or_false] at he
-    rcases he with rfl | rfl <;> exact ⟨by decide, by decide, by decide, by decide⟩
-  have hft := copyIndexedEdge_spec (w := 16) (srcBase := 4) (dstBase := 20)
-    (srcIdx := 1) (dstIdx := 0) hwf (by decide) (by decide) (Or.inl (by decide))
-  obtain ⟨_, hcost, hmod, hfr, _, hcopy⟩ := framedTriple_iff_realization.mp hft
-  have hsrc := holdsIndexedEdges_edgeArrayMem 4 copyPairEdges (fun _ => 99) 1 (by decide)
-  have hmem0_step : ((Memory.spec 0).clientState ⟨edgeArrayMem 4 copyPairEdges (fun _ => 99), 28⟩
-      (copyIndexedEdge ⟨4, 20, 1, 0⟩)).mem 0 =
-      edgeArrayMem 4 copyPairEdges (fun _ => 99) 0 :=
-    hmod.mem_eq_of_not_mem (by decide) (fun h => by simp only [Set.mem_Ico] at h; omega)
-  have hmem0 : ((Memory.spec 0).clientState ⟨edgeArrayMem 4 copyPairEdges (fun _ => 99), 28⟩
-      (copyIndexedEdge ⟨4, 20, 1, 0⟩)).mem 0 = 99 :=
-    hmem0_step.trans (edgeArrayMem_lt copyPairEdges (fun _ => 99) (by decide))
-  refine ⟨by simpa using hcost, hfr,
-    (hcopy 0 (by decide)).trans hsrc.1, (hcopy 1 (by decide)).trans hsrc.2.1,
-    (hcopy 2 (by decide)).trans hsrc.2.2.1, (hcopy 3 (by decide)).trans hsrc.2.2.2, hmem0,
-    realizes_copyIndexedEdge⟩
-
 example :
     let es : List (IndexedEdge 3) := []
     let s : Memory.State := ⟨fun _ => 0, 4⟩
@@ -231,15 +209,14 @@ example :
   have hwf : Memory.WellFormed 8 ⟨fun _ => 0, 4⟩ := ⟨by decide, fun _ => by dsimp only; decide⟩
   have hft := dedupSimpleEdgesProg_spec (w := 8) (n := 3) (edgeBase := 4) (es := [])
     (by decide) hwf (fun _ hi => absurd hi (Nat.not_lt_zero _)) (by decide) (by decide)
-  obtain ⟨_, _, _, _, _, _, _, esOut, hlen, hsub, hholds, hded, hsimp, _⟩ :=
+  obtain ⟨_, _, _, _, _, _, _, esOut, hlen, hsub, hholds, _, hsimp, _⟩ :=
     framedTriple_iff_realization.mp hft
   have hnil : esOut = [] := List.length_eq_zero_iff.mp (Nat.eq_zero_of_le_zero hsub.length_le)
   subst hnil
-  refine ⟨hlen.symm, [], rfl, hholds, hsimp, ?_⟩
   have hmsf : IsMinSpanningForest (([] : List (IndexedEdge 3)).map IndexedEdge.toWeighted) [] := by
     rw [← kruskalEdges_nil 3]
     exact kruskalEdges_isMinSpanningForest _
-  exact isMinSpanningForest_of_dedupSimpleEdgesProg hded (by simpa [← hded] using hmsf)
+  exact ⟨hlen.symm, [], rfl, hholds, hsimp, hmsf⟩
 
 /-- All-self-loop fixture verifying empty simple output and `IsMinSpanningForest` lifting. -/
 @[expose] def selfLoopEdges : List (IndexedEdge 3) :=
@@ -282,6 +259,7 @@ example :
       IsMinSpanningForest (([] : List (IndexedEdge 3)).map IndexedEdge.toWeighted) [] := by
     rw [← kruskalEdges_nil 3]
     exact kruskalEdges_isMinSpanningForest _
-  exact ⟨hlen.symm, hmem0, [], rfl, hsimp, isMinSpanningForest_of_dedupSimpleEdgesProg hded hmsf⟩
+  exact ⟨hlen.symm, hmem0, [], rfl, hsimp,
+    isMinSpanningForest_of_dedupSimpleEdges _ _ (hded ▸ hmsf)⟩
 
 end CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.GraphOpsDedup
