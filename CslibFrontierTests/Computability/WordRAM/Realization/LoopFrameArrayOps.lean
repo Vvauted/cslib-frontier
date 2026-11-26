@@ -13,11 +13,10 @@ import CslibFrontier.Tactic.Realize
 /-!
 # Client tests for `Realization.LoopFrame` and `Realization.ArrayOps`
 
-Exercises `boundedWhile_potential_spec`, `boundedWhile_spec`, `iterate_potential_spec`,
-`framedTriple_iterate_potential`, `framedTriple_boundedWhile_potential`, concrete evaluations and
-specifications of `fillConstProg`, `copySliceProg`, `prefixSumProg`, `allocZeroBlockProg`,
-`allocZeroBlockDirtyProg`, composite `Realizes .exact` compilation using `realize`, and
-`#print axioms` verification.
+Exercises `boundedWhile_potential_spec`, `boundedWhile_spec`, `iterate_potential_spec`, concrete
+evaluations, `count = 0` boundary cases, and specifications of `fillConstProg`, `Memory.copy`,
+`prefixSumProg`, `Memory.allocBlock`, `Memory.allocBlockDirty`, composite `Realizes .exact`
+compilation using `realize`, and `Classical.choice`-free `#print axioms` verification.
 -/
 
 namespace CslibFrontierTests.Computability.WordRAM.Realization.LoopFrameArrayOps
@@ -51,7 +50,8 @@ example {w base n : ℕ} {s : Memory.State} (hbound : base + n ≤ s.frontier) :
     let s' := (Memory.spec 0).clientState s prog
     (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s prog) ∧
     a' = n ∧
-    Memory.SameFrontierModifies (Set.Ico base (base + n)) s s' ∧
+    Memory.Modifies (Set.Ico base (base + n)) s s' ∧
+    s'.frontier = s.frontier ∧
     (∀ j < n, s'.mem (base + j) = 0) ∧
     memoryCost prog s ≤ nonzeroPot base n 0 s + n := by
   let S : Set ℕ := Set.Ico base (base + n)
@@ -71,7 +71,7 @@ example {w base n : ℕ} {s : Memory.State} (hbound : base + n ≤ s.frontier) :
       let t' := (Memory.spec 0).clientState t (clearNonzeroBody ((base, n), idx))
       memoryCost (clearNonzeroBody ((base, n), idx)) t + nonzeroPot base n a' t' ≤
         nonzeroPot base n idx t + 1 ∧
-      Memory.SameFrontierModifies S t t' ∧
+      Memory.Modifies S t t' ∧
       I a' t' ∧
       rank a' t' < rank idx t := by
     intro idx t ⟨hle, htfr, hclr⟩ hg
@@ -107,7 +107,7 @@ example {w base n : ℕ} {s : Memory.State} (hbound : base + n ≤ s.frontier) :
       · rw [hres, hst, hcost, hsum_split]
         simp only [hv, ↓reduceIte, Nat.zero_add, nonzeroPot]
         omega
-      · rw [hst]; exact Memory.SameFrontierModifies.refl S t
+      · rw [hst]; exact Memory.Modifies.refl S t
       · rw [hres, hst]
         refine ⟨by omega, htfr, fun j hj => ?_⟩
         by_cases hji : j = idx
@@ -148,7 +148,7 @@ example {w base n : ℕ} {s : Memory.State} (hbound : base + n ≤ s.frontier) :
         simp only [hv, ↓reduceIte]
         omega
       · rw [hst]
-        exact (Memory.SameFrontierModifies.write t (base + idx) 0).mono fun x hx => by
+        exact (Memory.Modifies.write t (base + idx) 0).mono fun x hx => by
           have heq : x = base + idx := hx
           subst heq
           exact ⟨Nat.le_add_right _ _, by omega⟩
@@ -160,8 +160,8 @@ example {w base n : ℕ} {s : Memory.State} (hbound : base + n ≤ s.frontier) :
         · rw [Function.update_of_ne (by omega)]
           exact hclr j (by omega)
       · rw [hres]; dsimp only [rank]; omega
-  obtain ⟨_, hv, hstop, ⟨hle_end, _, hclr_end⟩, hmod, hcost⟩ :=
-    boundedWhile_potential_sameFrontier_spec clearNonzeroGuard clearNonzeroBody
+  obtain ⟨_, hv, hstop, ⟨hle_end, hfr_end, hclr_end⟩, hmod, hcost⟩ :=
+    boundedWhile_potential_spec clearNonzeroGuard clearNonzeroBody
       (fun _ _ _ => True) w (base, n) 1 I rank (nonzeroPot base n) S hzero hstep n 0 s
       ⟨Nat.zero_le n, rfl, fun _ h => absurd h (Nat.not_lt_zero _)⟩ (by dsimp only [rank]; omega)
   have hna :
@@ -170,7 +170,7 @@ example {w base n : ℕ} {s : Memory.State} (hbound : base + n ≤ s.frontier) :
     change ¬clearNonzeroGuard (base, n) _ at hstop
     dsimp only [clearNonzeroGuard] at hstop
     omega
-  refine ⟨hv, hna, hmod, fun j hj => hclr_end j (hna.symm ▸ hj), ?_⟩
+  refine ⟨hv, hna, hmod, hfr_end, fun j hj => hclr_end j (hna.symm ▸ hj), ?_⟩
   simpa [rank] using Nat.le_trans (Nat.le_add_right _ _) hcost
 
 /-! ## 2. Growing-frontier `iterate_potential_spec` with `Modifies` framing -/
@@ -249,21 +249,24 @@ example :
     memoryCost (fillConstProg 1 9 4) sampleState ≤ 4 := by
   have h := fillConstProg_spec (w := 8) (base := 1) (val := 9) (count := 4)
     sample_wf (by simp [Fits]) (by simp [Fits]) (by simp [sampleState])
-  obtain ⟨_, hcost, hmod, _, hvals⟩ := sameFrontierTriple_iff_realization.mp h.2
-  rw [← clientState_width 8] at hmod hvals
-  refine ⟨hmod.1, hmod.mem_eq_of_not_mem (by simp), hvals 0 (by omega), hvals 3 (by omega),
-    hmod.mem_eq_of_not_mem (by simp), hcost⟩
+  obtain ⟨_, hcost, hmod, hfr, _, hvals⟩ := framedTriple_iff_realization.mp h
+  rw [← clientState_width 8] at hmod hfr hvals
+  refine ⟨hfr, hmod.mem_eq_of_not_mem (by simp [sampleState]) (by simp), hvals 0 (by omega),
+    hvals 3 (by omega), hmod.mem_eq_of_not_mem (by simp [sampleState]) (by simp), hcost⟩
 
 example :
-    let s' := (Memory.spec 8).clientState sampleState (copySliceProg 2 6 3)
+    let s' := (Memory.spec 8).clientState sampleState (Memory.copy 2 6 3)
     s'.mem 6 = 3 ∧ s'.mem 7 = 5 ∧ s'.mem 8 = 7 ∧ s'.mem 2 = 3 ∧
-    memoryCost (copySliceProg 2 6 3) sampleState ≤ 6 := by
-  have h := copySliceProg_spec (w := 8) (src := 2) (dst := 6) (count := 3)
-    sample_wf (by simp [Fits]) (Or.inl (by omega)) (by simp [sampleState]) (by simp [sampleState])
-  obtain ⟨_, hcost, hmod, _, hvals⟩ := sameFrontierTriple_iff_realization.mp h
-  rw [← clientState_width 8] at hmod hvals
-  refine ⟨hvals 0 (by omega), hvals 1 (by omega), hvals 2 (by omega),
-    hmod.mem_eq_of_not_mem (by simp), hcost⟩
+    memoryCost (Memory.copy 2 6 3) sampleState ≤ 6 := by
+  have h : Memory.FramedTriple 8 sampleState (Memory.copy 2 6 3) 6 (Set.Ico 6 9) fun _ s' =>
+      s' = ⟨ArrayCopy.copyPrefix sampleState.mem 2 6 3, sampleState.frontier⟩ :=
+    Memory.FramedTriple.copy (Or.inl (by omega)) (by simp [sampleState]) (by simp [sampleState])
+      (fun _ _ => by dsimp only [sampleState]; split_ifs <;> simp [Fits]) rfl
+  obtain ⟨_, hcost, hmod, hst⟩ := framedTriple_iff_realization.mp h
+  rw [← clientState_width 8] at hmod hst
+  refine ⟨?_, ?_, ?_, hmod.mem_eq_of_not_mem (by simp [sampleState]) (by simp), hcost⟩ <;>
+    · rw [hst]
+      simp [ArrayCopy.copyPrefix, sampleState]
 
 example :
     let prog := prefixSumProg 2 3
@@ -276,7 +279,7 @@ example :
     simp [Finset.sum_range_succ, sampleState]
   have h := prefixSumProg_spec (w := 8) (base := 2) (count := 3)
     sample_wf (by simp [Fits]) (by simp [sampleState]) (by rw [hsum_eq]; simp [Fits])
-  obtain ⟨_, hcost, _, hres, _, hvals⟩ := sameFrontierTriple_iff_realization.mp h.2
+  obtain ⟨_, hcost, _, hres, _, _, hvals⟩ := framedTriple_iff_realization.mp h
   rw [← clientResult_width 8] at hres
   rw [← clientState_width 8] at hvals
   refine ⟨hres.trans hsum_eq, ?_, ?_, ?_, hcost⟩
@@ -287,12 +290,12 @@ example :
     simpa [Finset.sum_range_succ, sampleState] using h2
 
 example :
-    let prog := allocZeroBlockProg 4
+    let prog := Memory.allocBlock 4
     let b := (Memory.spec 8).clientResult sampleState prog
     let s' := (Memory.spec 8).clientState sampleState prog
     b = ⟨10, 4⟩ ∧ s'.frontier = 14 ∧ s'.mem 10 = 0 ∧ s'.mem 13 = 0 ∧
     (Block.mk 2 5).Disjoint b ∧ memoryCost prog sampleState ≤ 5 := by
-  have h := allocZeroBlockProg_spec (w := 8) (size := 4) sample_wf (by simp [Fits, sampleState])
+  have h := allocBlock_spec (w := 8) (size := 4) sample_wf (by simp [Fits, sampleState])
   obtain ⟨_, hcost, _, hb, _, _, hzeros, hdisj⟩ := framedTriple_iff_realization.mp h
   rw [← clientResult_width 8] at hb hzeros hdisj
   rw [← clientState_width 8] at hzeros
@@ -301,11 +304,11 @@ example :
     hcost⟩
 
 example :
-    let prog := allocZeroBlockDirtyProg 4
+    let prog := Memory.allocBlockDirty 4
     let b := (Memory.spec 8).clientResult sampleState prog
     let s' := (Memory.spec 8).clientState sampleState prog
     b = ⟨10, 4⟩ ∧ s'.frontier = 14 ∧ s'.mem 12 = 0 ∧ memoryCost prog sampleState ≤ 1 := by
-  have h := allocZeroBlockDirtyProg_spec (w := 8) (size := 4)
+  have h := allocBlockDirty_spec (w := 8) (size := 4)
     sample_wf sample_zeroAbove (by simp [Fits, sampleState])
   obtain ⟨_, hcost, _, hb, _, _, _, hzeros, _⟩ := framedTriple_iff_realization.mp h
   rw [← clientResult_width 8] at hb hzeros
@@ -313,11 +316,45 @@ example :
   exact ⟨hb, rfl,
     hzeros 2 (by omega), hcost⟩
 
-/-- Composite client program combining `allocZeroBlockProg`, `copySliceProg`, and `prefixSumProg`,
+-- Boundary checks at `count = 0`.
+example {w base val : ℕ} {s : Memory.State} (hwf : Memory.WellFormed w s)
+    (hval : Fits w val) (hbound : base ≤ s.frontier) :
+    let prog := fillConstProg base val 0
+    memoryCost prog s ≤ 0 ∧
+    (∀ a, ((Memory.spec w).clientState s prog).mem a = s.mem a) := by
+  have h := fillConstProg_spec hwf hval (fits_zero w) hbound
+  refine ⟨by rw [memoryCost_eq_totalCost w]; exact h.cost_le, fun a => ?_⟩
+  exact h.mem_eq_of_frontier_eq h.post.1 a (by simp)
+
+example {w src dst : ℕ} {s : Memory.State} (hsrc : src ≤ s.frontier) (hdst : dst ≤ s.frontier) :
+    let prog := Memory.copy src dst 0
+    memoryCost prog s ≤ 0 ∧
+    (∀ a, ((Memory.spec w).clientState s prog).mem a = s.mem a) := by
+  have hdisj : src + 0 ≤ dst ∨ dst + 0 ≤ src := by
+    rcases le_total src dst with hle | hle
+    · exact Or.inl (by omega)
+    · exact Or.inr (by omega)
+  have h : Memory.FramedTriple w s (Memory.copy src dst 0) 0 (Set.Ico dst (dst + 0)) fun _ s' =>
+      s'.frontier = s.frontier :=
+    Memory.FramedTriple.copy hdisj hsrc hdst (fun _ hi => absurd hi (Nat.not_lt_zero _)) rfl
+  refine ⟨by rw [memoryCost_eq_totalCost w]; exact h.cost_le, fun a => ?_⟩
+  exact h.mem_eq_of_frontier_eq h.post a (by simp)
+
+example {w base : ℕ} {s : Memory.State} (hwf : Memory.WellFormed w s) (hbound : base ≤ s.frontier) :
+    let prog := prefixSumProg base 0
+    (Memory.spec w).clientResult s prog = 0 ∧
+    memoryCost prog s ≤ 0 ∧
+    (∀ a, ((Memory.spec w).clientState s prog).mem a = s.mem a) := by
+  have h := prefixSumProg_spec hwf (fits_zero w) hbound (by simp [fits_zero w])
+  refine ⟨by simpa using h.post.1, by rw [memoryCost_eq_totalCost w]; simpa using h.cost_le,
+    fun a => ?_⟩
+  exact h.mem_eq_of_frontier_eq h.post.2.1 a (by simp)
+
+/-- Composite client program combining `Memory.allocBlock`, `Memory.copy`, and `prefixSumProg`,
 certified uniformly with `Realizes .exact` (`work = 0`). -/
 private def allocCopyPrefixProg (d : ℕ × ℕ) : Memory.Prog ℕ := do
-  let b ← allocZeroBlockProg d.2
-  copySliceProg d.1 b.base d.2
+  let b ← Memory.allocBlock d.2
+  Memory.copy d.1 b.base d.2
   prefixSumProg b.base d.2
 
 theorem realizes_allocCopyPrefixProg :
@@ -328,52 +365,43 @@ theorem realizes_allocCopyPrefixProg :
         Fits w (∑ i ∈ Finset.range d.2, s.mem (d.1 + i)))
       (fun _ _ => 0) := by
   unfold allocCopyPrefixProg
-  realize [realizes_allocZeroBlockProg, realizes_copySliceProg, realizes_prefixSumProg]
-  · have hs1 : (Memory.spec 0).clientState s (allocZeroBlockProg d.2) =
+  realize [realizes_allocBlock, realizes_copy, realizes_prefixSumProg]
+  · have hs1 : (Memory.spec 0).clientState s (Memory.allocBlock d.2) =
         ⟨clear s.mem s.frontier d.2, s.frontier + d.2⟩ := rfl
-    change d.1 + d.2 ≤ ((Memory.spec 0).clientState s (allocZeroBlockProg d.2)).frontier
+    change d.1 + d.2 ≤ ((Memory.spec 0).clientState s (Memory.allocBlock d.2)).frontier
     rw [hs1]; dsimp only; omega
-  · have hs1 : (Memory.spec 0).clientState s (allocZeroBlockProg d.2) =
+  · have hs1 : (Memory.spec 0).clientState s (Memory.allocBlock d.2) =
         ⟨clear s.mem s.frontier d.2, s.frontier + d.2⟩ := rfl
-    have hb1 : (Memory.spec 0).clientResult s (allocZeroBlockProg d.2) = ⟨s.frontier, d.2⟩ := rfl
-    change ((Memory.spec 0).clientResult s (allocZeroBlockProg d.2)).base + d.2 ≤
-        ((Memory.spec 0).clientState s (allocZeroBlockProg d.2)).frontier
+    have hb1 : (Memory.spec 0).clientResult s (Memory.allocBlock d.2) = ⟨s.frontier, d.2⟩ := rfl
+    change ((Memory.spec 0).clientResult s (Memory.allocBlock d.2)).base + d.2 ≤
+        ((Memory.spec 0).clientState s (Memory.allocBlock d.2)).frontier
     rw [hb1, hs1]
-  · have hs1 : (Memory.spec 0).clientState s (allocZeroBlockProg d.2) =
+  · have hs1 : (Memory.spec 0).clientState s (Memory.allocBlock d.2) =
         ⟨clear s.mem s.frontier d.2, s.frontier + d.2⟩ := rfl
-    have hb1 : (Memory.spec 0).clientResult s (allocZeroBlockProg d.2) = ⟨s.frontier, d.2⟩ := rfl
-    have ha := allocZeroBlockProg_spec (w := w) (size := d.2) hmem h.2.1
-    obtain ⟨_, _, _, _, _, hwf1, _, _⟩ := framedTriple_iff_realization.mp ha
-    have hc := copySliceProg_spec (w := w) (src := d.1) (dst := s.frontier) (count := d.2)
-      hwf1 (hwords 1) (Or.inl h.1) (by rw [hs1]; dsimp only; omega) (by rw [hs1])
-    obtain ⟨_, _, hmod2, _, _⟩ := sameFrontierTriple_iff_realization.mp hc
-    change ((Memory.spec 0).clientResult s (allocZeroBlockProg d.2)).base + d.2 ≤ _
-    rw [hb1]
-    dsimp only
-    rw [← show ((Memory.spec 0).clientState s (allocZeroBlockProg d.2)).frontier =
-        s.frontier + d.2 from by rw [hs1]]
-    exact hmod2.1.ge
-  · have hs1 : (Memory.spec 0).clientState s (allocZeroBlockProg d.2) =
+    have hb1 : (Memory.spec 0).clientResult s (Memory.allocBlock d.2) = ⟨s.frontier, d.2⟩ := rfl
+    change ((Memory.spec 0).clientResult s (Memory.allocBlock d.2)).base + d.2 ≤
+        ((Memory.spec 0).clientState ((Memory.spec 0).clientState s (Memory.allocBlock d.2))
+          (Memory.copy d.1 ((Memory.spec 0).clientResult s (Memory.allocBlock d.2)).base
+            d.2)).frontier
+    rw [hb1, hs1, Memory.clientState_copy (h := Or.inl h.1)]
+  · have hs1 : (Memory.spec 0).clientState s (Memory.allocBlock d.2) =
         ⟨clear s.mem s.frontier d.2, s.frontier + d.2⟩ := rfl
-    have hb1 : (Memory.spec 0).clientResult s (allocZeroBlockProg d.2) = ⟨s.frontier, d.2⟩ := rfl
-    have ha := allocZeroBlockProg_spec (w := w) (size := d.2) hmem h.2.1
-    obtain ⟨_, _, hmod1, _, _, hwf1, _, _⟩ := framedTriple_iff_realization.mp ha
-    have hc := copySliceProg_spec (w := w) (src := d.1) (dst := s.frontier) (count := d.2)
-      hwf1 (hwords 1) (Or.inl h.1) (by rw [hs1]; dsimp only; omega) (by rw [hs1])
-    obtain ⟨_, _, _, _, hvals⟩ := sameFrontierTriple_iff_realization.mp hc
+    have hb1 : (Memory.spec 0).clientResult s (Memory.allocBlock d.2) = ⟨s.frontier, d.2⟩ := rfl
+    have ha := allocBlock_spec (w := w) (size := d.2) hmem h.2.1
+    obtain ⟨_, _, hmod1, _, _, _, _, _⟩ := framedTriple_iff_realization.mp ha
     have hsum_eq :
         (∑ i ∈ Finset.range d.2,
           ((Memory.spec 0).clientState
-            ((Memory.spec 0).clientState s (allocZeroBlockProg d.2))
-            (copySliceProg d.1 ((Memory.spec 0).clientResult s (allocZeroBlockProg d.2)).base
+            ((Memory.spec 0).clientState s (Memory.allocBlock d.2))
+            (Memory.copy d.1 ((Memory.spec 0).clientResult s (Memory.allocBlock d.2)).base
               d.2)).mem
-            (((Memory.spec 0).clientResult s (allocZeroBlockProg d.2)).base + i)) =
+            (((Memory.spec 0).clientResult s (Memory.allocBlock d.2)).base + i)) =
         ∑ i ∈ Finset.range d.2, s.mem (d.1 + i) := by
       refine Finset.sum_congr rfl fun i hi => ?_
       have hi_lt : i < d.2 := Finset.mem_range.mp hi
-      rw [hb1]
+      rw [hb1, hs1, Memory.clientState_copy (h := Or.inl h.1)]
       dsimp only
-      rw [hvals i hi_lt]
+      rw [ArrayCopy.copyPrefix_read hi_lt]
       exact hmod1.mem_eq_of_not_mem (by omega) (by simp)
     rw [hsum_eq]
     exact h.2.2
@@ -426,30 +454,5 @@ example {w base n : ℕ} {s : Memory.State} (hbound : base + n ≤ s.frontier) :
 [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms Cslib.WordRAM.Realization.boundedWhile_spec
-
-/-- info: 'Cslib.WordRAM.Realization.realizes_fillConstProg' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.WordRAM.Realization.realizes_fillConstProg
-
-/-- info: 'Cslib.WordRAM.Realization.realizes_copySliceProg' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.WordRAM.Realization.realizes_copySliceProg
-
-/-- info: 'Cslib.WordRAM.Realization.realizes_prefixSumProg' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.WordRAM.Realization.realizes_prefixSumProg
-
-/-- info: 'Cslib.WordRAM.Realization.realizes_allocZeroBlockProg' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.WordRAM.Realization.realizes_allocZeroBlockProg
-
-/-- info: 'Cslib.WordRAM.Realization.realizes_allocZeroBlockDirtyProg' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.WordRAM.Realization.realizes_allocZeroBlockDirtyProg
 
 end CslibFrontierTests.Computability.WordRAM.Realization.LoopFrameArrayOps

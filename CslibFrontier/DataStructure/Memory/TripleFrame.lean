@@ -8,6 +8,7 @@ module
 -- upstream: candidate
 
 public import CslibFrontier.DataStructure.Memory.Copy
+public import CslibFrontier.DataStructure.Memory.Frame
 public import CslibFrontier.DataStructure.Memory.Triple
 public import Mathlib.Order.Interval.Set.Basic
 import CslibFrontier.Tactic.WramOmega
@@ -15,37 +16,33 @@ import CslibFrontier.Tactic.WramOmega
 /-!
 # Framed correctness-and-cost triples and block framing over memory
 
-This module extends `Cslib.DataStructure.Memory.Triple` with the missing primitive step rules
-(`Triple.read`, `Triple.write`, `Triple.alloc_bind`, `Triple.allocBlock_bind`, `Triple.get`,
-`Triple.set`, `Triple.ite`, `Triple.dite`, `Triple.map`, `Triple.copy`, `Triple.wellFormed`, and
-`ZeroAbove` preservation), introduces explicit modification-set framing predicates `Modifies` and
-`SameFrontierModifies`, packages framed triples as `FramedTriple` and `SameFrontierTriple` with
-generic heap-frame preservation (`FramedTriple.frame`, `FramedTriple.frame_mem`), and provides
-`Cslib.WordRAM.Block` disjointness, strided slot framing (`Block.slot`), and consecutive
+This module extends `Cslib.DataStructure.Memory.Triple` with non-overlapping block copy
+(`Triple.copy`), introduces the explicit modification-set framing predicate `Memory.Modifies`,
+packages framed triples as `FramedTriple` with generic heap-frame preservation
+(`FramedTriple.frame`, `FramedTriple.frame_mem`, `FramedTriple.mem_eq_of_frontier_eq`), and
+provides `Cslib.WordRAM.Block` disjointness, strided slot framing (`Block.slot`), and consecutive
 list-write initialization (`Block.writeList`).
 
 ## Main definitions
 
 * `Cslib.DataStructure.Memory.Modifies`: frontier-monotone frame protecting allocated cells outside
   a set `S`.
-* `Cslib.DataStructure.Memory.SameFrontierModifies`: fixed-frontier frame protecting all cells
-  outside `S`.
-* `Cslib.DataStructure.Memory.FramedTriple`: `Triple` bundled with `Modifies S s s'`.
-* `Cslib.DataStructure.Memory.SameFrontierTriple`: `Triple` bundled with
-  `SameFrontierModifies S s s'`.
+* `Cslib.DataStructure.Memory.FramedTriple`: `Triple` bundled with `Memory.Modifies S s s'`.
 * `Cslib.WordRAM.Block.Disjoint`: address-disjointness of two memory blocks.
 * `Cslib.WordRAM.Block.slot`: strided record-array slice at `base + stride * idx`.
 * `Cslib.WordRAM.Block.writeList`: write a list of words consecutively starting at `base`.
 
 ## Main results
 
-* `Cslib.DataStructure.Memory.FramedTriple.frame` and
-  `Cslib.DataStructure.Memory.FramedTriple.frame_mem`: automatic preservation of heap predicates
-  depending only on allocated cells disjoint from the modified region `S`.
+* `Cslib.DataStructure.Memory.Triple.copy`: triple specification for `Memory.copy`.
+* `Cslib.DataStructure.Memory.FramedTriple.frame`,
+  `Cslib.DataStructure.Memory.FramedTriple.frame_mem`, and
+  `Cslib.DataStructure.Memory.FramedTriple.mem_eq_of_frontier_eq`: automatic preservation of heap
+  predicates depending only on allocated cells disjoint from `S`, and full-memory frame extraction
+  when the frontier is unchanged.
 * `Cslib.WordRAM.Block.slot_disjoint_of_ne`: distinct indices of a strided array are disjoint.
-* `Cslib.WordRAM.Block.sameFrontierTriple_writeList` and
-  `Cslib.WordRAM.Block.framedTriple_writeList`: admissibility, cost, frame, and readback for
-  `Block.writeList`.
+* `Cslib.WordRAM.Block.framedTriple_writeList`: admissibility, cost, frame, readback, and
+  well-formedness preservation for `Block.writeList`.
 -/
 
 @[expose] public section
@@ -56,139 +53,10 @@ open Cslib.WordRAM
 
 variable {w : ℕ} {α β : Type}
 
-/-! ## Additional `Triple` and `ZeroAbove` rules -/
-
-namespace Triple
-
-variable {s : State} {c : ℕ}
-
-/-- Read an allocated cell as a standalone program. -/
-theorem read {Q : ℕ → State → Prop} {a : ℕ} (ha : a < s.frontier) (h : Q (s.mem a) s) :
-    Triple w s (Memory.read a) 1 Q :=
-  read_bind ha (pure h)
-
-/-- Write a word to an allocated cell as a standalone program. -/
-theorem write {Q : Unit → State → Prop} {a v : ℕ} (ha : a < s.frontier) (hv : Fits w v)
-    (h : Q () ⟨Function.update s.mem a v, s.frontier⟩) :
-    Triple w s (Memory.write a v) 1 Q :=
-  write_bind ha hv (pure h)
-
-/-- Allocate `k` zeroed cells at the frontier, then continue with the base address. -/
-theorem alloc_bind {Q : α → State → Prop} {k : ℕ} {next : ℕ → Prog α}
-    (hk : Fits w (s.frontier + k))
-    (h : Triple w ⟨clear s.mem s.frontier k, s.frontier + k⟩ (next s.frontier) c Q) :
-    Triple w s (Memory.alloc k >>= next) (c + (k + 1)) Q := by
-  obtain ⟨hv, hc, hq⟩ := triple_iff.mp h
-  refine triple_iff.mpr ⟨⟨hk, hv⟩, ?_, hq⟩
-  change charge s (.alloc k) + (spec w).totalCost charge
-    ⟨clear s.mem s.frontier k, s.frontier + k⟩
-    ((spec w).clientHistory ⟨clear s.mem s.frontier k, s.frontier + k⟩ (next s.frontier)) ≤
-    c + (k + 1)
-  rw [charge_alloc]
-  omega
-
-/-- Allocate `k` zeroed cells as a standalone program. -/
-theorem alloc {Q : ℕ → State → Prop} {k : ℕ} (hk : Fits w (s.frontier + k))
-    (h : Q s.frontier ⟨clear s.mem s.frontier k, s.frontier + k⟩) :
-    Triple w s (Memory.alloc k) (k + 1) Q :=
-  mono (alloc_bind (c := 0) hk (pure h)) (Nat.zero_add _).le fun _ _ hq => hq
-
-/-- Allocate `k` dirty cells at the frontier, then continue with the base address. -/
-theorem allocDirty_bind {Q : α → State → Prop} {k : ℕ} {next : ℕ → Prog α}
-    (hk : Fits w (s.frontier + k))
-    (h : Triple w ⟨s.mem, s.frontier + k⟩ (next s.frontier) c Q) :
-    Triple w s (Memory.allocDirty k >>= next) (c + 1) Q := by
-  obtain ⟨hv, hc, hq⟩ := triple_iff.mp h
-  refine triple_iff.mpr ⟨⟨hk, hv⟩, ?_, hq⟩
-  change charge s (.allocDirty k) + (spec w).totalCost charge ⟨s.mem, s.frontier + k⟩
-    ((spec w).clientHistory ⟨s.mem, s.frontier + k⟩ (next s.frontier)) ≤ c + 1
-  rw [charge_allocDirty]
-  omega
-
-/-- Allocate `k` dirty cells as a standalone program. -/
-theorem allocDirty {Q : ℕ → State → Prop} {k : ℕ} (hk : Fits w (s.frontier + k))
-    (h : Q s.frontier ⟨s.mem, s.frontier + k⟩) :
-    Triple w s (Memory.allocDirty k) 1 Q :=
-  allocDirty_bind hk (pure h)
-
-/-- Allocate a zeroed block of `k` cells, then continue with the block handle. -/
-theorem allocBlock_bind {Q : α → State → Prop} {k : ℕ} {next : Block → Prog α}
-    (hk : Fits w (s.frontier + k))
-    (h : Triple w ⟨clear s.mem s.frontier k, s.frontier + k⟩ (next ⟨s.frontier, k⟩) c Q) :
-    Triple w s (Memory.allocBlock k >>= next) (c + (k + 1)) Q := by
-  obtain ⟨hv, hc, hq⟩ := triple_iff.mp h
-  refine triple_iff.mpr ⟨⟨hk, hv⟩, ?_, hq⟩
-  change charge s (.alloc k) + (spec w).totalCost charge
-    ⟨clear s.mem s.frontier k, s.frontier + k⟩
-    ((spec w).clientHistory ⟨clear s.mem s.frontier k, s.frontier + k⟩
-      (next ⟨s.frontier, k⟩)) ≤ c + (k + 1)
-  rw [charge_alloc]
-  omega
-
-/-- Allocate a zeroed block of `k` cells as a standalone program. -/
-theorem allocBlock {Q : Block → State → Prop} {k : ℕ} (hk : Fits w (s.frontier + k))
-    (h : Q ⟨s.frontier, k⟩ ⟨clear s.mem s.frontier k, s.frontier + k⟩) :
-    Triple w s (Memory.allocBlock k) (k + 1) Q :=
-  mono (allocBlock_bind (c := 0) hk (pure h)) (Nat.zero_add _).le fun _ _ hq => hq
-
-/-- Allocate a dirty block of `k` cells as a standalone program. -/
-theorem allocBlockDirty {Q : Block → State → Prop} {k : ℕ} (hk : Fits w (s.frontier + k))
-    (h : Q ⟨s.frontier, k⟩ ⟨s.mem, s.frontier + k⟩) :
-    Triple w s (Memory.allocBlockDirty k) 1 Q :=
-  allocBlockDirty_bind hk (pure h)
-
-/-- Read entry `i` of an allocated block, then continue with its contents. -/
-theorem get_bind {Q : α → State → Prop} {b : Block} {i : ℕ} {k : ℕ → Prog α}
-    (hb : b.Allocated s) (hi : i < b.length)
-    (h : Triple w s (k (s.mem (b.base + i))) c Q) :
-    Triple w s (b.get i >>= k) (c + 1) Q :=
-  read_bind (hb.lt_frontier hi) h
-
-/-- Read entry `i` of an allocated block as a standalone program. -/
-theorem get {Q : ℕ → State → Prop} {b : Block} {i : ℕ} (hb : b.Allocated s) (hi : i < b.length)
-    (h : Q (s.mem (b.base + i)) s) : Triple w s (b.get i) 1 Q :=
-  get_bind hb hi (pure h)
-
-/-- Write `v` to entry `i` of an allocated block, then continue. -/
-theorem set_bind {Q : α → State → Prop} {b : Block} {i v : ℕ} {k : Unit → Prog α}
-    (hb : b.Allocated s) (hi : i < b.length) (hv : Fits w v)
-    (h : Triple w ⟨Function.update s.mem (b.base + i) v, s.frontier⟩ (k ()) c Q) :
-    Triple w s (b.set i v >>= k) (c + 1) Q :=
-  write_bind (hb.lt_frontier hi) hv h
-
-/-- Write `v` to entry `i` of an allocated block as a standalone program. -/
-theorem set {Q : Unit → State → Prop} {b : Block} {i v : ℕ} (hb : b.Allocated s)
-    (hi : i < b.length) (hv : Fits w v)
-    (h : Q () ⟨Function.update s.mem (b.base + i) v, s.frontier⟩) :
-    Triple w s (b.set i v) 1 Q :=
-  set_bind hb hi hv (pure h)
-
-/-- Branching rule for `if cond then p₁ else p₂`. -/
-theorem ite {Q : α → State → Prop} {cond : Prop} [Decidable cond] {p₁ p₂ : Prog α}
-    (h₁ : cond → Triple w s p₁ c Q) (h₂ : ¬cond → Triple w s p₂ c Q) :
-    Triple w s (if cond then p₁ else p₂) c Q := by
-  split_ifs with h
-  · exact h₁ h
-  · exact h₂ h
-
-/-- Dependent branching rule for `if h : cond then p₁ h else p₂ h`. -/
-theorem dite {Q : α → State → Prop} {cond : Prop} [Decidable cond]
-    {p₁ : cond → Prog α} {p₂ : ¬cond → Prog α}
-    (h₁ : ∀ h : cond, Triple w s (p₁ h) c Q) (h₂ : ∀ h : ¬cond, Triple w s (p₂ h) c Q) :
-    Triple w s (if h : cond then p₁ h else p₂ h) c Q := by
-  split_ifs with h
-  · exact h₁ h
-  · exact h₂ h
-
-/-- Map the result of a memory program without additional cost. -/
-theorem map (f : α → β) {p : Prog α} {Q : β → State → Prop}
-    (h : Triple w s p c fun a s' => Q (f a) s') : Triple w s (f <$> p) c Q := by
-  rw [← bind_pure_comp]
-  exact (bind (c₁ := c) (c₂ := 0) (h.mono le_rfl fun _ _ ha => pure ha)).mono
-    (Nat.add_zero c).le fun _ _ hq => hq
+/-! ## Non-overlapping copy triple -/
 
 /-- Non-overlapping block copy triple: copies `n` words at cost `2 * n`. -/
-theorem copy {src dst n : ℕ} (hdisj : src + n ≤ dst ∨ dst + n ≤ src)
+theorem Triple.copy {s : State} {src dst n : ℕ} (hdisj : src + n ≤ dst ∨ dst + n ≤ src)
     (hsrc : src + n ≤ s.frontier) (hdst : dst + n ≤ s.frontier)
     (hfit : ∀ i < n, Fits w (s.mem (src + i)))
     {Q : Unit → State → Prop}
@@ -200,123 +68,46 @@ theorem copy {src dst n : ℕ} (hdisj : src + n ≤ dst ∨ dst + n ≤ src)
     clientState_copy src dst n s hdisj]
   exact hQ
 
-/-- Any admissible `Triple` run preserves `WellFormed w`. -/
-theorem wellFormed {Q : α → State → Prop} {p : Prog α} (hwf : WellFormed w s)
-    (h : Triple w s p c Q) : Triple w s p c fun a s' => Q a s' ∧ WellFormed w s' := by
-  obtain ⟨hv, hc, hq⟩ := triple_iff.mp h
-  refine triple_iff.mpr ⟨hv, hc, hq, ?_⟩
-  have hrun := hwf.run hv
-  rwa [StateTransitionSpec.run_runClient] at hrun
-
-end Triple
-
-/-! ## Additional `ZeroAbove` preservation lemmas -/
-
-namespace ZeroAbove
-
-/-- Writing below the frontier preserves `ZeroAbove`. -/
-theorem write {s : State} (h : ZeroAbove s) {a v : ℕ} (ha : a < s.frontier) :
-    ZeroAbove ⟨Function.update s.mem a v, s.frontier⟩ := by
-  intro b hb
-  change Function.update s.mem a v b = 0
-  rw [Function.update_of_ne (by simp only at hb; omega)]
-  exact h b hb
-
-/-- A zeroed allocation preserves `ZeroAbove`. -/
-theorem alloc {s : State} (h : ZeroAbove s) (k : ℕ) :
-    ZeroAbove ⟨clear s.mem s.frontier k, s.frontier + k⟩ := by
-  intro a ha
-  change clear s.mem s.frontier k a = 0
-  rw [clear_of_not_owns (by simp only [Block.Owns] at *; omega)]
-  exact h a (by simp only at ha; omega)
-
-/-- A zeroed block allocation preserves `ZeroAbove`. -/
-theorem allocBlock {s : State} (h : ZeroAbove s) (w k : ℕ) :
-    ZeroAbove ((spec w).clientState s (Memory.allocBlock k)) :=
-  h.alloc k
-
-/-- A dirty block allocation preserves `ZeroAbove`. -/
-theorem allocBlockDirty {s : State} (h : ZeroAbove s) (w k : ℕ) :
-    ZeroAbove ((spec w).clientState s (Memory.allocBlockDirty k)) :=
-  h.allocDirty k
-
-/-- Every admissible single operation preserves `ZeroAbove`. -/
-theorem step {s : State} (h : ZeroAbove s) {o : Op} (hv : valid w s o) :
-    ZeroAbove (Memory.step s o).1 := by
-  cases o with
-  | read => exact h
-  | write a v => exact h.write hv.1
-  | alloc k => exact h.alloc k
-  | allocDirty k => exact h.allocDirty k
-
-/-- Every admissible history preserves `ZeroAbove`. -/
-theorem run {s : State} (h : ZeroAbove s) {os : List Op} (hv : (spec w).ValidHistory s os) :
-    ZeroAbove ((spec w).run s os).1 := by
-  induction os generalizing s with
-  | nil => exact h
-  | cons o os ih => exact ih (h.step hv.1) hv.2
-
-end ZeroAbove
-
-/-- Any `Triple` run preserves `ZeroAbove`. -/
-theorem Triple.zeroAbove {s : State} {p : Prog α} {c : ℕ} {Q : α → State → Prop}
-    (hz : ZeroAbove s) (h : Triple w s p c Q) :
-    Triple w s p c fun a s' => Q a s' ∧ ZeroAbove s' := by
-  obtain ⟨hv, hc, hq⟩ := triple_iff.mp h
-  refine triple_iff.mpr ⟨hv, hc, hq, ?_⟩
-  have hrun := hz.run hv
-  rwa [StateTransitionSpec.run_runClient] at hrun
-
-/-! ## Modification-set framing predicates -/
+/-! ## Modification-set framing predicate -/
 
 /-- Transition from `s` to `s'` preserves the frontier's monotonicity and leaves all cells below
 `s.frontier` outside `S` unchanged. -/
-def Modifies (S : Set ℕ) (s s' : State) : Prop :=
+protected def Modifies (S : Set ℕ) (s s' : State) : Prop :=
   s.frontier ≤ s'.frontier ∧ ∀ a < s.frontier, a ∉ S → s'.mem a = s.mem a
-
-/-- Transition from `s` to `s'` keeps the frontier fixed and leaves all cells outside `S`
-unchanged. -/
-def SameFrontierModifies (S : Set ℕ) (s s' : State) : Prop :=
-  s'.frontier = s.frontier ∧ ∀ a, a ∉ S → s'.mem a = s.mem a
 
 namespace Modifies
 
-/-- Reflexivity of `Modifies`. -/
-theorem refl (S : Set ℕ) (s : State) : Modifies S s s :=
+/-- Reflexivity of `Memory.Modifies`. -/
+theorem refl (S : Set ℕ) (s : State) : Memory.Modifies S s s :=
   ⟨le_rfl, fun _ _ _ => rfl⟩
 
-/-- Transitivity of `Modifies` over a fixed set `S`. -/
-theorem trans {S : Set ℕ} {s₁ s₂ s₃ : State} (h₁ : Modifies S s₁ s₂) (h₂ : Modifies S s₂ s₃) :
-    Modifies S s₁ s₃ :=
+/-- Transitivity of `Memory.Modifies` over a fixed set `S`. -/
+theorem trans {S : Set ℕ} {s₁ s₂ s₃ : State} (h₁ : Memory.Modifies S s₁ s₂)
+    (h₂ : Memory.Modifies S s₂ s₃) : Memory.Modifies S s₁ s₃ :=
   ⟨h₁.1.trans h₂.1, fun a ha haS =>
     (h₂.2 a (lt_of_lt_of_le ha h₁.1) haS).trans (h₁.2 a ha haS)⟩
 
-/-- Sequential composition of `Modifies` across different sets takes their union. -/
+/-- Sequential composition of `Memory.Modifies` across different sets takes their union. -/
 theorem union {S₁ S₂ : Set ℕ} {s₁ s₂ s₃ : State}
-    (h₁ : Modifies S₁ s₁ s₂) (h₂ : Modifies S₂ s₂ s₃) :
-    Modifies (S₁ ∪ S₂) s₁ s₃ :=
+    (h₁ : Memory.Modifies S₁ s₁ s₂) (h₂ : Memory.Modifies S₂ s₂ s₃) :
+    Memory.Modifies (S₁ ∪ S₂) s₁ s₃ :=
   ⟨h₁.1.trans h₂.1, fun a ha haU =>
     (h₂.2 a (lt_of_lt_of_le ha h₁.1) fun h2 => haU (Or.inr h2)).trans
       (h₁.2 a ha fun h1 => haU (Or.inl h1))⟩
 
-/-- Enlarging the permitted modification set weakens `Modifies`. -/
-theorem mono {S₁ S₂ : Set ℕ} {s s' : State} (hsub : S₁ ⊆ S₂) (h : Modifies S₁ s s') :
-    Modifies S₂ s s' :=
+/-- Enlarging the permitted modification set weakens `Memory.Modifies`. -/
+theorem mono {S₁ S₂ : Set ℕ} {s s' : State} (hsub : S₁ ⊆ S₂) (h : Memory.Modifies S₁ s s') :
+    Memory.Modifies S₂ s s' :=
   ⟨h.1, fun a ha haS₂ => h.2 a ha fun haS₁ => haS₂ (hsub haS₁)⟩
-
-/-- Fixed-frontier modification implies general `Modifies`. -/
-theorem of_sameFrontier {S : Set ℕ} {s s' : State} (h : SameFrontierModifies S s s') :
-    Modifies S s s' :=
-  ⟨h.1.ge, fun a _ haS => h.2 a haS⟩
 
 /-- Writing cell `a` modifies at most `{a}`. -/
 theorem write (s : State) (a v : ℕ) :
-    Modifies {a} s ⟨Function.update s.mem a v, s.frontier⟩ :=
+    Memory.Modifies {a} s ⟨Function.update s.mem a v, s.frontier⟩ :=
   ⟨le_rfl, fun b _ hb => Function.update_of_ne (by simpa using hb) v s.mem⟩
 
 /-- Writing entry `i < b.length` of `b` modifies at most `Set.Ico b.base (b.base + b.length)`. -/
 theorem set (s : State) (b : Block) {i : ℕ} (hi : i < b.length) (v : ℕ) :
-    Modifies (Set.Ico b.base (b.base + b.length)) s
+    Memory.Modifies (Set.Ico b.base (b.base + b.length)) s
       ⟨Function.update s.mem (b.base + i) v, s.frontier⟩ :=
   (write s (b.base + i) v).mono fun _ ha => by
     have he : _ = b.base + i := ha
@@ -325,99 +116,45 @@ theorem set (s : State) (b : Block) {i : ℕ} (hi : i < b.length) (v : ℕ) :
 
 /-- Zeroed allocation modifies no cell below the old frontier. -/
 theorem alloc (s : State) (k : ℕ) :
-    Modifies ∅ s ⟨clear s.mem s.frontier k, s.frontier + k⟩ :=
+    Memory.Modifies ∅ s ⟨clear s.mem s.frontier k, s.frontier + k⟩ :=
   ⟨Nat.le_add_right _ _, fun _ ha _ => clear_of_not_owns (by wram_omega)⟩
 
 /-- Dirty allocation modifies no cell below the old frontier. -/
-theorem allocDirty (s : State) (k : ℕ) : Modifies ∅ s ⟨s.mem, s.frontier + k⟩ :=
+theorem allocDirty (s : State) (k : ℕ) : Memory.Modifies ∅ s ⟨s.mem, s.frontier + k⟩ :=
   ⟨Nat.le_add_right _ _, fun _ _ _ => rfl⟩
 
 /-- An allocated cell outside `S` retains its value. -/
-theorem mem_eq_of_not_mem {S : Set ℕ} {s s' : State} (h : Modifies S s s') {a : ℕ}
+theorem mem_eq_of_not_mem {S : Set ℕ} {s s' : State} (h : Memory.Modifies S s s') {a : ℕ}
     (ha : a < s.frontier) (haS : a ∉ S) : s'.mem a = s.mem a :=
   h.2 a ha haS
 
 /-- Every allocated cell in a region `D` disjoint from `S` retains its value. -/
-theorem mem_eq_of_disjoint {S D : Set ℕ} {s s' : State} (h : Modifies S s s')
+theorem mem_eq_of_disjoint {S D : Set ℕ} {s s' : State} (h : Memory.Modifies S s s')
     (hdisj : Disjoint S D) {a : ℕ} (ha : a < s.frontier) (haD : a ∈ D) :
     s'.mem a = s.mem a :=
   h.2 a ha (Set.disjoint_right.mp hdisj haD)
 
 end Modifies
 
-namespace SameFrontierModifies
-
-/-- Reflexivity of `SameFrontierModifies`. -/
-theorem refl (S : Set ℕ) (s : State) : SameFrontierModifies S s s :=
-  ⟨rfl, fun _ _ => rfl⟩
-
-/-- Transitivity of `SameFrontierModifies` over a fixed set `S`. -/
-theorem trans {S : Set ℕ} {s₁ s₂ s₃ : State}
-    (h₁ : SameFrontierModifies S s₁ s₂) (h₂ : SameFrontierModifies S s₂ s₃) :
-    SameFrontierModifies S s₁ s₃ :=
-  ⟨h₂.1.trans h₁.1, fun a ha => (h₂.2 a ha).trans (h₁.2 a ha)⟩
-
-/-- Sequential composition of `SameFrontierModifies` across different sets takes their union. -/
-theorem union {S₁ S₂ : Set ℕ} {s₁ s₂ s₃ : State}
-    (h₁ : SameFrontierModifies S₁ s₁ s₂) (h₂ : SameFrontierModifies S₂ s₂ s₃) :
-    SameFrontierModifies (S₁ ∪ S₂) s₁ s₃ :=
-  ⟨h₂.1.trans h₁.1, fun a haU =>
-    (h₂.2 a fun h2 => haU (Or.inr h2)).trans (h₁.2 a fun h1 => haU (Or.inl h1))⟩
-
-/-- Enlarging the permitted modification set weakens `SameFrontierModifies`. -/
-theorem mono {S₁ S₂ : Set ℕ} {s s' : State} (hsub : S₁ ⊆ S₂)
-    (h : SameFrontierModifies S₁ s s') : SameFrontierModifies S₂ s s' :=
-  ⟨h.1, fun a ha => h.2 a fun ha₁ => ha (hsub ha₁)⟩
-
-/-- Writing cell `a` preserves the frontier and modifies at most `{a}`. -/
-theorem write (s : State) (a v : ℕ) :
-    SameFrontierModifies {a} s ⟨Function.update s.mem a v, s.frontier⟩ :=
-  ⟨rfl, fun b hb => Function.update_of_ne (by simpa using hb) v s.mem⟩
-
-/-- Writing entry `i < b.length` of `b` preserves the frontier and modifies at most `b`. -/
-theorem set (s : State) (b : Block) {i : ℕ} (hi : i < b.length) (v : ℕ) :
-    SameFrontierModifies (Set.Ico b.base (b.base + b.length)) s
-      ⟨Function.update s.mem (b.base + i) v, s.frontier⟩ :=
-  (write s (b.base + i) v).mono fun _ ha => by
-    have he : _ = b.base + i := ha
-    subst he
-    exact ⟨Nat.le_add_right _ _, by omega⟩
-
-/-- Any cell outside `S` retains its value. -/
-theorem mem_eq_of_not_mem {S : Set ℕ} {s s' : State} (h : SameFrontierModifies S s s')
-    {a : ℕ} (haS : a ∉ S) : s'.mem a = s.mem a :=
-  h.2 a haS
-
-/-- Every cell in a set `D` disjoint from `S` retains its value. -/
-theorem mem_eq_of_disjoint {S D : Set ℕ} {s s' : State} (h : SameFrontierModifies S s s')
-    (hdisj : Disjoint S D) {a : ℕ} (haD : a ∈ D) : s'.mem a = s.mem a :=
-  h.2 a (Set.disjoint_right.mp hdisj haD)
-
-end SameFrontierModifies
-
 /-! ## Framed triples -/
 
-/-- A `Triple` bundled with `Modifies S s s'` for automatic frame preservation. -/
+/-- A `Triple` bundled with `Memory.Modifies S s s'` for automatic frame preservation. -/
 abbrev FramedTriple (w : ℕ) (s : State) (p : Prog α) (c : ℕ) (S : Set ℕ)
     (Q : α → State → Prop) : Prop :=
-  Triple w s p c fun a s' => Modifies S s s' ∧ Q a s'
+  Triple w s p c fun a s' => Memory.Modifies S s s' ∧ Q a s'
 
 /-- Unfold `FramedTriple` along the unique run of `p`. -/
 theorem framedTriple_iff {s : State} {p : Prog α} {c : ℕ} {S : Set ℕ} {Q : α → State → Prop} :
     FramedTriple w s p c S Q ↔
       (spec w).ValidHistory s ((spec w).clientHistory s p) ∧
       (spec w).totalCost charge s ((spec w).clientHistory s p) ≤ c ∧
-      Modifies S s ((spec w).clientState s p) ∧
+      Memory.Modifies S s ((spec w).clientState s p) ∧
       Q ((spec w).clientResult s p) ((spec w).clientState s p) := by
   rw [FramedTriple, triple_iff]
 
 namespace FramedTriple
 
 variable {s : State} {c c' : ℕ} {S S' : Set ℕ}
-
-/-- Construct a `FramedTriple` from a `Triple` whose postcondition already implies `Modifies`. -/
-theorem of_triple {Q : α → State → Prop} {p : Prog α}
-    (h : Triple w s p c fun a s' => Modifies S s s' ∧ Q a s') : FramedTriple w s p c S Q := h
 
 /-- Extract the underlying `Triple` (forgetting framing). -/
 theorem triple {Q : α → State → Prop} {p : Prog α} (h : FramedTriple w s p c S Q) :
@@ -439,15 +176,26 @@ theorem frontier_le {Q : α → State → Prop} {p : Prog α} (h : FramedTriple 
     s.frontier ≤ ((spec w).clientState s p).frontier :=
   (framedTriple_iff.mp h).2.2.1.1
 
-/-- Extract the `Modifies` frame guarantee. -/
+/-- Extract the `Memory.Modifies` frame guarantee. -/
 theorem modifies {Q : α → State → Prop} {p : Prog α} (h : FramedTriple w s p c S Q) :
-    Modifies S s ((spec w).clientState s p) :=
+    Memory.Modifies S s ((spec w).clientState s p) :=
   (framedTriple_iff.mp h).2.2.1
 
 /-- Extract the postcondition. -/
 theorem post {Q : α → State → Prop} {p : Prog α} (h : FramedTriple w s p c S Q) :
     Q ((spec w).clientResult s p) ((spec w).clientState s p) :=
   (framedTriple_iff.mp h).2.2.2
+
+/-- If a framed run does not advance the frontier, every cell outside `S` retains its initial
+value, including cells at or above `s.frontier`. -/
+theorem mem_eq_of_frontier_eq {Q : α → State → Prop} {p : Prog α}
+    (h : FramedTriple w s p c S Q)
+    (hfr : ((spec w).clientState s p).frontier = s.frontier) :
+    ∀ a, a ∉ S → ((spec w).clientState s p).mem a = s.mem a := by
+  intro a haS
+  by_cases ha : a < s.frontier
+  · exact h.modifies.mem_eq_of_not_mem ha haS
+  · exact mem_clientState_of_frontier_le s p h.validHistory (hfr ▸ Nat.le_of_not_lt ha)
 
 /-- Weaken the cost bound and postcondition. -/
 theorem mono {Q Q' : α → State → Prop} {p : Prog α} (h : FramedTriple w s p c S Q)
@@ -635,191 +383,6 @@ theorem frame {Q : α → State → Prop} {p : Prog α} {D : Set ℕ} {R : State
 
 end FramedTriple
 
-/-! ## Fixed-frontier framed triples -/
-
-/-- A `Triple` bundled with `SameFrontierModifies S s s'` for non-allocating routines and inner
-loops. -/
-abbrev SameFrontierTriple (w : ℕ) (s : State) (p : Prog α) (c : ℕ) (S : Set ℕ)
-    (Q : α → State → Prop) : Prop :=
-  Triple w s p c fun a s' => SameFrontierModifies S s s' ∧ Q a s'
-
-/-- Unfold `SameFrontierTriple` along the unique run of `p`. -/
-theorem sameFrontierTriple_iff {s : State} {p : Prog α} {c : ℕ} {S : Set ℕ}
-    {Q : α → State → Prop} :
-    SameFrontierTriple w s p c S Q ↔
-      (spec w).ValidHistory s ((spec w).clientHistory s p) ∧
-      (spec w).totalCost charge s ((spec w).clientHistory s p) ≤ c ∧
-      SameFrontierModifies S s ((spec w).clientState s p) ∧
-      Q ((spec w).clientResult s p) ((spec w).clientState s p) := by
-  rw [SameFrontierTriple, triple_iff]
-
-namespace SameFrontierTriple
-
-variable {s : State} {c c' : ℕ} {S S' : Set ℕ}
-
-/-- Downgrade a `SameFrontierTriple` to a general `FramedTriple`. -/
-theorem toFramedTriple {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q) :
-    FramedTriple w s p c S Q :=
-  Triple.mono h le_rfl fun _ _ ⟨hm, hq⟩ => ⟨Modifies.of_sameFrontier hm, hq⟩
-
-/-- Extract the underlying `Triple`. -/
-theorem triple {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q) :
-    Triple w s p c Q :=
-  Triple.mono h le_rfl fun _ _ hq => hq.2
-
-/-- Extract admissibility of the run. -/
-theorem validHistory {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q) :
-    (spec w).ValidHistory s ((spec w).clientHistory s p) :=
-  (sameFrontierTriple_iff.mp h).1
-
-/-- Extract the cost bound. -/
-theorem cost_le {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q) :
-    (spec w).totalCost charge s ((spec w).clientHistory s p) ≤ c :=
-  (sameFrontierTriple_iff.mp h).2.1
-
-/-- Extract frontier equality. -/
-theorem frontier_eq {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q) :
-    ((spec w).clientState s p).frontier = s.frontier :=
-  (sameFrontierTriple_iff.mp h).2.2.1.1
-
-/-- Extract `SameFrontierModifies`. -/
-theorem modifies {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q) :
-    SameFrontierModifies S s ((spec w).clientState s p) :=
-  (sameFrontierTriple_iff.mp h).2.2.1
-
-/-- Extract the postcondition. -/
-theorem post {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q) :
-    Q ((spec w).clientResult s p) ((spec w).clientState s p) :=
-  (sameFrontierTriple_iff.mp h).2.2.2
-
-/-- Weaken the cost bound and postcondition. -/
-theorem mono {Q Q' : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q)
-    (hc : c ≤ c') (hQ : ∀ a s', Q a s' → Q' a s') : SameFrontierTriple w s p c' S Q' :=
-  Triple.mono h hc fun a s' ⟨hm, hq⟩ => ⟨hm, hQ a s' hq⟩
-
-/-- Enlarge the permitted modification set. -/
-theorem frame_mono {Q : α → State → Prop} {p : Prog α} (h : SameFrontierTriple w s p c S Q)
-    (hsub : S ⊆ S') : SameFrontierTriple w s p c S' Q :=
-  Triple.mono h le_rfl fun _ _ ⟨hm, hq⟩ => ⟨hm.mono hsub, hq⟩
-
-/-- Returning a value costs nothing and keeps the frontier and memory unchanged. -/
-theorem pure {Q : α → State → Prop} {a : α} (h : Q a s) :
-    SameFrontierTriple w s (Pure.pure a) c S Q :=
-  Triple.pure ⟨SameFrontierModifies.refl S s, h⟩
-
-/-- Read an allocated cell, then continue. -/
-theorem read_bind {Q : α → State → Prop} {a : ℕ} {k : ℕ → Prog α} (ha : a < s.frontier)
-    (h : SameFrontierTriple w s (k (s.mem a)) c S Q) :
-    SameFrontierTriple w s (Memory.read a >>= k) (c + 1) S Q :=
-  Triple.read_bind ha h
-
-/-- Read an allocated cell as a standalone fixed-frontier program. -/
-theorem read {Q : ℕ → State → Prop} {a : ℕ} (ha : a < s.frontier) (h : Q (s.mem a) s) :
-    SameFrontierTriple w s (Memory.read a) 1 S Q :=
-  read_bind ha (pure h)
-
-/-- Write a word to an allocated cell and continue, adding `{a}` to the modified set. -/
-theorem write_bind {Q : α → State → Prop} {a v : ℕ} {k : Unit → Prog α} (ha : a < s.frontier)
-    (hv : Fits w v)
-    (h : SameFrontierTriple w ⟨Function.update s.mem a v, s.frontier⟩ (k ()) c S Q) :
-    SameFrontierTriple w s (Memory.write a v >>= k) (c + 1) (insert a S) Q :=
-  Triple.write_bind ha hv (Triple.mono h le_rfl fun _ _ ⟨hm, hq⟩ =>
-    ⟨by rw [← Set.singleton_union]; exact (SameFrontierModifies.write s a v).union hm, hq⟩)
-
-/-- Write a word to an allocated cell inside `S`, then continue. -/
-theorem write_bind_of_mem {Q : α → State → Prop} {a v : ℕ} {k : Unit → Prog α}
-    (ha : a < s.frontier) (hv : Fits w v) (haS : a ∈ S)
-    (h : SameFrontierTriple w ⟨Function.update s.mem a v, s.frontier⟩ (k ()) c S Q) :
-    SameFrontierTriple w s (Memory.write a v >>= k) (c + 1) S Q :=
-  (write_bind ha hv h).frame_mono (Set.insert_subset_iff.mpr ⟨haS, Set.Subset.rfl⟩)
-
-/-- Write a word to an allocated cell inside `S` as a standalone fixed-frontier program. -/
-theorem write {Q : Unit → State → Prop} {a v : ℕ} (ha : a < s.frontier) (hv : Fits w v)
-    (haS : a ∈ S) (h : Q () ⟨Function.update s.mem a v, s.frontier⟩) :
-    SameFrontierTriple w s (Memory.write a v) 1 S Q :=
-  write_bind_of_mem ha hv haS (pure h)
-
-/-- Read entry `i` of an allocated block, then continue. -/
-theorem get_bind {Q : α → State → Prop} {b : Block} {i : ℕ} {k : ℕ → Prog α}
-    (hb : b.Allocated s) (hi : i < b.length)
-    (h : SameFrontierTriple w s (k (s.mem (b.base + i))) c S Q) :
-    SameFrontierTriple w s (b.get i >>= k) (c + 1) S Q :=
-  read_bind (hb.lt_frontier hi) h
-
-/-- Write `v` to entry `i` of an allocated block inside `S`, then continue. -/
-theorem set_bind {Q : α → State → Prop} {b : Block} {i v : ℕ} {k : Unit → Prog α}
-    (hb : b.Allocated s) (hi : i < b.length) (hv : Fits w v)
-    (hsub : Set.Ico b.base (b.base + b.length) ⊆ S)
-    (h : SameFrontierTriple w ⟨Function.update s.mem (b.base + i) v, s.frontier⟩ (k ()) c S Q) :
-    SameFrontierTriple w s (b.set i v >>= k) (c + 1) S Q :=
-  write_bind_of_mem (hb.lt_frontier hi) hv (hsub ⟨Nat.le_add_right _ _, by omega⟩) h
-
-/-- Sequential composition of fixed-frontier triples takes the union of modification sets. -/
-theorem bind {p : Prog α} {k : α → Prog β} {c₁ c₂ : ℕ} {S₁ S₂ : Set ℕ} {Q : β → State → Prop}
-    (h : SameFrontierTriple w s p c₁ S₁ fun a s' => SameFrontierTriple w s' (k a) c₂ S₂ Q) :
-    SameFrontierTriple w s (p >>= k) (c₁ + c₂) (S₁ ∪ S₂) Q :=
-  Triple.bind (Triple.mono h le_rfl fun _ _ ⟨hm₁, hk⟩ =>
-    Triple.mono hk le_rfl fun _ _ ⟨hm₂, hq⟩ => ⟨hm₁.union hm₂, hq⟩)
-
-/-- Sequential composition of fixed-frontier triples within a single set `S`. -/
-theorem bind_same {p : Prog α} {k : α → Prog β} {c₁ c₂ : ℕ} {Q : β → State → Prop}
-    (h : SameFrontierTriple w s p c₁ S fun a s' => SameFrontierTriple w s' (k a) c₂ S Q) :
-    SameFrontierTriple w s (p >>= k) (c₁ + c₂) S Q :=
-  (bind h).frame_mono (Set.union_self S).subset
-
-/-- Branching rule for `SameFrontierTriple`. -/
-theorem ite {Q : α → State → Prop} {cond : Prop} [Decidable cond] {p₁ p₂ : Prog α}
-    (h₁ : cond → SameFrontierTriple w s p₁ c S Q)
-    (h₂ : ¬cond → SameFrontierTriple w s p₂ c S Q) :
-    SameFrontierTriple w s (if cond then p₁ else p₂) c S Q :=
-  Triple.ite h₁ h₂
-
-/-- Map the answer of a `SameFrontierTriple`. -/
-theorem map (f : α → β) {p : Prog α} {Q : β → State → Prop}
-    (h : SameFrontierTriple w s p c S fun a s' => Q (f a) s') :
-    SameFrontierTriple w s (f <$> p) c S Q :=
-  Triple.map f h
-
-/-- Non-overlapping block copy with `SameFrontierTriple` specification. -/
-theorem copy {src dst n : ℕ} (hdisj : src + n ≤ dst ∨ dst + n ≤ src)
-    (hsrc : src + n ≤ s.frontier) (hdst : dst + n ≤ s.frontier)
-    (hfit : ∀ i < n, Fits w (s.mem (src + i))) {Q : Unit → State → Prop}
-    (hQ : Q () ⟨Cslib.WordRAM.ArrayCopy.copyPrefix s.mem src dst n, s.frontier⟩) :
-    SameFrontierTriple w s (Memory.copy src dst n) (2 * n) (Set.Ico dst (dst + n)) Q := by
-  refine Triple.copy hdisj hsrc hdst hfit ⟨⟨rfl, fun a ha => ?_⟩, hQ⟩
-  change Cslib.WordRAM.ArrayCopy.copyPrefix s.mem src dst n a = s.mem a
-  exact Cslib.WordRAM.ArrayCopy.copyPrefix_outside (by
-    simp only [Set.mem_Ico] at ha
-    exact ha)
-
-/-- Any `SameFrontierTriple` preserves `WellFormed w`. -/
-theorem wellFormed {Q : α → State → Prop} {p : Prog α} (hwf : WellFormed w s)
-    (h : SameFrontierTriple w s p c S Q) :
-    SameFrontierTriple w s p c S fun a s' => Q a s' ∧ WellFormed w s' := by
-  refine Triple.mono (Triple.wellFormed hwf h) le_rfl fun _ _ ⟨⟨hm, hq⟩, hwf'⟩ => ⟨hm, hq, hwf'⟩
-
-/-- Automatic preservation of any raw-memory heap predicate `R` supported on `D` disjoint from
-`S` across a fixed-frontier transition. -/
-theorem frame_mem {Q : α → State → Prop} {p : Prog α} {D : Set ℕ} {R : (ℕ → ℕ) → Prop}
-    (h : SameFrontierTriple w s p c S Q) (hR : R s.mem)
-    (hdep : ∀ m₁ m₂, (∀ a ∈ D, m₁ a = m₂ a) → R m₁ → R m₂) (hdisj : Disjoint S D) :
-    SameFrontierTriple w s p c S fun a s' => Q a s' ∧ R s'.mem := by
-  obtain ⟨hv, hc, hm, hq⟩ := sameFrontierTriple_iff.mp h
-  exact sameFrontierTriple_iff.mpr ⟨hv, hc, hm, hq, hdep s.mem _
-    (fun a haD => (hm.mem_eq_of_disjoint hdisj haD).symm) hR⟩
-
-/-- Automatic preservation of any frontier-invariant state predicate `R` supported on `D` disjoint
-from `S`. -/
-theorem frame {Q : α → State → Prop} {p : Prog α} {D : Set ℕ} {R : State → Prop}
-    (h : SameFrontierTriple w s p c S Q) (hR : R s)
-    (hdep : ∀ s₁ s₂, (∀ a ∈ D, s₁.mem a = s₂.mem a) → R s₁ → R s₂) (hdisj : Disjoint S D) :
-    SameFrontierTriple w s p c S fun a s' => Q a s' ∧ R s' := by
-  obtain ⟨hv, hc, hm, hq⟩ := sameFrontierTriple_iff.mp h
-  exact sameFrontierTriple_iff.mpr ⟨hv, hc, hm, hq, hdep s _
-    (fun a haD => (hm.mem_eq_of_disjoint hdisj haD).symm) hR⟩
-
-end SameFrontierTriple
-
 end Cslib.DataStructure.Memory
 
 /-! ## Block disjointness, strided slots, and multi-field writes -/
@@ -855,7 +418,7 @@ instance instDecidableDisjoint (b₁ b₂ : Block) : Decidable (b₁.Disjoint b�
   decidable_of_iff' _ disjoint_iff
 
 /-- Symmetry of block disjointness. -/
-theorem disjoint_symm {b₁ b₂ : Block} (h : b₁.Disjoint b₂) : b₂.Disjoint b₁ :=
+@[symm] theorem Disjoint.symm {b₁ b₂ : Block} (h : b₁.Disjoint b₂) : b₂.Disjoint b₁ :=
   fun a ⟨h2, h1⟩ => h a ⟨h1, h2⟩
 
 /-- `b₁` ending at or before `b₂.base` implies `b₁.Disjoint b₂`. -/
@@ -872,16 +435,6 @@ theorem disjoint_of_le_right {b₁ b₂ : Block} (h : b₂.base + b₂.length �
 theorem disjoint_of_allocated_frontier {b : Block} {s : Memory.State} (hb : b.Allocated s)
     (k : ℕ) : b.Disjoint ⟨s.frontier, k⟩ :=
   disjoint_of_le_left hb
-
-/-- An allocated block is disjoint from the block returned by `Memory.allocBlock`. -/
-theorem disjoint_of_allocBlock {b : Block} {s : Memory.State} (hb : b.Allocated s) (w k : ℕ) :
-    b.Disjoint ((Memory.spec w).clientResult s (Memory.allocBlock k)) :=
-  disjoint_of_allocated_frontier hb k
-
-/-- An allocated block is disjoint from the block returned by `Memory.allocBlockDirty`. -/
-theorem disjoint_of_allocBlockDirty {b : Block} {s : Memory.State} (hb : b.Allocated s)
-    (w k : ℕ) : b.Disjoint ((Memory.spec w).clientResult s (Memory.allocBlockDirty k)) :=
-  disjoint_of_allocated_frontier hb k
 
 /-- Block disjointness matches `Set` disjointness of half-open address intervals. -/
 theorem disjoint_ico_iff {b₁ b₂ : Block} :
@@ -933,14 +486,14 @@ theorem mem_eq_of_modifies_block {b b' : Block} {s s' : Memory.State}
     (hb : b.Allocated s) (hd : b.Disjoint b')
     (hmod : Memory.Modifies (Set.Ico b'.base (b'.base + b'.length)) s s') :
     ∀ a, b.Owns a → s'.mem a = s.mem a :=
-  mem_eq_of_modifies_disjoint hb hmod (disjoint_ico_iff.mpr (disjoint_symm hd))
+  mem_eq_of_modifies_disjoint hb hmod (disjoint_ico_iff.mpr hd.symm)
 
 /-- Specialized block framing: writing inside a disjoint block `b'` preserves `b.entries`. -/
 theorem entries_eq_of_modifies_block {b b' : Block} {n : ℕ} {s s' : Memory.State}
     (hb : b.Allocated s) (hn : n ≤ b.length) (hd : b.Disjoint b')
     (hmod : Memory.Modifies (Set.Ico b'.base (b'.base + b'.length)) s s') :
     b.entries n s'.mem = b.entries n s.mem :=
-  entries_eq_of_modifies_disjoint hb hn hmod (disjoint_ico_iff.mpr (disjoint_symm hd))
+  entries_eq_of_modifies_disjoint hb hn hmod (disjoint_ico_iff.mpr hd.symm)
 
 /-! ### Strided record-array framing -/
 
@@ -1024,19 +577,23 @@ theorem clientState_writeList_frontier (w base : ℕ) (vs : List ℕ) (s : Memor
     rw [writeList_cons, (Memory.spec w).clientState_bind]
     exact ih (base + 1) ⟨Function.update s.mem base v, s.frontier⟩
 
-/-- `writeList` modifies at most `Set.Ico base (base + vs.length)`. -/
-theorem sameFrontierModifies_writeList (w base : ℕ) (vs : List ℕ) (s : Memory.State) :
-    Memory.SameFrontierModifies (Set.Ico base (base + vs.length)) s
-      ((Memory.spec w).clientState s (writeList base vs)) := by
+private theorem mem_writeList_of_not_mem (w base : ℕ) (vs : List ℕ) (s : Memory.State)
+    {a : ℕ} (ha : a ∉ Set.Ico base (base + vs.length)) :
+    ((Memory.spec w).clientState s (writeList base vs)).mem a = s.mem a := by
   induction vs generalizing base s with
-  | nil => exact Memory.SameFrontierModifies.refl _ s
+  | nil => rfl
   | cons v vs ih =>
     rw [writeList_cons, (Memory.spec w).clientState_bind]
-    refine ((Memory.SameFrontierModifies.write s base v).union
-      (ih (base + 1) ⟨Function.update s.mem base v, s.frontier⟩)).mono ?_
-    intro a ha
-    simp only [Set.mem_union, Set.mem_singleton_iff, Set.mem_Ico, List.length_cons] at ha ⊢
-    omega
+    have hnot : a ∉ Set.Ico (base + 1) (base + 1 + vs.length) := by
+      simp only [Set.mem_Ico, List.length_cons, not_and, not_lt] at ha ⊢
+      omega
+    have hstep : (Memory.spec w).clientState s (Memory.write base v) =
+        ⟨Function.update s.mem base v, s.frontier⟩ := rfl
+    rw [hstep, ih (base + 1) ⟨Function.update s.mem base v, s.frontier⟩ hnot]
+    have hne : a ≠ base := by
+      simp only [Set.mem_Ico, List.length_cons, not_and, not_lt] at ha
+      omega
+    exact Function.update_of_ne hne v s.mem
 
 /-- After `writeList`, `[base, base + vs.length)` realizes `vs`. -/
 theorem holdsList_writeList (w base : ℕ) (vs : List ℕ) (s : Memory.State) :
@@ -1048,12 +605,10 @@ theorem holdsList_writeList (w base : ℕ) (vs : List ℕ) (s : Memory.State) :
     refine holdsList_cons_iff.mpr ⟨?_, ih (base + 1) ⟨Function.update s.mem base v, s.frontier⟩⟩
     change ((Memory.spec w).clientState ⟨Function.update s.mem base v, s.frontier⟩
       (writeList (base + 1) vs)).mem base = v
-    have hm := sameFrontierModifies_writeList w (base + 1) vs
-      ⟨Function.update s.mem base v, s.frontier⟩
     have hnot : base ∉ Set.Ico (base + 1) (base + 1 + vs.length) := by
       simp only [Set.mem_Ico, not_and, not_lt]
       omega
-    rw [hm.mem_eq_of_not_mem hnot]
+    rw [mem_writeList_of_not_mem w (base + 1) vs ⟨Function.update s.mem base v, s.frontier⟩ hnot]
     simp
 
 /-- `writeList` is admissible when `[base, base + vs.length)` is allocated and every written
@@ -1083,24 +638,23 @@ theorem totalCost_writeList (w base : ℕ) (vs : List ℕ) (s : Memory.State) :
     change 1 + vs.length = vs.length + 1
     omega
 
-/-- Fixed-frontier triple specification for `Block.writeList`. -/
-theorem sameFrontierTriple_writeList {w base : ℕ} {vs : List ℕ} {s : Memory.State}
-    (hbound : base + vs.length ≤ s.frontier) (hfit : ∀ v ∈ vs, Fits w v) :
-    Memory.SameFrontierTriple w s (writeList base vs) vs.length
-      (Set.Ico base (base + vs.length)) fun _ s' => HoldsList base vs s'.mem := by
-  refine Memory.sameFrontierTriple_iff.mpr ⟨validHistory_writeList w base vs s hbound hfit,
-    (totalCost_writeList w base vs s).le, sameFrontierModifies_writeList w base vs s, ?_⟩
-  exact holdsList_writeList w base vs s
-
-/-- General `FramedTriple` specification for `Block.writeList`, including `WellFormed w`
-preservation. -/
+/-- General `FramedTriple` specification for `Block.writeList`, including fixed-frontier and
+`WellFormed w` preservation. -/
 theorem framedTriple_writeList {w base : ℕ} {vs : List ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hbound : base + vs.length ≤ s.frontier)
     (hfit : ∀ v ∈ vs, Fits w v) :
     Memory.FramedTriple w s (writeList base vs) vs.length (Set.Ico base (base + vs.length))
       fun _ s' => s'.frontier = s.frontier ∧ HoldsList base vs s'.mem ∧
-        Memory.WellFormed w s' :=
-  Memory.Triple.mono ((sameFrontierTriple_writeList hbound hfit).wellFormed hwf) le_rfl
-    fun _ _ ⟨hm, hhold, hwf'⟩ => ⟨Memory.Modifies.of_sameFrontier hm, hm.1, hhold, hwf'⟩
+        Memory.WellFormed w s' := by
+  have hft : Memory.FramedTriple w s (writeList base vs) vs.length
+      (Set.Ico base (base + vs.length)) fun _ s' =>
+        s'.frontier = s.frontier ∧ HoldsList base vs s'.mem :=
+    Memory.framedTriple_iff.mpr ⟨validHistory_writeList w base vs s hbound hfit,
+      (totalCost_writeList w base vs s).le,
+      ⟨(clientState_writeList_frontier w base vs s).ge,
+        fun a _ ha => mem_writeList_of_not_mem w base vs s ha⟩,
+      clientState_writeList_frontier w base vs s,
+      holdsList_writeList w base vs s⟩
+  exact (hft.wellFormed hwf).mono le_rfl fun _ _ ⟨⟨hfr, hhold⟩, hwf'⟩ => ⟨hfr, hhold, hwf'⟩
 
 end Cslib.WordRAM.Block

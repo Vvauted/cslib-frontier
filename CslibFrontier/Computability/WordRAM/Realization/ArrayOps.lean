@@ -9,30 +9,35 @@ module
 
 public import CslibFrontier.Computability.WordRAM.Realization.LoopFrame
 public import CslibFrontier.Computability.WordRAM.Realization.Structure
+public import CslibFrontier.DataStructure.Memory.Copy
 import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
 
 /-!
 # Reusable verified Word-RAM array primitives over `Memory.Prog`
 
-This module provides four reusable verified array primitives (plus a dirty-allocation zero-cost
-variant under `Memory.ZeroAbove`), each equipped with:
-
-1. a concrete executable `Memory.Prog` implementation,
-2. a uniform `Realizes .exact` certificate with `work := 0`, and
-3. a `FramedTriple` / `SameFrontierTriple` specification with `iterationSafe` and `WellFormed`
-   preservation.
+This module provides reusable verified array and block primitives over `Memory.Prog`, equipping
+both newly defined array routines (`fillConstProg`, `prefixSumProg`) and the existing memory
+operations (`Memory.copy`, `Memory.allocBlock`, `Memory.allocBlockDirty`) with uniform
+`Realizes .exact` certificates (`work := 0`) and `Memory.FramedTriple` specifications.
 
 ## Main definitions
 
-* `fillConstStep`, `fillConstProg`: fill `[base, base + count)` with a constant `val`.
-* `copySliceProg`: non-overlapping slice copy `[src, src + count)` to
-  `[dst, dst + count)`.
-* `prefixSumStep`, `prefixSumProg`: in-place exclusive prefix sum over `[base, base + count)`
-  storing `[0, a₀, a₀ + a₁, ...]` and returning the total sum.
-* `allocZeroBlockProg`: allocate a zeroed `Block` of size `size` at cost `size + 1`.
-* `allocZeroBlockDirtyProg`: allocate a zeroed `Block` of size `size` at cost `1` when
-  `Memory.ZeroAbove s` holds.
+* `fillConstProg`: fill `[base, base + count)` with a constant `val`.
+* `prefixSumProg`: in-place exclusive prefix sum over `[base, base + count)` storing
+  `[0, a₀, a₀ + a₁, ...]` and returning the total sum.
+
+## Main results
+
+* `fillConstProg_spec`, `realizes_fillConstProg`: framed triple and `Realizes .exact`
+  certificate for `fillConstProg`.
+* `realizes_copy`: uniform `Realizes .exact` certificate for `Memory.copy` (paired with
+  `Memory.FramedTriple.copy`).
+* `prefixSumProg_spec`, `realizes_prefixSumProg`: framed triple and `Realizes .exact`
+  certificate for `prefixSumProg`.
+* `allocBlock_spec`, `realizes_allocBlock`, `allocBlockDirty_spec`, `realizes_allocBlockDirty`:
+  framed triples and `Realizes .exact` certificates for `Memory.allocBlock` and
+  `Memory.allocBlockDirty`.
 -/
 
 public section
@@ -43,15 +48,12 @@ open Cslib.DataStructure
 
 /-! ## Constant fill (`fillConstProg`) -/
 
-/-- Single step of filling a contiguous slice: write `val` at `base + idx` and increment
-the index `idx`. -/
-@[expose] def fillConstStep : (ℕ × ℕ) × ℕ → Memory.Prog ℕ
+private def fillConstStep : (ℕ × ℕ) × ℕ → Memory.Prog ℕ
   | ((base, val), idx) => do
     Memory.write (base + idx) val
     pure (idx + 1)
 
-/-- Native safety domain for `fillConstStep`. -/
-@[expose] def fillConstStepSafe (w : ℕ) (d : (ℕ × ℕ) × ℕ) (_ : Memory.State) : Prop :=
+private def fillConstStepSafe (w : ℕ) (d : (ℕ × ℕ) × ℕ) (_ : Memory.State) : Prop :=
   Fits w (d.2 + 1)
 
 private theorem realizes_fillConstStep_history : Realizes .exact
@@ -79,27 +81,24 @@ private theorem realizes_fillConstStep_history : Realizes .exact
       fits
   exact hraw.congr (fun ⟨⟨_, _⟩, _⟩ => rfl)
 
-/-- Uniform `Realizes .exact` certificate for `fillConstStep` with `work = 0`. -/
-theorem realizes_fillConstStep :
+private theorem realizes_fillConstStep :
     Realizes .exact fillConstStep WordEncoding.encode WordEncoding.encode fillConstStepSafe
       (fun _ _ => 0) :=
   realizes_fillConstStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
 
 /-- Fill `count` consecutive cells `[base, base + count)` with `val`. -/
-@[expose] def fillConstProg (base val count : ℕ) : Memory.Prog Unit := do
+def fillConstProg (base val count : ℕ) : Memory.Prog Unit := do
   let _ ← iterate fillConstStep (base, val) count 0
   pure ()
 
-/-- Specification for `fillConstProg`: fills `[base, base + count)` with `val`, preserves
-frontier and all cells outside `[base, base + count)`, costs at most `count`, and satisfies
-`iterationSafe` and `WellFormed`. -/
-theorem fillConstProg_spec {w base val count : ℕ} {s : Memory.State}
+private theorem fillConst_loop_spec {w base val count : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hval : Fits w val) (hcount : Fits w count)
     (hbound : base + count ≤ s.frontier) :
     iterationSafe fillConstStep fillConstStepSafe w (base, val) count 0 s ∧
-    Memory.SameFrontierTriple w s (fillConstProg base val count) count
-      (Set.Ico base (base + count)) fun _ s' =>
-        Memory.WellFormed w s' ∧ ∀ j < count, s'.mem (base + j) = val := by
+    Memory.FramedTriple w s (fillConstProg base val count) count (Set.Ico base (base + count))
+      fun _ s' =>
+        s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
+        ∀ j < count, s'.mem (base + j) = val := by
   let S : Set ℕ := Set.Ico base (base + count)
   let inv (k a : ℕ) (t : Memory.State) : Prop :=
     a = k ∧ t.frontier = s.frontier ∧ Memory.WellFormed w t ∧
@@ -111,7 +110,7 @@ theorem fillConstProg_spec {w base val count : ℕ} {s : Memory.State}
       let a' := (Memory.spec 0).clientResult t (fillConstStep ((base, val), a))
       let t' := (Memory.spec 0).clientState t (fillConstStep ((base, val), a))
       memoryCost (fillConstStep ((base, val), a)) t + 0 ≤ 0 + 1 ∧
-      Memory.SameFrontierModifies S t t' ∧
+      Memory.Modifies S t t' ∧
       inv (k + 1) a' t' := by
     intro k hk a t ⟨ha, htfr, hwt, hfill⟩
     subst a
@@ -128,12 +127,8 @@ theorem fillConstProg_spec {w base val count : ℕ} {s : Memory.State}
       simp only [clientResult_bind_write, StateTransitionSpec.clientResult_pure]
     have hst : (Memory.spec 0).clientState t (fillConstStep ((base, val), k)) =
         ⟨Function.update t.mem (base + k) val, t.frontier⟩ := rfl
-    have hmod : Memory.SameFrontierModifies S t
-        ⟨Function.update t.mem (base + k) val, t.frontier⟩ :=
-      (Memory.SameFrontierModifies.write t (base + k) val).mono fun x hx => by
-        have heq : x = base + k := hx
-        subst heq
-        exact ⟨Nat.le_add_right _ _, by omega⟩
+    have hmod : Memory.Modifies S t ⟨Function.update t.mem (base + k) val, t.frontier⟩ :=
+      Memory.Modifies.set t ⟨base, count⟩ hk val
     refine ⟨hcount.of_le (by omega), hvh, by omega, by rw [hst]; exact hmod,
       hres, by rw [hst]; exact htfr, wellFormed_clientState hwt hvh, fun j hj => ?_⟩
     rw [hst]
@@ -142,28 +137,32 @@ theorem fillConstProg_spec {w base val count : ℕ} {s : Memory.State}
     · rw [hjk, Function.update_self]
     · rw [Function.update_of_ne (by omega)]
       exact hfill j (by omega)
-  obtain ⟨hsafe, hv, hcost, hmod, _, _, hwf', hvals⟩ :=
-    iterate_potential_sameFrontier_spec fillConstStep fillConstStepSafe w (base, val) 1 count
+  obtain ⟨hsafe, hv, hcost, hmod, _, htfr, hwf', hvals⟩ :=
+    iterate_potential_spec fillConstStep fillConstStepSafe w (base, val) 1 count
       inv (fun _ _ _ => 0) S hstep 0 s ⟨rfl, rfl, hwf, fun _ h => absurd h (Nat.not_lt_zero _)⟩
-  have hloop : Memory.SameFrontierTriple w s (iterate fillConstStep (base, val) count 0) count S
-      fun _ s' => Memory.WellFormed w s' ∧ ∀ j < count, s'.mem (base + j) = val :=
-    sameFrontierTriple_iff_realization.mpr ⟨hv, by simpa using hcost, hmod, hwf', hvals⟩
-  have hres : Memory.SameFrontierTriple w s (fillConstProg base val count) count S
-      fun _ s' => Memory.WellFormed w s' ∧ ∀ j < count, s'.mem (base + j) = val :=
+  have hloop : Memory.FramedTriple w s (iterate fillConstStep (base, val) count 0) count S
+      fun _ s' => s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
+        ∀ j < count, s'.mem (base + j) = val :=
+    framedTriple_iff_realization.mpr ⟨hv, by simpa using hcost, hmod, htfr, hwf', hvals⟩
+  have hres : Memory.FramedTriple w s (fillConstProg base val count) count S
+      fun _ s' => s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
+        ∀ j < count, s'.mem (base + j) = val :=
     ((hloop.mono le_rfl fun _ _ h =>
-      Memory.SameFrontierTriple.pure (c := 0) (a := ()) h).bind_same).mono
+      Memory.FramedTriple.pure (c := 0) (a := ()) h).bind_same).mono
       (Nat.add_zero count).le fun _ _ h => h
   exact ⟨hsafe, hres⟩
 
-/-- General `FramedTriple` wrapper for `fillConstProg`. -/
-theorem fillConstProg_framedTriple {w base val count : ℕ} {s : Memory.State}
+/-- Framed specification for `fillConstProg`: fills `[base, base + count)` with `val`, preserves
+frontier and all cells outside `[base, base + count)`, costs at most `count`, and preserves
+`WellFormed`. -/
+theorem fillConstProg_spec {w base val count : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hval : Fits w val) (hcount : Fits w count)
     (hbound : base + count ≤ s.frontier) :
     Memory.FramedTriple w s (fillConstProg base val count) count (Set.Ico base (base + count))
-      fun _ s' => s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
+      fun _ s' =>
+        s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
         ∀ j < count, s'.mem (base + j) = val :=
-  Memory.Triple.mono (fillConstProg_spec hwf hval hcount hbound).2 le_rfl
-    fun _ _ ⟨hm, hwf', hvals⟩ => ⟨Memory.Modifies.of_sameFrontier hm, hm.1, hwf', hvals⟩
+  (fillConst_loop_spec hwf hval hcount hbound).2
 
 /-- Uniform `Realizes .exact` certificate for `fillConstProg` with `work = 0`. -/
 theorem realizes_fillConstProg :
@@ -184,13 +183,11 @@ theorem realizes_fillConstProg :
   rcases d with ⟨⟨base, val⟩, count⟩
   have hval : Fits w val := hwords 1
   have hcnt : Fits w count := hwords 2
-  exact iterationSafe_map (fun x : (ℕ × ℕ) × ℕ => (x.1.1, x.1.2)) fillConstStep
-    fillConstStepSafe _ (fun _ _ _ hs => hs)
-    (fillConstProg_spec hmem hval hcnt hbound).1
+  exact iterationSafe_imp (fillConst_loop_spec hmem hval hcnt hbound).1
+    (fun _ => rfl) (fun _ _ hs => hs)
 
-/-! ## Non-overlapping slice copy (`copySliceProg`) -/
+/-! ## Uniform realization of `Memory.copy` -/
 
-/-- Single step of copying `[src, src + count)` to `[dst, dst + count)` at index `idx`. -/
 private def copySliceStep : (ℕ × ℕ) × ℕ → Memory.Prog ℕ
   | ((src, dst), idx) => do
     let v ← Memory.read (src + idx)
@@ -232,10 +229,50 @@ private theorem realizes_copySliceStep :
       (fun _ _ => 0) :=
   realizes_copySliceStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
 
-/-- Copy `count` words from `[src, src + count)` to `[dst, dst + count)`. -/
-def copySliceProg (src dst count : ℕ) : Memory.Prog Unit := do
-  let _ ← iterate copySliceStep (src, dst) count 0
-  pure ()
+private theorem iterate_succ_last {δ σ : Type} (body : δ × σ → Memory.Prog σ)
+    (d : δ) (n : ℕ) (a : σ) :
+    iterate body d (n + 1) a = (iterate body d n a >>= fun s => body (d, s)) := by
+  induction n generalizing a with
+  | zero => simp [iterate]
+  | succ n ih =>
+    change (body (d, a) >>= fun s' => iterate body d (n + 1) s') =
+      ((body (d, a) >>= fun s' => iterate body d n s') >>= fun s => body (d, s))
+    rw [bind_assoc]
+    congr 1 with s' : 1
+    exact ih s'
+
+private theorem copySliceStep_bind {β : Type} (src dst k : ℕ) (q : ℕ → Memory.Prog β) :
+    (copySliceStep ((src, dst), k) >>= q) =
+      (Memory.read (src + k) >>= fun v => Memory.write (dst + k) v >>= fun _ => q (k + 1)) := by
+  simp only [copySliceStep, bind_assoc, pure_bind]
+
+private theorem iterate_copySliceStep_bind {β : Type} (src dst n k : ℕ)
+    (q : ℕ → Memory.Prog β) :
+    (iterate copySliceStep (src, dst) n k >>= q) =
+      (iterate copySliceStep (src, dst) n k >>= fun _ => q (k + n)) := by
+  induction n generalizing k with
+  | zero => simp [iterate]
+  | succ n ih =>
+    change (copySliceStep ((src, dst), k) >>= fun a => iterate copySliceStep (src, dst) n a) >>= q =
+      (copySliceStep ((src, dst), k) >>= fun a => iterate copySliceStep (src, dst) n a) >>=
+        fun _ => q (k + (n + 1))
+    rw [bind_assoc, copySliceStep_bind, show k + (n + 1) = k + 1 + n from by omega,
+      bind_assoc, copySliceStep_bind]
+    congr 1 with v : 1
+    congr 1 with u : 1
+    exact ih (k + 1)
+
+private theorem copy_eq_iterate (src dst count : ℕ) :
+    Memory.copy src dst count =
+      (iterate copySliceStep (src, dst) count 0 >>= fun _ => pure ()) := by
+  induction count with
+  | zero => rfl
+  | succ n ih =>
+    have hunit : (fun _ : Unit => (Pure.pure () : Memory.Prog Unit)) = Pure.pure :=
+      funext fun () => rfl
+    rw [Memory.copy_succ, ih, iterate_succ_last,
+      iterate_copySliceStep_bind (q := fun s => copySliceStep ((src, dst), s)), Nat.zero_add]
+    simp only [bind_assoc, copySliceStep_bind, pure_bind, hunit, bind_pure]
 
 private theorem copySlice_iterationSafe {w src dst count : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hcnt : Fits w count)
@@ -243,7 +280,7 @@ private theorem copySlice_iterationSafe {w src dst count : ℕ} {s : Memory.Stat
     iterationSafe copySliceStep copySliceStepSafe w (src, dst) count 0 s := by
   let inv (k a : ℕ) (t : Memory.State) : Prop :=
     a = k ∧ t.frontier = s.frontier ∧ Memory.WellFormed w t
-  refine (iterate_potential_sameFrontier_spec copySliceStep copySliceStepSafe w (src, dst) 2
+  refine (iterate_potential_spec copySliceStep copySliceStepSafe w (src, dst) 2
     count inv (fun _ _ _ => 0) Set.univ (fun k hk a t ⟨ha, htfr, hwt⟩ => by
       subst a
       have hvh : (Memory.spec w).ValidHistory t
@@ -263,133 +300,44 @@ private theorem copySlice_iterationSafe {w src dst count : ℕ} {s : Memory.Stat
       have hst : (Memory.spec 0).clientState t (copySliceStep ((src, dst), k)) =
           ⟨Function.update t.mem (dst + k) (t.mem (src + k)), t.frontier⟩ := rfl
       refine ⟨hcnt.of_le (by omega), hvh, by omega,
-        ⟨by rw [hst], fun _ hx => absurd (Set.mem_univ _) hx⟩,
+        ⟨by rw [hst], fun _ _ hx => absurd (Set.mem_univ _) hx⟩,
         hres, by rw [hst]; exact htfr, wellFormed_clientState hwt hvh⟩)
     0 s ⟨rfl, rfl, hwf⟩).1
 
-/-- Specification for `copySliceProg`: for non-overlapping `[src, src + count)` and
-`[dst, dst + count)`, copies `s.mem (src + j)` to `s'.mem (dst + j)`, modifies at most
-`Set.Ico dst (dst + count)` with fixed frontier, costs at most `2 * count`, and preserves
-`WellFormed`. -/
-theorem copySliceProg_spec {w src dst count : ℕ} {s : Memory.State}
-    (hwf : Memory.WellFormed w s) (hcnt : Fits w count)
-    (hdisj : src + count ≤ dst ∨ dst + count ≤ src)
-    (hsrc : src + count ≤ s.frontier) (hdst : dst + count ≤ s.frontier) :
-    Memory.SameFrontierTriple w s (copySliceProg src dst count) (2 * count)
-      (Set.Ico dst (dst + count)) fun _ s' =>
-        Memory.WellFormed w s' ∧ ∀ j < count, s'.mem (dst + j) = s.mem (src + j) := by
-  let S : Set ℕ := Set.Ico dst (dst + count)
-  let inv (k a : ℕ) (t : Memory.State) : Prop :=
-    a = k ∧ t.frontier = s.frontier ∧ Memory.WellFormed w t ∧
-    (∀ j < k, t.mem (dst + j) = s.mem (src + j)) ∧
-    (∀ i, k ≤ i → i < count → t.mem (src + i) = s.mem (src + i))
-  have hstep : ∀ k < count, ∀ a t, inv k a t →
-      copySliceStepSafe w ((src, dst), a) t ∧
-      (Memory.spec w).ValidHistory t
-        ((Memory.spec w).clientHistory t (copySliceStep ((src, dst), a))) ∧
-      let a' := (Memory.spec 0).clientResult t (copySliceStep ((src, dst), a))
-      let t' := (Memory.spec 0).clientState t (copySliceStep ((src, dst), a))
-      memoryCost (copySliceStep ((src, dst), a)) t + 0 ≤ 0 + 2 ∧
-      Memory.SameFrontierModifies S t t' ∧
-      inv (k + 1) a' t' := by
-    intro k hk a t ⟨ha, htfr, hwt, hcopied, hsrcRest⟩
-    subst a
-    have hvh : (Memory.spec w).ValidHistory t
-        ((Memory.spec w).clientHistory t (copySliceStep ((src, dst), k))) := by
-      dsimp only [copySliceStep]
-      exact validHistory_read_bind (by rw [htfr]; omega)
-        (validHistory_write_bind (by rw [htfr]; omega) (hwt.mem_fits _)
-          (validHistory_pure w _ _))
-    have hcost : memoryCost (copySliceStep ((src, dst), k)) t ≤ 2 := by
-      dsimp only [copySliceStep]
-      simp only [memoryCost_bind', memoryCost_read, memoryCost_write, memoryCost_pure]
-      decide
-    have hres : (Memory.spec 0).clientResult t (copySliceStep ((src, dst), k)) = k + 1 := by
-      dsimp only [copySliceStep]
-      simp only [clientResult_bind_read, clientResult_bind_write,
-        StateTransitionSpec.clientResult_pure]
-    have hst : (Memory.spec 0).clientState t (copySliceStep ((src, dst), k)) =
-        ⟨Function.update t.mem (dst + k) (t.mem (src + k)), t.frontier⟩ := rfl
-    have hmod : Memory.SameFrontierModifies S t
-        ⟨Function.update t.mem (dst + k) (t.mem (src + k)), t.frontier⟩ :=
-      (Memory.SameFrontierModifies.write t (dst + k) (t.mem (src + k))).mono fun x hx => by
-        have heq : x = dst + k := hx
-        subst heq
-        exact ⟨Nat.le_add_right _ _, by omega⟩
-    refine ⟨hcnt.of_le (by omega), hvh, by omega, by rw [hst]; exact hmod,
-      hres, by rw [hst]; exact htfr, wellFormed_clientState hwt hvh, fun j hj => ?_,
-      fun i hik hic => ?_⟩
-    · rw [hst]
-      dsimp only
-      by_cases hjk : j = k
-      · rw [hjk, Function.update_self, hsrcRest k (le_refl k) hk]
-      · rw [Function.update_of_ne (by omega)]
-        exact hcopied j (by omega)
-    · rw [hst]
-      dsimp only
-      rw [Function.update_of_ne (by omega)]
-      exact hsrcRest i (by omega) hic
-  obtain ⟨hsafe, hv, hcost, hmod, _, _, hwf', hcopied, _⟩ :=
-    iterate_potential_sameFrontier_spec copySliceStep copySliceStepSafe w (src, dst) 2 count
-      inv (fun _ _ _ => 0) S hstep 0 s ⟨rfl, rfl, hwf, fun _ h => absurd h (Nat.not_lt_zero _),
-        fun _ _ _ => rfl⟩
-  have hloop : Memory.SameFrontierTriple w s (iterate copySliceStep (src, dst) count 0)
-      (2 * count) S fun _ s' =>
-        Memory.WellFormed w s' ∧ ∀ j < count, s'.mem (dst + j) = s.mem (src + j) :=
-    sameFrontierTriple_iff_realization.mpr ⟨hv, by simpa using hcost, hmod, hwf', hcopied⟩
-  have hres : Memory.SameFrontierTriple w s (copySliceProg src dst count) (2 * count) S
-      fun _ s' => Memory.WellFormed w s' ∧ ∀ j < count, s'.mem (dst + j) = s.mem (src + j) :=
-    ((hloop.mono le_rfl fun _ _ h =>
-      Memory.SameFrontierTriple.pure (c := 0) (a := ()) h).bind_same).mono
-      (Nat.add_zero _).le fun _ _ h => h
-  exact hres
-
-/-- General `FramedTriple` wrapper for `copySliceProg`. -/
-theorem copySliceProg_framedTriple {w src dst count : ℕ} {s : Memory.State}
-    (hwf : Memory.WellFormed w s) (hcnt : Fits w count)
-    (hdisj : src + count ≤ dst ∨ dst + count ≤ src)
-    (hsrc : src + count ≤ s.frontier) (hdst : dst + count ≤ s.frontier) :
-    Memory.FramedTriple w s (copySliceProg src dst count) (2 * count)
-      (Set.Ico dst (dst + count)) fun _ s' =>
-        s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
-        ∀ j < count, s'.mem (dst + j) = s.mem (src + j) :=
-  Memory.Triple.mono (copySliceProg_spec hwf hcnt hdisj hsrc hdst) le_rfl
-    fun _ _ ⟨hm, hwf', hvals⟩ => ⟨Memory.Modifies.of_sameFrontier hm, hm.1, hwf', hvals⟩
-
-/-- Uniform `Realizes .exact` certificate for `copySliceProg` with `work = 0`. -/
-theorem realizes_copySliceProg :
-    Realizes .exact (fun ((src, dst), count) => copySliceProg src dst count)
+/-- Uniform `Realizes .exact` certificate for `Memory.copy` with `work = 0`. -/
+theorem realizes_copy :
+    Realizes .exact (fun ((src, dst), count) => Memory.copy src dst count)
       WordEncoding.encode WordEncoding.encode
       (fun _ ((src, dst), count) s => src + count ≤ s.frontier ∧ dst + count ≤ s.frontier)
       (fun _ _ => 0) := by
-  have hraw : Realizes .exact (fun d : (ℕ × ℕ) × ℕ => copySliceProg d.1.1 d.1.2 d.2)
+  let copyProg : (ℕ × ℕ) × ℕ → Memory.Prog Unit := fun d => do
+    let _ ← iterate copySliceStep (d.1.1, d.1.2) d.2 0
+    pure ()
+  have hraw : Realizes .exact copyProg
       WordEncoding.encode WordEncoding.encode
       (fun w d s => iterationSafe (fun x : ((ℕ × ℕ) × ℕ) × ℕ =>
           copySliceStep ((x.1.1.1, x.1.1.2), x.2))
         (fun w d s => copySliceStepSafe w ((d.1.1.1, d.1.1.2), d.2) s) w d d.2 0 s)
       (fun _ _ => 0) := by
-    unfold copySliceProg
+    dsimp only [copyProg]
     realize [realizes_copySliceStep]
     exact h
-  refine (hraw.congr (fun ⟨⟨_, _⟩, _⟩ => rfl)).consequence
-    (fun w d s hwords hmem hbound => ?_) (fun _ _ => le_rfl)
+  refine (hraw.congr (fun ⟨⟨src, dst⟩, count⟩ =>
+    (copy_eq_iterate src dst count).symm)).consequence
+      (fun w d s hwords hmem hbound => ?_) (fun _ _ => le_rfl)
   rcases d with ⟨⟨src, dst⟩, count⟩
-  exact iterationSafe_map (fun x : (ℕ × ℕ) × ℕ => (x.1.1, x.1.2)) copySliceStep
-    copySliceStepSafe _ (fun _ _ _ hs => hs)
-    (copySlice_iterationSafe hmem (hwords 2) hbound.1 hbound.2)
+  exact iterationSafe_imp (copySlice_iterationSafe hmem (hwords 2) hbound.1 hbound.2)
+    (fun _ => rfl) (fun _ _ hs => hs)
 
 /-! ## In-place exclusive prefix sum (`prefixSumProg`) -/
 
-/-- Single step of the in-place exclusive prefix sum: read `x` at `base + idx`, overwrite
-`base + idx` with the running accumulator `acc`, and return `(idx + 1, acc + x)`. -/
-@[expose] def prefixSumStep : ℕ × ℕ × ℕ → Memory.Prog (ℕ × ℕ)
+private def prefixSumStep : ℕ × ℕ × ℕ → Memory.Prog (ℕ × ℕ)
   | (base, idx, acc) => do
     let x ← Memory.read (base + idx)
     Memory.write (base + idx) acc
     pure (idx + 1, acc + x)
 
-/-- Native safety domain for `prefixSumStep`. -/
-@[expose] def prefixSumStepSafe (w : ℕ) : ℕ × ℕ × ℕ → Memory.State → Prop
+private def prefixSumStepSafe (w : ℕ) : ℕ × ℕ × ℕ → Memory.State → Prop
   | (base, idx, acc), s => Fits w (idx + 1) ∧ Fits w (acc + s.mem (base + idx))
 
 private theorem realizes_prefixSumStep_history : Realizes .exact
@@ -419,8 +367,7 @@ private theorem realizes_prefixSumStep_history : Realizes .exact
       fits
   exact hraw.congr (fun ⟨_, _, _⟩ => rfl)
 
-/-- Uniform `Realizes .exact` certificate for `prefixSumStep` with `work = 0`. -/
-theorem realizes_prefixSumStep :
+private theorem realizes_prefixSumStep :
     Realizes .exact prefixSumStep WordEncoding.encode WordEncoding.encode prefixSumStepSafe
       (fun _ _ => 0) :=
   realizes_prefixSumStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -428,21 +375,18 @@ theorem realizes_prefixSumStep :
 /-- In-place exclusive prefix sum over `[base, base + count)`: overwrites `mem (base + j)` with
 `∑ i ∈ Finset.range j, mem (base + i)` for `j < count`, and returns the total sum
 `∑ i ∈ Finset.range count, mem (base + i)`. -/
-@[expose] def prefixSumProg (base count : ℕ) : Memory.Prog ℕ := do
+def prefixSumProg (base count : ℕ) : Memory.Prog ℕ := do
   let res ← iterate prefixSumStep base count (0, 0)
   pure res.2
 
-/-- Specification for `prefixSumProg`: computes the in-place exclusive prefix sum over
-`[base, base + count)`, returns the total sum `∑ i ∈ Finset.range count, s.mem (base + i)`,
-modifies only `Set.Ico base (base + count)` with fixed frontier, costs at most `2 * count`, and
-satisfies `iterationSafe` and `WellFormed`. -/
-theorem prefixSumProg_spec {w base count : ℕ} {s : Memory.State}
+private theorem prefixSum_loop_spec {w base count : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hcnt : Fits w count) (hbound : base + count ≤ s.frontier)
     (hsum : Fits w (∑ i ∈ Finset.range count, s.mem (base + i))) :
     iterationSafe prefixSumStep prefixSumStepSafe w base count (0, 0) s ∧
-    Memory.SameFrontierTriple w s (prefixSumProg base count) (2 * count)
-      (Set.Ico base (base + count)) fun res s' =>
+    Memory.FramedTriple w s (prefixSumProg base count) (2 * count) (Set.Ico base (base + count))
+      fun res s' =>
         res = ∑ i ∈ Finset.range count, s.mem (base + i) ∧
+        s'.frontier = s.frontier ∧
         Memory.WellFormed w s' ∧
         ∀ j < count, s'.mem (base + j) = ∑ i ∈ Finset.range j, s.mem (base + i) := by
   let S : Set ℕ := Set.Ico base (base + count)
@@ -460,7 +404,7 @@ theorem prefixSumProg_spec {w base count : ℕ} {s : Memory.State}
       let a' := (Memory.spec 0).clientResult t (prefixSumStep (base, a))
       let t' := (Memory.spec 0).clientState t (prefixSumStep (base, a))
       memoryCost (prefixSumStep (base, a)) t + 0 ≤ 0 + 2 ∧
-      Memory.SameFrontierModifies S t t' ∧
+      Memory.Modifies S t t' ∧
       inv (k + 1) a' t' := by
     intro k hk ⟨idx, acc⟩ t ⟨hidx, hacc, htfr, hwt, hpref, hrest⟩
     dsimp only at hidx hacc
@@ -488,12 +432,8 @@ theorem prefixSumProg_spec {w base count : ℕ} {s : Memory.State}
         StateTransitionSpec.clientResult_pure]
     have hst : (Memory.spec 0).clientState t (prefixSumStep (base, (k, acc))) =
         ⟨Function.update t.mem (base + k) acc, t.frontier⟩ := rfl
-    have hmod : Memory.SameFrontierModifies S t
-        ⟨Function.update t.mem (base + k) acc, t.frontier⟩ :=
-      (Memory.SameFrontierModifies.write t (base + k) acc).mono fun x hx => by
-        have heq : x = base + k := hx
-        subst heq
-        exact ⟨Nat.le_add_right _ _, by omega⟩
+    have hmod : Memory.Modifies S t ⟨Function.update t.mem (base + k) acc, t.frontier⟩ :=
+      Memory.Modifies.set t ⟨base, count⟩ hk acc
     have hfit_k1 : Fits w (k + 1) := hcnt.of_le (by omega)
     refine ⟨⟨hfit_k1, hfit_next⟩, hvh, by omega, by rw [hst]; exact hmod, ?_⟩
     rw [hres, hst]
@@ -507,28 +447,33 @@ theorem prefixSumProg_spec {w base count : ℕ} {s : Memory.State}
     · dsimp only
       rw [Function.update_of_ne (by omega)]
       exact hrest i (by omega) hic
-  obtain ⟨hsafe, hv, hcost, hmod, _, hres, _, hwf', hpref, _⟩ :=
-    iterate_potential_sameFrontier_spec prefixSumStep prefixSumStepSafe w base 2 count
+  obtain ⟨hsafe, hv, hcost, hmod, _, hres, htfr, hwf', hpref, _⟩ :=
+    iterate_potential_spec prefixSumStep prefixSumStepSafe w base 2 count
       inv (fun _ _ _ => 0) S hstep (0, 0) s
       ⟨rfl, by simp, rfl, hwf, fun _ h => absurd h (Nat.not_lt_zero _), fun _ _ _ => rfl⟩
-  have hloop : Memory.SameFrontierTriple w s (iterate prefixSumStep base count (0, 0))
-      (2 * count) S fun res s' =>
+  have hloop : Memory.FramedTriple w s (iterate prefixSumStep base count (0, 0)) (2 * count) S
+      fun res s' =>
         res.2 = ∑ i ∈ Finset.range count, s.mem (base + i) ∧
+        s'.frontier = s.frontier ∧
         Memory.WellFormed w s' ∧
         ∀ j < count, s'.mem (base + j) = ∑ i ∈ Finset.range j, s.mem (base + i) :=
-    sameFrontierTriple_iff_realization.mpr ⟨hv, by simpa using hcost, hmod, hres, hwf', hpref⟩
-  have hret : Memory.SameFrontierTriple w s (prefixSumProg base count) (2 * count) S
+    framedTriple_iff_realization.mpr ⟨hv, by simpa using hcost, hmod, hres, htfr, hwf', hpref⟩
+  have hret : Memory.FramedTriple w s (prefixSumProg base count) (2 * count) S
       fun res s' =>
         res = ∑ i ∈ Finset.range count, s.mem (base + i) ∧
+        s'.frontier = s.frontier ∧
         Memory.WellFormed w s' ∧
         ∀ j < count, s'.mem (base + j) = ∑ i ∈ Finset.range j, s.mem (base + i) :=
     ((hloop.mono le_rfl fun res _ h =>
-      Memory.SameFrontierTriple.pure (c := 0) (a := res.2) h).bind_same).mono
+      Memory.FramedTriple.pure (c := 0) (a := res.2) h).bind_same).mono
       (Nat.add_zero _).le fun _ _ h => h
   exact ⟨hsafe, hret⟩
 
-/-- General `FramedTriple` wrapper for `prefixSumProg`. -/
-theorem prefixSumProg_framedTriple {w base count : ℕ} {s : Memory.State}
+/-- Framed specification for `prefixSumProg`: computes the in-place exclusive prefix sum over
+`[base, base + count)`, returns the total sum `∑ i ∈ Finset.range count, s.mem (base + i)`,
+preserves frontier and all cells outside `[base, base + count)`, costs at most `2 * count`, and
+preserves `WellFormed`. -/
+theorem prefixSumProg_spec {w base count : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hcnt : Fits w count) (hbound : base + count ≤ s.frontier)
     (hsum : Fits w (∑ i ∈ Finset.range count, s.mem (base + i))) :
     Memory.FramedTriple w s (prefixSumProg base count) (2 * count) (Set.Ico base (base + count))
@@ -537,9 +482,7 @@ theorem prefixSumProg_framedTriple {w base count : ℕ} {s : Memory.State}
         s'.frontier = s.frontier ∧
         Memory.WellFormed w s' ∧
         ∀ j < count, s'.mem (base + j) = ∑ i ∈ Finset.range j, s.mem (base + i) :=
-  Memory.Triple.mono (prefixSumProg_spec hwf hcnt hbound hsum).2 le_rfl
-    fun _ _ ⟨hm, hres, hwf', hpref⟩ =>
-      ⟨Memory.Modifies.of_sameFrontier hm, hres, hm.1, hwf', hpref⟩
+  (prefixSum_loop_spec hwf hcnt hbound hsum).2
 
 /-- Uniform `Realizes .exact` certificate for `prefixSumProg` with `work = 0`. -/
 theorem realizes_prefixSumProg :
@@ -557,80 +500,59 @@ theorem realizes_prefixSumProg :
     realize [realizes_prefixSumStep]
     exact h
   exact hraw.consequence (fun w d s hwords hmem ⟨hbound, hsum⟩ =>
-    iterationSafe_map Prod.fst prefixSumStep prefixSumStepSafe _ (fun _ _ _ hs => hs)
-      (prefixSumProg_spec hmem (hwords 1) hbound hsum).1) (fun _ _ => le_rfl)
+    iterationSafe_imp (prefixSum_loop_spec hmem (hwords 1) hbound hsum).1
+      (fun _ => rfl) (fun _ _ hs => hs)) (fun _ _ => le_rfl)
 
-/-! ## Zeroed block allocation (`allocZeroBlockProg`, `allocZeroBlockDirtyProg`) -/
+/-! ## Uniform realization and framed specs for `Memory.allocBlock` / `Memory.allocBlockDirty` -/
 
-/-- Allocate a zeroed block of `size` words at the frontier, returning `Block.mk base size`. -/
-@[expose] def allocZeroBlockProg (size : ℕ) : Memory.Prog Block := do
-  let base ← Memory.alloc size
-  pure ⟨base, size⟩
-
-/-- Uniform `Realizes .exact` certificate for `allocZeroBlockProg` with `work = 0`. -/
-theorem realizes_allocZeroBlockProg :
-    Realizes .exact allocZeroBlockProg WordEncoding.encode WordEncoding.encode
+/-- Uniform `Realizes .exact` certificate for `Memory.allocBlock` with `work = 0`. -/
+theorem realizes_allocBlock :
+    Realizes .exact Memory.allocBlock WordEncoding.encode WordEncoding.encode
       (fun _ _ _ => True) (fun _ _ => 0) := by
-  unfold allocZeroBlockProg
+  unfold Memory.allocBlock
   realize
 
-/-- Framed specification for `allocZeroBlockProg`: costs `size + 1`, preserves all cells below
-`s.frontier` (`Modifies ∅`), returns `⟨s.frontier, size⟩` allocated and zeroed, preserves
+/-- Framed specification for `Memory.allocBlock`: costs `size + 1`, preserves all cells below
+`s.frontier` (`Memory.Modifies ∅`), returns `⟨s.frontier, size⟩` allocated and zeroed, preserves
 `WellFormed`, and guarantees disjointness from every block previously allocated in `s`. -/
-theorem allocZeroBlockProg_spec {w size : ℕ} {s : Memory.State}
+theorem allocBlock_spec {w size : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hfit : Fits w (s.frontier + size)) :
-    Memory.FramedTriple w s (allocZeroBlockProg size) (size + 1) ∅ fun b s' =>
+    Memory.FramedTriple w s (Memory.allocBlock size) (size + 1) ∅ fun b s' =>
       b = ⟨s.frontier, size⟩ ∧
       b.Allocated s' ∧
       Memory.WellFormed w s' ∧
       (∀ j < size, s'.mem (b.base + j) = 0) ∧
       ∀ b' : Block, b'.Allocated s → b'.Disjoint b := by
-  have ht : Memory.Triple w s (allocZeroBlockProg size) (size + 1) fun b s' =>
-      Memory.Modifies ∅ s s' ∧
-      b = ⟨s.frontier, size⟩ ∧
-      b.Allocated s' ∧
-      Memory.WellFormed w s' ∧
-      (∀ j < size, s'.mem (b.base + j) = 0) ∧
-      ∀ b' : Block, b'.Allocated s → b'.Disjoint b := by
-    refine Memory.Triple.mono (Memory.Triple.alloc_bind (c := 0) hfit (Memory.Triple.pure ?_))
-      (Nat.zero_add _).le fun _ _ h => h
-    refine ⟨Memory.Modifies.alloc s size, rfl, le_rfl, ?_, fun j hj => ?_, fun b' hb' => ?_⟩
-    · exact hwf.step (o := .alloc size) hfit
-    · exact clear_of_owns (Block.owns_add (b := ⟨s.frontier, size⟩) hj)
-    · exact Block.disjoint_of_allocated_frontier hb' size
-  exact ht
+  refine Memory.FramedTriple.mono
+    (Memory.FramedTriple.allocBlock_bind (c := 0) hfit (Memory.FramedTriple.pure ?_))
+    (Nat.zero_add _).le fun _ _ h => h
+  refine ⟨rfl, le_rfl, hwf.step (o := .alloc size) hfit, fun j hj => ?_, fun b' hb' => ?_⟩
+  · exact clear_of_owns (Block.owns_add (b := ⟨s.frontier, size⟩) hj)
+  · exact Block.disjoint_of_allocated_frontier hb' size
 
-/-- Allocate a zeroed block of `size` words in `O(1)` time (`cost = 1`) via `Memory.allocDirty`
-when memory is known to satisfy `Memory.ZeroAbove s`. -/
-@[expose] def allocZeroBlockDirtyProg (size : ℕ) : Memory.Prog Block := do
-  let base ← Memory.allocDirty size
-  pure ⟨base, size⟩
-
-/-- Uniform `Realizes .exact` certificate for `allocZeroBlockDirtyProg` with `work = 0`. -/
-theorem realizes_allocZeroBlockDirtyProg :
-    Realizes .exact allocZeroBlockDirtyProg WordEncoding.encode WordEncoding.encode
+/-- Uniform `Realizes .exact` certificate for `Memory.allocBlockDirty` with `work = 0`. -/
+theorem realizes_allocBlockDirty :
+    Realizes .exact Memory.allocBlockDirty WordEncoding.encode WordEncoding.encode
       (fun _ _ _ => True) (fun _ _ => 0) := by
-  unfold allocZeroBlockDirtyProg
+  unfold Memory.allocBlockDirty
   realize
 
-/-- Framed specification for `allocZeroBlockDirtyProg` under `Memory.ZeroAbove s`: costs `1`,
-modifies nothing below `s.frontier` (`Modifies ∅`), returns `⟨s.frontier, size⟩` allocated and
-zeroed, preserves `WellFormed` and `ZeroAbove`, and guarantees disjointness from every block
+/-- Framed specification for `Memory.allocBlockDirty` under `Memory.ZeroAbove s`: costs `1`,
+modifies nothing below `s.frontier` (`Memory.Modifies ∅`), returns `⟨s.frontier, size⟩` allocated
+and zeroed, preserves `WellFormed` and `ZeroAbove`, and guarantees disjointness from every block
 previously allocated in `s`. -/
-theorem allocZeroBlockDirtyProg_spec {w size : ℕ} {s : Memory.State}
+theorem allocBlockDirty_spec {w size : ℕ} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (hz : Memory.ZeroAbove s) (hfit : Fits w (s.frontier + size)) :
-    Memory.FramedTriple w s (allocZeroBlockDirtyProg size) 1 ∅ fun b s' =>
+    Memory.FramedTriple w s (Memory.allocBlockDirty size) 1 ∅ fun b s' =>
       b = ⟨s.frontier, size⟩ ∧
       b.Allocated s' ∧
       Memory.WellFormed w s' ∧
       Memory.ZeroAbove s' ∧
       (∀ j < size, s'.mem (b.base + j) = 0) ∧
       ∀ b' : Block, b'.Allocated s → b'.Disjoint b := by
-  refine Memory.Triple.allocDirty_bind (c := 0) hfit (Memory.Triple.pure ?_)
-  refine ⟨Memory.Modifies.allocDirty s size, rfl, le_rfl, ?_, hz.allocDirty size,
-    fun j hj => ?_, fun b' hb' => ?_⟩
-  · exact hwf.step (o := .allocDirty size) hfit
-  · exact hz (s.frontier + j) (by omega)
-  · exact Block.disjoint_of_allocated_frontier hb' size
+  refine Memory.FramedTriple.allocBlockDirty_bind (c := 0) hfit (Memory.FramedTriple.pure ?_)
+  refine ⟨rfl, le_rfl, hwf.step (o := .allocDirty size) hfit, hz.allocDirty size,
+    fun j hj => hz (s.frontier + j) (by omega), fun b' hb' => ?_⟩
+  exact Block.disjoint_of_allocated_frontier hb' size
 
 end Cslib.WordRAM.Realization

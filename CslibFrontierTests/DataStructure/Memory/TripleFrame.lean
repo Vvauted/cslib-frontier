@@ -12,9 +12,11 @@ import CslibFrontier.Tactic.Realize
 /-!
 # Client tests for `Memory.TripleFrame`
 
-Exercises multi-block `FramedTriple.frame` preservation, strided `Block.slot` framing across
-updates to other indices, `Block.writeList` multi-field initialization (including `Realizes .exact`
-compilation of a fixed-arity list), allocation/copy/branch combinators, and `#print axioms` checks.
+Exercises multi-block `FramedTriple.frame` preservation, `FramedTriple.mem_eq_of_frontier_eq`,
+strided `Block.slot` framing across updates to other indices, `Block.writeList` multi-field
+initialization (including `Realizes .exact` compilation of a fixed-arity list), boundary
+witnesses for adjacent blocks and `ZeroAbove`, allocation/copy/branch combinators, and
+`Classical.choice`-free `#print axioms` checks.
 -/
 
 namespace CslibFrontierTests.DataStructure.Memory.TripleFrame
@@ -62,7 +64,15 @@ example {w : ℕ} {s : State} (h42 : Fits w 42) (h99 : Fits w 99)
     (Block.disjoint_ico_iff.mpr hd)
     (fun a ⟨hlo, hhi⟩ => lt_of_lt_of_le hhi hb₂)
   refine Triple.mono hframed le_rfl fun _ _ ⟨hm, ⟨h0, h2⟩, hhold⟩ => ⟨hm, h0, h2, hhold, ?_⟩
-  exact Block.entries_eq_of_modifies_block hb₂ h2len (Block.disjoint_symm hd) hm
+  exact Block.entries_eq_of_modifies_block hb₂ h2len hd.symm hm
+
+-- `Modifies` in `Cslib.WordRAM` coexists cleanly with `protected Memory.Modifies`, and
+-- `Block.Disjoint.symm` supports both `hd.symm` and the `symm` tactic.
+example (b₁ b₂ : Block) (hd : b₁.Disjoint b₂) :
+    b₂.Disjoint b₁ ∧ ∀ m, Cslib.WordRAM.Modifies ∅ m m := by
+  refine ⟨?_, fun m => Cslib.WordRAM.Modifies.refl ∅ m⟩
+  symm
+  exact hd
 
 -- Using the `frame` lemma directly on a `State` predicate.
 example {w : ℕ} {s : State} (h42 : Fits w 42) (b₁ b₂ : Block)
@@ -178,26 +188,38 @@ example {w src dst n : ℕ} {s : State} (hdisj : src + n ≤ dst ∨ dst + n ≤
   refine FramedTriple.ite (fun _ => ?_) (fun _ => FramedTriple.pure rfl)
   exact FramedTriple.copy hdisj hsrc hdst hfit rfl
 
-/-! ## 5. Axiom checks (`#print axioms`) -/
+/-! ## 5. Boundary witnesses (`mem_eq_of_frontier_eq`, adjacent blocks, `ZeroAbove`) -/
 
-/-- info: 'Cslib.DataStructure.Memory.FramedTriple.frame' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.DataStructure.Memory.FramedTriple.frame
+-- `FramedTriple.mem_eq_of_frontier_eq` protects cells at or above `s.frontier` when the
+-- frontier does not advance.
+example {w base : ℕ} {s : State} (hwf : WellFormed w s) (hbound : base + 2 ≤ s.frontier)
+    (h0 : Fits w 1) (h1 : Fits w 2) (a : ℕ) (ha : s.frontier ≤ a) :
+    ((spec w).clientState s (Block.writeList base [1, 2])).mem a = s.mem a := by
+  have hwl := Block.framedTriple_writeList (base := base) (vs := [1, 2]) hwf hbound
+    (by intro v hv; simp only [List.mem_cons, List.not_mem_nil, or_false] at hv
+        rcases hv with rfl | rfl <;> assumption)
+  have hnot : a ∉ Set.Ico base (base + [1, 2].length) := by
+    simp only [Set.mem_Ico, List.length_cons, List.length_nil, not_and, not_lt]
+    omega
+  exact hwl.mem_eq_of_frontier_eq hwl.post.1 a hnot
 
-/-- info: 'Cslib.DataStructure.Memory.FramedTriple.copy' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.DataStructure.Memory.FramedTriple.copy
+-- Adjacent blocks touching at `b₁.base + b₁.length = b₂.base` are disjoint.
+example {b₁ b₂ : Block} (hadj : b₁.base + b₁.length = b₂.base) :
+    b₁.Disjoint b₂ ∧ b₂.Disjoint b₁ := by
+  have hd : b₁.Disjoint b₂ := Block.disjoint_of_le_left hadj.le
+  exact ⟨hd, hd.symm⟩
+
+-- `ZeroAbove` boundary at `a = s.frontier`, preserved across `allocDirty`.
+example {s : State} (hz : ZeroAbove s) (k : ℕ) :
+    s.mem s.frontier = 0 ∧
+    ∀ s' : State, s' = ⟨s.mem, s.frontier + k⟩ → s'.mem s'.frontier = 0 :=
+  ⟨hz s.frontier le_rfl, fun _ hs' => hs' ▸ (hz.allocDirty k) (s.frontier + k) le_rfl⟩
+
+/-! ## 6. Axiom checks (`#print axioms`) -/
 
 /-- info: 'Cslib.WordRAM.Block.slot_disjoint_of_ne' depends on axioms:
 [propext, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms Cslib.WordRAM.Block.slot_disjoint_of_ne
-
-/-- info: 'Cslib.WordRAM.Block.framedTriple_writeList' depends on axioms:
-[propext, Classical.choice, Quot.sound] -/
-#guard_msgs (whitespace := lax) in
-#print axioms Cslib.WordRAM.Block.framedTriple_writeList
 
 end CslibFrontierTests.DataStructure.Memory.TripleFrame
