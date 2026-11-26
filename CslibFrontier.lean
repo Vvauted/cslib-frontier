@@ -2221,6 +2221,7 @@ public import CslibFrontier.Computability.Complexity.Problems.CSP.RotationSystem
 public import CslibFrontier.Computability.Circuit.Boolean.WeightedThreshold.AndreevSharp
 public import CslibFrontier.Algorithms.WordRAM.AKS.PolyMul
 public import CslibFrontier.Logics.Propositional.CNF.Horn
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.Layout
 public import CslibFrontier.Foundations.RingTheory.MvPolynomial.PurePower.CriticalIntegerSpecialization
 public import CslibFrontier.Computability.LogSpaceDerandomization.EstimatorPrecision
 public import CslibFrontier.Probability.LinearCombination
@@ -6168,6 +6169,7 @@ public import CslibFrontier.Computability.Complexity.Problems.SAT.Planar.PairedS
 public import CslibFrontier.Foundations.Data.Polynomial.StagedJetArithmetic
 public import CslibFrontier.Crypto.Computational.PseudorandomFunction.RandomOracle
 public import CslibFrontier.Crypto.Computational.MLDSA.FIPS204ResponseBinding
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.PrecompKruskal
 public import CslibFrontier.Computability.Circuit.Boolean.Selection
 public import CslibFrontier.Computability.Complexity.Classes.NP.Nondeterministic
 public import CslibFrontier.Computability.QueryComplexity.Huang
