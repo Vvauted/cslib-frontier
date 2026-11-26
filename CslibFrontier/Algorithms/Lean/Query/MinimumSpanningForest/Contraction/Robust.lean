@@ -8,37 +8,37 @@ module
 -- upstream: candidate
 
 public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.Contraction.Threshold
-public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Decomp
-import Mathlib.Tactic.Linarith
+public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Basic
 
 /-!
 # Dynamic Soft-Heap Robust Contraction and Edge Deduplication
 
-This module formalizes the dynamic Soft-Heap DJP tree invariants and Robust Contraction theory
-of [PettieRamachandran2002], Sections 2–3 (Lemmas 2.1, 3.2, and 3.3), together with parallel-edge
-and self-loop deduplication (`dedupSimpleEdges`) preserving `IsMinSpanningForest`.
+Steps toward Theorem 5.8 of [PettieRamachandran2002] (#8624). Defines `DynamicDJPTree` and proves
+this module's dynamic Soft-Heap adaptation of static Lemma 2.1 (§2.2, p. 18; preceding Soft Heaps
+in §2.4, p. 19), Definition 3.1 (DJP-contractible subgraphs, §3.1, p. 20), and Lemma 3.2
+(§3.1, p. 20), generalizing Lemma 3.2's distinct-weight subset inclusion to multigraphs with
+duplicate `ℕ` weights via `WeaklySupported` / `IsMinSpanningForest`. Also proves the combinatorial
+stopping-rule step `maxsize_le_card_biUnion_of_stop` toward Lemma 3.3(c) (§3.2, pp. 21–22) and
+parallel-edge / self-loop deduplication (`dedupSimpleEdges`) preserving `IsMinSpanningForest`.
 
 ## Main definitions
 
 * `Cslib.Query.MinimumSpanningForest.djpVerts`,
   `Cslib.Query.MinimumSpanningForest.DynamicDJPTree`: dynamic Soft-Heap DJP component state and
   monotonic key-corruption invariants.
-* `Cslib.Query.MinimumSpanningForest.PartitionRound`: record of one dynamic-DJP contraction round.
 * `Cslib.Query.MinimumSpanningForest.dedupSimpleEdges`: parallel-edge and self-loop removal via
   `allPairs n`.
 
 ## Main results
 
-* `Cslib.Query.MinimumSpanningForest.lemma_2_1_dynamic`: dynamic Soft-Heap Lemma 2.1 of
-  [PettieRamachandran2002].
-* `Cslib.Query.MinimumSpanningForest.lemma_3_2_dynamic`,
-  `Cslib.Query.MinimumSpanningForest.isMinSpanningForest_of_lemma_3_2`: Robust Contraction
-  Lemma 3.2 of [PettieRamachandran2002].
-* `Cslib.Query.MinimumSpanningForest.weaklySupported_partition_rounds`,
-  `Cslib.Query.MinimumSpanningForest.lemma_3_3_optDepth_sum_le`,
-  `Cslib.Query.MinimumSpanningForest.lemma_3_3_conglomerate_size`: multi-round invariant, decision
-  tree depth bound via `sum_optDepth_le_optDepthMN`, and conglomerate lower bound (Lemma 3.3 of
-  [PettieRamachandran2002]).
+* `Cslib.Query.MinimumSpanningForest.DynamicDJPTree.rel_treeEdges_filter_of_border`: dynamic
+  Soft-Heap border-edge path property adapting [PettieRamachandran2002], Lemma 2.1.
+* `Cslib.Query.MinimumSpanningForest.weaklySupported_of_dynamicDJPTree`,
+  `Cslib.Query.MinimumSpanningForest.isMinSpanningForest_of_dynamicDJPTree`: dynamic Soft-Heap
+  contraction lifting adapting [PettieRamachandran2002], Definition 3.1 and Lemma 3.2.
+* `Cslib.Query.MinimumSpanningForest.maxsize_le_card_biUnion_of_stop`: combinatorial stopping-rule
+  step toward Lemma 3.3(c) of [PettieRamachandran2002] (without formalizing the full `Partition`
+  procedure, and allowing isolated singletons for disconnected inputs).
 * `Cslib.Query.MinimumSpanningForest.dedupSimpleEdges_isSimple`,
   `Cslib.Query.MinimumSpanningForest.isMinSpanningForest_of_dedupSimpleEdges`: simple-graph
   deduplication preserves MSF optimality.
@@ -51,7 +51,7 @@ namespace Cslib.Query.MinimumSpanningForest
 open Cslib.DataStructure DisjointSet
 open Cslib.Algorithms.Lean.Kruskal
 
-/-! ## Dynamic Soft-Heap Lemma 2.1 -/
+/-! ## Dynamic Soft-Heap DJP Invariant -/
 
 /-- Prefix vertex set of the first `k` steps of a dynamic DJP tree starting at `root`. -/
 @[expose] def djpVerts {n numSteps : ℕ} (root : Fin n) (vOut : Fin numSteps → Fin n) :
@@ -155,10 +155,12 @@ theorem DynamicDJPTree.joins_treeVerts {n : ℕ} (D : DynamicDJPTree n) {x : Fin
       · exact ih hkn.le y hy'
   exact hgen D.numSteps le_rfl x hx
 
-/-- Dynamic Soft-Heap Lemma 2.1 of [PettieRamachandran2002]: any two tree vertices `x, y ∈ V_t`
-with uncorrupted external border edges `e₁, e₂` crossing `V_t` are connected in `D.treeEdges`
-using only edges of actual weight at most `max e₁.weight e₂.weight`. -/
-theorem lemma_2_1_dynamic {n : ℕ} (D : DynamicDJPTree n) {x y : Fin n}
+/-- Dynamic Soft-Heap border-edge path property toward Theorem 5.8 of [PettieRamachandran2002]
+(#8624), adapting static Lemma 2.1 (§2.2, p. 18) to Soft-Heap `wPop` bounds (§2.4, p. 19): any
+two tree vertices `x, y ∈ D.treeVerts D.numSteps` with uncorrupted external border edges `e₁, e₂`
+are connected in `D.treeEdges` using only edges of actual weight at most
+`max e₁.weight e₂.weight`. -/
+theorem DynamicDJPTree.rel_treeEdges_filter_of_border {n : ℕ} (D : DynamicDJPTree n) {x y : Fin n}
     (hx : x ∈ D.treeVerts D.numSteps) (hy : y ∈ D.treeVerts D.numSteps)
     (e₁ e₂ : WeightedEdge n ℕ)
     (he₁_cut : (e₁.u = x ∧ e₁.v ∉ D.treeVerts D.numSteps) ∨
@@ -300,7 +302,7 @@ theorem lemma_2_1_dynamic {n : ℕ} (D : DynamicDJPTree n) {x y : Fin n}
         · exact (edgePartition F).trans ih ((edgePartition F).symm hrel_s)
     exact hconn_filt x y hP_conn
 
-/-! ## Robust Contraction Lemmas 3.2 and 3.3 -/
+/-! ## Dynamic Soft-Heap Contraction Lifting and Stopping Rule -/
 
 private theorem filter_contractEdgeList {n n' : ℕ} (c : Fin n → Fin n')
     (w : ℕ) (xs : List (WeightedEdge n ℕ)) :
@@ -316,20 +318,24 @@ private theorem filter_contractEdgeList {n n' : ℕ} (c : Fin n → Fin n')
     · simp only [hwt, hp, Bool.false_eq_true, ↓reduceIte]; exact ih
     · simp only [hwt, hp, ↓reduceIte, List.map_cons]; exact congrArg (contractEdge c x :: ·) ih
 
-/-- Robust Contraction Lemma 3.2 of [PettieRamachandran2002] for `DynamicDJPTree`: given internal
-edges `C` on `V_C = D.treeVerts D.numSteps`, corrupted border `M_C`, external edges `H_edges`
-(uncorrupted across `D.treeVerts`), MSF `F_C` of `C`, and contraction-MSF lift `H_lift` of
-`H_edges`, every edge of `es` is weakly supported by `F_C ++ H_lift ++ M_C`. -/
-theorem lemma_3_2_dynamic {n n' : ℕ} (es C M_C H_edges F_C H_lift : List (WeightedEdge n ℕ))
-    (D : DynamicDJPTree n) (V_C : Finset (Fin n)) (c : Fin n → Fin n')
+/-- Dynamic Soft-Heap contraction lifting toward Theorem 5.8 of [PettieRamachandran2002] (#8624),
+adapting Definition 3.1 and Lemma 3.2 (§3.1, p. 20; which applies static Lemma 2.1 to a
+raised-weight graph) onto `DynamicDJPTree` and generalizing Lemma 3.2's distinct-weight subset
+inclusion to multigraphs with duplicate `ℕ` weights via `WeaklySupported`: given internal edges
+`C` containing `D.treeEdges`, corrupted border `M_C`, external edges `H_edges` (uncorrupted across
+`D.treeVerts`), MSF `F_C` of `C`, and contraction-MSF lift `H_lift` of `H_edges`, every edge of
+`es` is weakly supported by `F_C ++ H_lift ++ M_C`. -/
+theorem weaklySupported_of_dynamicDJPTree {n n' : ℕ}
+    (es C M_C H_edges F_C H_lift : List (WeightedEdge n ℕ))
+    (D : DynamicDJPTree n) (c : Fin n → Fin n')
     (hpart : (C ++ M_C ++ H_edges).Perm es)
-    (hVC : V_C = D.treeVerts D.numSteps)
-    (_hC_verts : ∀ e ∈ C, e.u ∈ V_C ∧ e.v ∈ V_C)
     (hD_sub : D.treeEdges.Subperm C)
-    (hH_no_int : ∀ e ∈ H_edges, ¬ (e.u ∈ V_C ∧ e.v ∈ V_C))
+    (hH_no_int : ∀ e ∈ H_edges,
+      ¬ (e.u ∈ D.treeVerts D.numSteps ∧ e.v ∈ D.treeVerts D.numSteps))
     (huncorr : ∀ e ∈ H_edges, ∀ s : Fin D.numSteps,
       (e.u ∈ D.treeVerts s.val ↔ e.v ∉ D.treeVerts s.val) → D.wPop s ≤ e.weight)
-    (hc : ∀ x y : Fin n, c x = c y ↔ x = y ∨ (x ∈ V_C ∧ y ∈ V_C))
+    (hc : ∀ x y : Fin n,
+      c x = c y ↔ x = y ∨ (x ∈ D.treeVerts D.numSteps ∧ y ∈ D.treeVerts D.numSteps))
     (hFC : IsMinSpanningForest C F_C)
     (hHL_sub : H_lift.Subperm H_edges)
     (hHL_msf : IsMinSpanningForest (contractEdgeList c H_edges) (contractEdgeList c H_lift)) :
@@ -376,38 +382,17 @@ theorem lemma_3_2_dynamic {n n' : ℕ} (es C M_C H_edges F_C H_lift : List (Weig
       · exact (edgePartition U).refl _
       · obtain ⟨h₁, hh₁, hw₁, hx₁⟩ := hxE
         obtain ⟨h₂, hh₂, hw₂, hy₂⟩ := hyE
-        have hxV' : x ∈ D.treeVerts D.numSteps := hVC ▸ hxV
-        have hyV' : y ∈ D.treeVerts D.numSteps := hVC ▸ hyV
-        have mk_cut : ∀ (z : Fin n) (f : WeightedEdge n ℕ), z ∈ V_C → f ∈ H_edges →
-            (f.u = z ∨ f.v = z) →
+        have mk_cut : ∀ (z : Fin n) (f : WeightedEdge n ℕ),
+            z ∈ D.treeVerts D.numSteps → f ∈ H_edges → (f.u = z ∨ f.v = z) →
             (f.u = z ∧ f.v ∉ D.treeVerts D.numSteps) ∨
               (f.v = z ∧ f.u ∉ D.treeVerts D.numSteps) := fun z f hzV hf hzf => by
           rcases hzf with rfl | rfl
-          · exact .inl ⟨rfl, fun hv => hH_no_int f hf ⟨hzV, hVC.symm ▸ hv⟩⟩
-          · exact .inr ⟨rfl, fun hu => hH_no_int f hf ⟨hVC.symm ▸ hu, hzV⟩⟩
-        have h21 := lemma_2_1_dynamic D hxV' hyV' h₁ h₂
+          · exact .inl ⟨rfl, fun hv => hH_no_int f hf ⟨hzV, hv⟩⟩
+          · exact .inr ⟨rfl, fun hu => hH_no_int f hf ⟨hu, hzV⟩⟩
+        have h21 := D.rel_treeEdges_filter_of_border hxV hyV h₁ h₂
           (mk_cut x h₁ hxV hh₁ hx₁) (mk_cut y h₂ hyV hh₂ hy₂)
           (huncorr h₁ hh₁) (huncorr h₂ hh₂)
-        have hsub_w : (D.treeEdges.filter fun f =>
-            decide (f.weight ≤ max h₁.weight h₂.weight)).Subperm
-            (C.filter fun f => decide (f.weight ≤ w)) := by
-          have hsl : (D.treeEdges.filter fun f =>
-              decide (f.weight ≤ max h₁.weight h₂.weight)).Sublist
-              (D.treeEdges.filter fun f => decide (f.weight ≤ w)) := by
-            induction D.treeEdges with
-            | nil => exact .slnil
-            | cons f fs ih =>
-              rw [List.filter_cons, List.filter_cons]
-              by_cases hf : f.weight ≤ max h₁.weight h₂.weight
-              · have hfw : f.weight ≤ w := hf.trans (max_le hw₁ hw₂)
-                rw [decide_eq_true hf, decide_eq_true hfw]
-                exact List.Sublist.cons_cons f ih
-              · rw [decide_eq_false hf]
-                cases decide (f.weight ≤ w)
-                · exact ih
-                · exact List.Sublist.cons _ ih
-          exact hsl.subperm.trans (hD_sub.filter _)
-        have hD_rel := edgePartition_mono_subperm hsub_w h21
+        have hD_rel := edgePartition_filter_mono_subperm hD_sub (max_le hw₁ hw₂) h21
         rw [← hFC_thresh.2 w] at hD_rel
         have hU_sub : (F_C.filter fun f => decide (f.weight ≤ w)).Subperm U :=
           ((List.sublist_append_left F_C H_lift).subperm.trans
@@ -451,17 +436,20 @@ theorem lemma_3_2_dynamic {n n' : ℕ} (es C M_C H_edges F_C H_lift : List (Weig
     · exact (edgePartition U).trans (hbridge e.u a ha.symm heuEnd oa)
         ((edgePartition U).trans hab (hbridge b e.v hb ob hevEnd))
 
-theorem isMinSpanningForest_of_lemma_3_2 {n n' : ℕ}
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624): any MSF `F` of the dynamic-DJP
+contracted support list `F_C ++ H_lift ++ M_C` is an MSF of `es` (generalizing Lemma 3.2,
+§3.1, p. 20 to multigraphs with duplicate `ℕ` weights via `WeaklySupported`). -/
+theorem isMinSpanningForest_of_dynamicDJPTree {n n' : ℕ}
     (es C M_C H_edges F_C H_lift F : List (WeightedEdge n ℕ))
-    (D : DynamicDJPTree n) (V_C : Finset (Fin n)) (c : Fin n → Fin n')
+    (D : DynamicDJPTree n) (c : Fin n → Fin n')
     (hpart : (C ++ M_C ++ H_edges).Perm es)
-    (hVC : V_C = D.treeVerts D.numSteps)
-    (hC_verts : ∀ e ∈ C, e.u ∈ V_C ∧ e.v ∈ V_C)
     (hD_sub : D.treeEdges.Subperm C)
-    (hH_no_int : ∀ e ∈ H_edges, ¬ (e.u ∈ V_C ∧ e.v ∈ V_C))
+    (hH_no_int : ∀ e ∈ H_edges,
+      ¬ (e.u ∈ D.treeVerts D.numSteps ∧ e.v ∈ D.treeVerts D.numSteps))
     (huncorr : ∀ e ∈ H_edges, ∀ s : Fin D.numSteps,
       (e.u ∈ D.treeVerts s.val ↔ e.v ∉ D.treeVerts s.val) → D.wPop s ≤ e.weight)
-    (hc : ∀ x y : Fin n, c x = c y ↔ x = y ∨ (x ∈ V_C ∧ y ∈ V_C))
+    (hc : ∀ x y : Fin n,
+      c x = c y ↔ x = y ∨ (x ∈ D.treeVerts D.numSteps ∧ y ∈ D.treeVerts D.numSteps))
     (hFC : IsMinSpanningForest C F_C)
     (hHL_sub : H_lift.Subperm H_edges)
     (hHL_msf : IsMinSpanningForest (contractEdgeList c H_edges) (contractEdgeList c H_lift))
@@ -475,60 +463,14 @@ theorem isMinSpanningForest_of_lemma_3_2 {n n' : ℕ}
       exact List.Perm.append_left C List.perm_append_comm
     exact hp.trans (hp2.trans hpart).subperm
   exact isMinSpanningForest_of_weakSupport es (F_C ++ H_lift ++ M_C) F hsub_base
-    (lemma_3_2_dynamic es C M_C H_edges F_C H_lift D V_C c hpart hVC hC_verts hD_sub
+    (weaklySupported_of_dynamicDJPTree es C M_C H_edges F_C H_lift D c hpart hD_sub
       hH_no_int huncorr hc hFC hHL_sub hHL_msf) hF
 
-/-- Record representing one dynamic-DJP contraction round producing `(msfComp, corrupted)`. -/
-structure PartitionRound (n : ℕ) where
-  /-- Edges belonging to this round's contracted subcomponent `C`. -/
-  compEdges : List (WeightedEdge n ℕ)
-  /-- Spanning-forest edges selected for subcomponent `C`. -/
-  msfComp : List (WeightedEdge n ℕ)
-  /-- Border edges corrupted during the soft-heap extraction phase of `C`. -/
-  corrupted : List (WeightedEdge n ℕ)
-
-theorem weaklySupported_partition_rounds {n : ℕ} (es : List (WeightedEdge n ℕ))
-    (rounds : List (PartitionRound n)) (H_rem : List (WeightedEdge n ℕ))
-    (F_acc M_acc H_cur : List (WeightedEdge n ℕ))
-    (hbase : ∀ e ∈ es, WeaklySupported (F_acc ++ H_cur ++ M_acc) e)
-    (hsteps : ∀ H0, H0 = H_cur →
-      ∀ e ∈ H0, WeaklySupported
-        ((rounds.flatMap PartitionRound.msfComp) ++ H_rem ++
-          (rounds.flatMap PartitionRound.corrupted)) e) :
-    ∀ e ∈ es, WeaklySupported
-      ((F_acc ++ rounds.flatMap PartitionRound.msfComp) ++ H_rem ++
-        (M_acc ++ rounds.flatMap PartitionRound.corrupted)) e := by
-  intro e he
-  refine weaklySupported_trans (F_acc ++ H_cur ++ M_acc) _ (fun f hf => ?_) (hbase e he)
-  simp only [List.mem_append] at hf
-  rcases hf with (hf | hf) | hf
-  · exact rel_edgePartitionFrom_of_mem (Partition.discrete n) (List.mem_filter.mpr
-      ⟨List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ hf)),
-        decide_eq_true le_rfl⟩)
-  · have hws := hsteps H_cur rfl f hf
-    have hsub : ((rounds.flatMap PartitionRound.msfComp) ++ H_rem ++
-        (rounds.flatMap PartitionRound.corrupted)).Subperm
-        ((F_acc ++ rounds.flatMap PartitionRound.msfComp) ++ H_rem ++
-          (M_acc ++ rounds.flatMap PartitionRound.corrupted)) :=
-      ((List.sublist_append_right F_acc (rounds.flatMap PartitionRound.msfComp)).subperm.append
-        (List.Subperm.refl _)).append
-        (List.sublist_append_right M_acc (rounds.flatMap PartitionRound.corrupted)).subperm
-    exact weaklySupported_mono_subperm hsub hws
-  · exact rel_edgePartitionFrom_of_mem (Partition.discrete n) (List.mem_filter.mpr
-      ⟨List.mem_append_right _ (List.mem_append_left _ hf), decide_eq_true le_rfl⟩)
-
-/-- Lemma 3.3 decision-tree depth bound of [PettieRamachandran2002] for a list of contraction
-components `Cs : List (List (WeightedEdge n ℕ))`. -/
-theorem lemma_3_3_optDepth_sum_le {m n : ℕ} (Cs : List (List (WeightedEdge n ℕ)))
-    (hV : ValidDecomp (Cs.map fun es => ⟨es.length, edgeEnds es⟩))
-    (hsimp : IsSimple (edgeUnionList (Cs.map fun es => ⟨es.length, edgeEnds es⟩)))
-    (hm : (Cs.map List.length).sum ≤ m) :
-    (Cs.map fun es => optDepth (edgeEnds es)).sum ≤ optDepthMN m n := by
-  have h1 := sum_optDepth_le_optDepthMN (Cs.map fun es => ⟨es.length, edgeEnds es⟩) hV hsimp
-    (by simpa [Function.comp_def] using hm)
-  simpa [Function.comp_def] using h1
-
-theorem lemma_3_3_conglomerate_size {n k maxsize : ℕ}
+/-- Combinatorial stopping-rule step toward Lemma 3.3(c) of [PettieRamachandran2002] (#8624;
+§3.2, pp. 21–22, without formalizing the full `Partition` procedure): every connected conglomerate
+`I` of stopped vertex sets either reaches size at least `maxsize` or forms an isolated singleton
+(generalizing connected inputs to disconnected graphs). -/
+theorem maxsize_le_card_biUnion_of_stop {n k maxsize : ℕ}
     (V_comp : Fin k → Finset (Fin n))
     (hstop : ∀ i : Fin k,
       maxsize ≤ (V_comp i).card ∨
@@ -573,12 +515,10 @@ theorem lemma_3_3_conglomerate_size {n k maxsize : ℕ}
 
 /-! ## Edge Deduplication to Simple Graphs -/
 
-/-- Canonical ordered endpoint pair `(min u v, max u v)` for undirected edges. -/
-@[expose] def canonicalPair {n : ℕ} (e : WeightedEdge n ℕ) : Fin n × Fin n :=
+private def canonicalPair {n : ℕ} (e : WeightedEdge n ℕ) : Fin n × Fin n :=
   if e.u.val < e.v.val then (e.u, e.v) else (e.v, e.u)
 
-/-- Helper returning a minimum-weight edge in `es` matching unordered endpoint pair `p`. -/
-@[expose] def minByPairAux {n : ℕ} (p : Fin n × Fin n) :
+private def minByPairAux {n : ℕ} (p : Fin n × Fin n) :
     List (WeightedEdge n ℕ) → Option (WeightedEdge n ℕ)
   | [] => none
   | e :: rest =>
@@ -589,11 +529,35 @@ theorem lemma_3_3_conglomerate_size {n k maxsize : ℕ}
       | some best => some (if e.weight ≤ best.weight then e else best)
     else tail
 
+private theorem minByPairAux_eq_foldr {n : ℕ} (p : Fin n × Fin n)
+    (es : List (WeightedEdge n ℕ)) :
+    minByPairAux p es = es.foldr (fun e tail =>
+      if (if e.u.val < e.v.val then (e.u, e.v) else (e.v, e.u)) = p then
+        match tail with
+        | none => some e
+        | some best => some (if e.weight ≤ best.weight then e else best)
+      else tail) none := by
+  induction es with
+  | nil => rfl
+  | cons e rest ih =>
+    simp only [minByPairAux, canonicalPair, List.foldr_cons, ih]
+
 /-- Remove self-loops and keep a minimum-weight edge per unordered vertex pair via
 `allPairs n`. -/
 @[expose] def dedupSimpleEdges {n : ℕ} (es : List (WeightedEdge n ℕ)) :
     List (WeightedEdge n ℕ) :=
-  (allPairs n).filterMap fun p => minByPairAux p es
+  (allPairs n).filterMap fun p => es.foldr (fun e tail =>
+    if (if e.u.val < e.v.val then (e.u, e.v) else (e.v, e.u)) = p then
+      match tail with
+      | none => some e
+      | some best => some (if e.weight ≤ best.weight then e else best)
+    else tail) none
+
+private theorem dedupSimpleEdges_eq_filterMap {n : ℕ} (es : List (WeightedEdge n ℕ)) :
+    dedupSimpleEdges es = (allPairs n).filterMap fun p => minByPairAux p es := by
+  dsimp only [dedupSimpleEdges]
+  exact congrArg (fun f => (allPairs n).filterMap f)
+    (funext fun p => (minByPairAux_eq_foldr p es).symm)
 
 private theorem minByPairAux_spec {n : ℕ} (p : Fin n × Fin n) (es : List (WeightedEdge n ℕ)) :
     (∀ e, minByPairAux p es = some e →
@@ -645,6 +609,7 @@ private theorem minByPairAux_spec {n : ℕ} (p : Fin n × Fin n) (es : List (Wei
 
 private theorem dedupSimpleEdges_nodup {n : ℕ} (es : List (WeightedEdge n ℕ)) :
     (dedupSimpleEdges es).Nodup := by
+  rw [dedupSimpleEdges_eq_filterMap]
   refine (nodup_allPairs n).filterMap fun a₁ a₂ b ha hb => ?_
   exact ((minByPairAux_spec a₁ es).1 b ha).2.1.symm.trans
     ((minByPairAux_spec a₂ es).1 b hb).2.1
@@ -652,7 +617,7 @@ private theorem dedupSimpleEdges_nodup {n : ℕ} (es : List (WeightedEdge n ℕ)
 theorem dedupSimpleEdges_subperm {n : ℕ} (es : List (WeightedEdge n ℕ)) :
     (dedupSimpleEdges es).Subperm es := by
   refine List.subperm_of_subset (dedupSimpleEdges_nodup es) fun e he => ?_
-  rw [dedupSimpleEdges, List.mem_filterMap] at he
+  rw [dedupSimpleEdges_eq_filterMap, List.mem_filterMap] at he
   obtain ⟨p, _, hp⟩ := he
   exact ((minByPairAux_spec p es).1 e hp).1
 
@@ -669,9 +634,12 @@ private theorem ne_of_canonicalPair_in_allPairs {n : ℕ} {e : WeightedEdge n �
 
 theorem dedupSimpleEdges_isSimple {n : ℕ} (es : List (WeightedEdge n ℕ)) :
     IsSimple (edgeEnds (dedupSimpleEdges es)) := by
+  rw [isSimple_iff]
   refine ⟨fun i => ?_, fun i₁ i₂ hij => ?_⟩
   · have hmem : (dedupSimpleEdges es)[i.val] ∈
-        (allPairs n).filterMap (fun p => minByPairAux p es) := List.getElem_mem i.isLt
+        (allPairs n).filterMap (fun p => minByPairAux p es) := by
+      rw [← dedupSimpleEdges_eq_filterMap]
+      exact List.getElem_mem i.isLt
     rw [List.mem_filterMap] at hmem
     obtain ⟨p, hp_all, hp⟩ := hmem
     have hcp := ((minByPairAux_spec p es).1 _ hp).2.1
@@ -679,9 +647,13 @@ theorem dedupSimpleEdges_isSimple {n : ℕ} (es : List (WeightedEdge n ℕ)) :
     rw [Sym2.mk_isDiag_iff]
     exact ne_of_canonicalPair_in_allPairs hp_all hcp
   · have hm1 : (dedupSimpleEdges es)[i₁.val] ∈
-        (allPairs n).filterMap (fun p => minByPairAux p es) := List.getElem_mem i₁.isLt
+        (allPairs n).filterMap (fun p => minByPairAux p es) := by
+      rw [← dedupSimpleEdges_eq_filterMap]
+      exact List.getElem_mem i₁.isLt
     have hm2 : (dedupSimpleEdges es)[i₂.val] ∈
-        (allPairs n).filterMap (fun p => minByPairAux p es) := List.getElem_mem i₂.isLt
+        (allPairs n).filterMap (fun p => minByPairAux p es) := by
+      rw [← dedupSimpleEdges_eq_filterMap]
+      exact List.getElem_mem i₂.isLt
     rw [List.mem_filterMap] at hm1 hm2
     obtain ⟨p₁, hp1_all, hp1⟩ := hm1
     obtain ⟨p₂, hp2_all, hp2⟩ := hm2
@@ -733,6 +705,7 @@ theorem simpleGraph_weakSupport {n : ℕ} (es : List (WeightedEdge n ℕ)) :
     have hw' : e'.weight ≤ e.weight := hmin' e he rfl
     have he'_mem : e' ∈ (dedupSimpleEdges es).filter fun f => decide (f.weight ≤ e.weight) := by
       rw [List.mem_filter, decide_eq_true_eq]
+      rw [dedupSimpleEdges_eq_filterMap]
       exact ⟨List.mem_filterMap.mpr ⟨p, hp_all, he'⟩, hw'⟩
     have hrel := rel_edgePartitionFrom_of_mem (Partition.discrete n) he'_mem
     have hcp_eq : canonicalPair e' = canonicalPair e := hcp'

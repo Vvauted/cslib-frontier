@@ -13,17 +13,20 @@ public import CslibFrontier.Algorithms.Lean.Query.Sort.LEQuery.KeyOracle
 public import Mathlib.Data.Fintype.Perm
 import Mathlib.Algebra.BigOperators.Fin
 import Mathlib.Data.Finset.Card
-import Mathlib.Tactic.Linarith
+import Mathlib.Data.Nat.Bitwise
+import Mathlib.Data.Nat.Choose.Basic
 import Mathlib.Tactic.Ring
 
 /-!
 # Binary MSF Decision Trees, Bitmask Encodings, and Optimal Depth
 
-This module defines binary comparison decision trees (`MSFTree`, `MSFDT`) for computing minimum
-spanning forests (`Cslib.Multigraph.msf`) over edge-weight permutations, canonical bitmask-indexed
-simple graphs (`maskEdgePairs`, `endsOfMask`), optimal comparison depth `optDepth`, complete
-normalized trees (`MSFDT.padTo`), and the compilation `msfTreeOfFreeM` from any comparison-query
-algorithm `FreeM (LEQuery (Fin e)) α` ([PettieRamachandran2002], Section 5.1).
+Foundational comparison decision-tree infrastructure toward Theorem 5.8 of
+[PettieRamachandran2002] (#8624), supporting Section 4.1 (p. 23) and Section 5.1 (pp. 25–26).
+Defines binary comparison decision trees (`MSFTree`, `MSFDT`) for computing minimum spanning
+forests (`Cslib.Multigraph.msf`) over edge-weight permutations, canonical bitmask-indexed simple
+graphs (`maskEdgePairs`, `endsOfMask`), optimal comparison depth `optDepth`, complete normalized
+trees (`MSFDT.padTo`), and the compilation `msfTreeOfFreeM` from any comparison-query algorithm
+`FreeM (LEQuery (Fin e)) α`.
 
 ## Main definitions
 
@@ -128,14 +131,22 @@ theorem MSFTree.liftEmb_eval {e₁ e₂ : ℕ} {α : Type} (ι : Fin e₁ → Fi
       simp [hp, hp₂, ihr]
 
 /-- Correctness of `T : MSFTree e α` computing `f : Equiv.Perm (Fin e) → α` on `P`. -/
-@[expose] def MSFTree.AgreesOn {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
+def MSFTree.AgreesOn {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
     (P : Finset (Equiv.Perm (Fin e))) (T : MSFTree e α) : Prop :=
   ∀ p ∈ P, T.eval p = f p
 
+theorem MSFTree.agreesOn_iff {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
+    (P : Finset (Equiv.Perm (Fin e))) (T : MSFTree e α) :
+    T.AgreesOn f P ↔ ∀ p ∈ P, T.eval p = f p := Iff.rfl
+
 /-- Correctness of an MSF decision tree `T` for multigraph `ends : Fin e → Sym2 (Fin n)`:
 on each `p`, `T.eval p` equals `Cslib.Multigraph.msf ends p Finset.univ`. -/
-@[expose] def MSFDT.Correct {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) (T : MSFDT e) : Prop :=
+def MSFDT.Correct {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) (T : MSFDT e) : Prop :=
   ∀ p : Equiv.Perm (Fin e), T.eval p = Cslib.Multigraph.msf ends p Finset.univ
+
+theorem MSFDT.correct_iff {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) (T : MSFDT e) :
+    T.Correct ends ↔ ∀ p : Equiv.Perm (Fin e), T.eval p = Cslib.Multigraph.msf ends p Finset.univ :=
+  Iff.rfl
 
 /-- `Cslib.Multigraph.msf` depends on edge weights only through their strict order relation. -/
 theorem msf_congr_lt {E V W₁ W₂ : Type*} [LinearOrder W₁] [LinearOrder W₂]
@@ -290,27 +301,13 @@ theorem maskOfFinset_lt {e : ℕ} (S : Finset (Fin e)) : maskOfFinset S < 2 ^ e 
 @[expose] def pairIdx (a b : ℕ) : ℕ :=
   b * (b - 1) / 2 + a
 
-/-- Maximum number `r * (r - 1) / 2` of edges in a simple graph on `r` vertices. -/
-@[expose] def maxSimpleEdges (r : ℕ) : ℕ :=
-  r * (r - 1) / 2
-
-theorem maxSimpleEdges_succ (b : ℕ) :
-    maxSimpleEdges (b + 1) = maxSimpleEdges b + b := by
-  dsimp only [maxSimpleEdges]
-  cases b with
-  | zero => simp
-  | succ b =>
-    have hmul : (b + 2) * (b + 1) = (b + 1) * b + 2 * (b + 1) := by ring
-    rw [Nat.add_sub_cancel, Nat.add_sub_cancel, hmul, Nat.add_mul_div_left _ _ (by omega)]
-
-theorem pairIdx_lt_maxSimpleEdges {a b r : ℕ} (hab : a < b) (hb : b < r) :
-    pairIdx a b < maxSimpleEdges r := by
-  have hmon : maxSimpleEdges (b + 1) ≤ maxSimpleEdges r := by
-    dsimp only [maxSimpleEdges]
-    exact Nat.div_le_div_right (Nat.mul_le_mul hb (Nat.sub_le_sub_right hb 1))
-  rw [maxSimpleEdges_succ] at hmon
-  dsimp only [pairIdx] at *
-  have heq : b * (b - 1) / 2 = maxSimpleEdges b := rfl
+theorem pairIdx_lt_choose_two {a b r : ℕ} (hab : a < b) (hb : b < r) :
+    pairIdx a b < r.choose 2 := by
+  have hmon : (b + 1).choose 2 ≤ r.choose 2 := Nat.choose_le_choose 2 hb
+  have hsucc : (b + 1).choose 2 = b.choose 2 + b := by
+    rw [Nat.choose_succ_succ, Nat.choose_one_right, add_comm]
+  dsimp only [pairIdx]
+  rw [hsucc, Nat.choose_two_right] at hmon
   omega
 
 /-- Canonical ordered list of all `(a, b) : Fin r × Fin r` with `a.val < b.val`, ordered by
@@ -321,8 +318,8 @@ theorem pairIdx_lt_maxSimpleEdges {a b r : ℕ} (hab : a < b) (hb : b < r) :
 private theorem allPairs_prefix_sum : ∀ (r k : ℕ), k ≤ r →
     (((List.finRange r).take k).map
       (fun b : Fin r => ((List.finRange b.val).map fun a =>
-        ((⟨a.val, by omega⟩ : Fin r), b)).length)).sum = maxSimpleEdges k
-  | r, 0, _ => by simp [maxSimpleEdges]
+        ((⟨a.val, by omega⟩ : Fin r), b)).length)).sum = k.choose 2
+  | r, 0, _ => by simp
   | r, k + 1, hk => by
     have htake : (List.finRange r).take (k + 1) =
         (List.finRange r).take k ++ [⟨k, hk⟩] := by
@@ -330,10 +327,10 @@ private theorem allPairs_prefix_sum : ∀ (r k : ℕ), k ≤ r →
       rw [List.take_add_one, List.getElem?_eq_getElem hlen]
       simp [List.getElem_finRange]
     rw [htake, List.map_append, List.sum_append, List.map_singleton, List.sum_singleton,
-      allPairs_prefix_sum r k (by omega), List.length_map, List.length_finRange,
-      maxSimpleEdges_succ]
+      allPairs_prefix_sum r k (by omega), List.length_map, List.length_finRange]
+    rw [Nat.choose_succ_succ, Nat.choose_one_right, add_comm]
 
-theorem length_allPairs (r : ℕ) : (allPairs r).length = maxSimpleEdges r := by
+theorem length_allPairs (r : ℕ) : (allPairs r).length = r.choose 2 := by
   rw [allPairs, List.length_flatMap]
   have h := allPairs_prefix_sum r r le_rfl
   have htake : (List.finRange r).take r = List.finRange r :=
@@ -343,7 +340,7 @@ theorem length_allPairs (r : ℕ) : (allPairs r).length = maxSimpleEdges r := by
 
 theorem getElem_allPairs_pairIdx {r : ℕ} {a b : Fin r} (hab : a.val < b.val) :
     (allPairs r)[pairIdx a.val b.val]'(by
-      rw [length_allPairs]; exact pairIdx_lt_maxSimpleEdges hab b.isLt) = (a, b) := by
+      rw [length_allPairs]; exact pairIdx_lt_choose_two hab b.isLt) = (a, b) := by
   let rowFn : Fin r → List (Fin r × Fin r) := fun b =>
     (List.finRange b.val).map fun a => (⟨a.val, by omega⟩, b)
   have hb_lt : b.val < (List.finRange r).length := by simp
@@ -361,8 +358,7 @@ theorem getElem_allPairs_pairIdx {r : ℕ} {a b : Fin r} (hab : a.val < b.val) :
     simp [List.flatMap_append]
   have hpre_len : (((List.finRange r).take b.val).flatMap rowFn).length =
       b.val * (b.val - 1) / 2 := by
-    rw [List.length_flatMap, allPairs_prefix_sum r b.val b.isLt.le]
-    rfl
+    rw [List.length_flatMap, allPairs_prefix_sum r b.val b.isLt.le, Nat.choose_two_right]
   have hidx_eq : pairIdx a.val b.val =
       (((List.finRange r).take b.val).flatMap rowFn).length + a.val := by
     rw [hpre_len]; rfl
@@ -423,22 +419,34 @@ theorem pairIdx_getElem_allPairs {r k : ℕ} (hk : k < (allPairs r).length) :
   have hp : p.1.val < p.2.val := allPairs_lt (List.getElem_mem hk)
   have hlt : pairIdx p.1.val p.2.val < (allPairs r).length := by
     rw [length_allPairs]
-    exact pairIdx_lt_maxSimpleEdges hp p.2.isLt
+    exact pairIdx_lt_choose_two hp p.2.isLt
   have heq : (allPairs r)[pairIdx p.1.val p.2.val]'hlt = p := getElem_allPairs_pairIdx hp
   exact ((nodup_allPairs r).getElem_inj_iff (i := pairIdx p.1.val p.2.val) (j := k)).mp heq
 
 /-! ## Canonical Bitmask Simple Graphs -/
 
-/-- Extract elements of `xs` whose offset bit `(idx + i)` is set in `mask`. -/
-@[expose] def filterMaskAux {α : Type} (mask : ℕ) : List α → ℕ → List α
+private def filterMaskAux {α : Type} (mask : ℕ) : List α → ℕ → List α
   | [], _ => []
   | x :: xs, idx =>
     if mask.testBit idx then x :: filterMaskAux mask xs (idx + 1)
     else filterMaskAux mask xs (idx + 1)
 
+private theorem filterMaskAux_eq_zipIdx {α : Type} (mask : ℕ) (xs : List α) (idx : ℕ) :
+    filterMaskAux mask xs idx =
+      ((xs.zipIdx idx).filter fun p => mask.testBit p.2).map Prod.fst := by
+  induction xs generalizing idx with
+  | nil => rfl
+  | cons x xs ih =>
+    simp only [filterMaskAux, List.zipIdx_cons, List.filter_cons]
+    split_ifs <;> simp [ih]
+
 /-- Edge pairs of the canonical simple graph on `r` vertices encoded by bitmask `mask`. -/
 @[expose] def maskEdgePairs (r mask : ℕ) : List (Fin r × Fin r) :=
-  filterMaskAux mask (allPairs r) 0
+  ((allPairs r).zipIdx.filter fun p => mask.testBit p.2).map Prod.fst
+
+private theorem maskEdgePairs_eq_filterMaskAux (r mask : ℕ) :
+    maskEdgePairs r mask = filterMaskAux mask (allPairs r) 0 :=
+  (filterMaskAux_eq_zipIdx mask (allPairs r) 0).symm
 
 /-- Canonical simple multigraph on `r` vertices whose edge list corresponds to bitmask `mask`. -/
 @[expose] def endsOfMask (r mask : ℕ) : Fin (maskEdgePairs r mask).length → Sym2 (Fin r) :=
@@ -446,8 +454,11 @@ theorem pairIdx_getElem_allPairs {r k : ℕ} (hk : k < (allPairs r).length) :
 
 /-- Predicate asserting `ends : Fin e → Sym2 (Fin n)` defines a simple graph (no self-loops
 and no parallel edges). -/
-@[expose] def IsSimple {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) : Prop :=
+def IsSimple {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) : Prop :=
   (∀ i : Fin e, ¬ (ends i).IsDiag) ∧ Function.Injective ends
+
+theorem isSimple_iff {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) :
+    IsSimple ends ↔ (∀ i : Fin e, ¬ (ends i).IsDiag) ∧ Function.Injective ends := Iff.rfl
 
 private theorem filterMaskAux_subset {α : Type} (mask : ℕ) (xs : List α) (idx : ℕ) :
     ∀ {x : α}, x ∈ filterMaskAux mask xs idx → x ∈ xs := by
@@ -462,7 +473,7 @@ private theorem filterMaskAux_subset {α : Type} (mask : ℕ) (xs : List α) (id
       · exact List.mem_cons_of_mem _ (ih _ hmem)
     · exact List.mem_cons_of_mem _ (ih _ hx)
 
-theorem filterMaskAux_nodup {α : Type} (mask : ℕ) {xs : List α} (hn : xs.Nodup) (idx : ℕ) :
+private theorem filterMaskAux_nodup {α : Type} (mask : ℕ) {xs : List α} (hn : xs.Nodup) (idx : ℕ) :
     (filterMaskAux mask xs idx).Nodup := by
   induction xs generalizing idx with
   | nil => simp [filterMaskAux]
@@ -481,10 +492,11 @@ private theorem filterMaskAux_zero_length {α : Type} (mask : ℕ) (xs : List α
   | nil => rfl
   | cons _ _ ih => simp [filterMaskAux, ih]
 
-theorem maskEdgePairs_zero (r : ℕ) : maskEdgePairs r 0 = [] :=
-  filterMaskAux_zero_length 0 (allPairs r) 0 rfl
+theorem maskEdgePairs_zero (r : ℕ) : maskEdgePairs r 0 = [] := by
+  rw [maskEdgePairs_eq_filterMaskAux]
+  exact filterMaskAux_zero_length 0 (allPairs r) 0 rfl
 
-theorem length_filterMaskAux {α : Type} (mask : ℕ) (xs : List α) (idx : ℕ) :
+private theorem length_filterMaskAux {α : Type} (mask : ℕ) (xs : List α) (idx : ℕ) :
     (filterMaskAux mask xs idx).length =
       ((Finset.range xs.length).filter fun j => mask.testBit (idx + j)).card := by
   induction xs generalizing idx with
@@ -538,7 +550,7 @@ theorem length_filterMaskAux {α : Type} (mask : ℕ) (xs : List α) (idx : ℕ)
     · rw [List.length_cons, ih', Finset.card_singleton, Nat.add_comm]
     · rw [ih', Finset.card_empty, Nat.zero_add]
 
-theorem filterMaskAux_map_append {α β : Type} (f : α → β) (mask : ℕ)
+private theorem filterMaskAux_map_append {α β : Type} (f : α → β) (mask : ℕ)
     (xs : List α) (ys : List β) (idx : ℕ)
     (hhi : ∀ k, idx + xs.length ≤ k → mask.testBit k = false) :
     filterMaskAux mask (xs.map f ++ ys) idx = (filterMaskAux mask xs idx).map f := by
@@ -559,7 +571,7 @@ theorem filterMaskAux_map_append {α β : Type} (f : α → β) (mask : ℕ)
     · simp [List.map_cons, hrec]
     · exact hrec
 
-theorem filterMaskAux_bij {α : Type} (mask : ℕ) (xs : List α) (hnd : xs.Nodup) (idx : ℕ) :
+private theorem filterMaskAux_bij {α : Type} (mask : ℕ) (xs : List α) (hnd : xs.Nodup) (idx : ℕ) :
     (∀ x ∈ filterMaskAux mask xs idx,
       ∃ j, ∃ hj : j < xs.length, xs[j]'hj = x ∧ mask.testBit (idx + j) = true)
     ∧ (∀ j (hj : j < xs.length), mask.testBit (idx + j) = true →
@@ -597,18 +609,85 @@ theorem filterMaskAux_bij {α : Type} (mask : ℕ) (xs : List α) (hnd : xs.Nodu
         · exact List.mem_cons_of_mem _ (by simpa using hmem)
         · simpa using hmem
 
+theorem maskEdgePairs_nodup (r mask : ℕ) : (maskEdgePairs r mask).Nodup := by
+  rw [maskEdgePairs_eq_filterMaskAux]
+  exact filterMaskAux_nodup mask (nodup_allPairs r) 0
+
+theorem length_maskEdgePairs (r mask : ℕ) :
+    (maskEdgePairs r mask).length =
+      ((Finset.range (r.choose 2)).filter fun j => mask.testBit j).card := by
+  rw [maskEdgePairs_eq_filterMaskAux, length_filterMaskAux, length_allPairs]
+  simp only [Nat.zero_add]
+
+theorem mem_maskEdgePairs_iff {r mask : ℕ} {p : Fin r × Fin r} :
+    p ∈ maskEdgePairs r mask ↔
+      p.1.val < p.2.val ∧ mask.testBit (pairIdx p.1.val p.2.val) = true := by
+  rw [maskEdgePairs_eq_filterMaskAux]
+  have hspec := filterMaskAux_bij mask (allPairs r) (nodup_allPairs r) 0
+  constructor
+  · intro hp
+    obtain ⟨j, hj, rfl, htb⟩ := hspec.1 p hp
+    rw [Nat.zero_add] at htb
+    have hlt := allPairs_lt (List.getElem_mem hj)
+    have hidx := pairIdx_getElem_allPairs hj
+    exact ⟨hlt, by simpa [hidx] using htb⟩
+  · rintro ⟨hlt, htb⟩
+    have hj : pairIdx p.1.val p.2.val < (allPairs r).length := by
+      rw [length_allPairs]
+      exact pairIdx_lt_choose_two hlt p.2.isLt
+    have hget := getElem_allPairs_pairIdx hlt
+    have hmem := hspec.2 (pairIdx p.1.val p.2.val) hj (by simpa using htb)
+    rwa [hget] at hmem
+
+theorem maskEdgePairs_cast {r₁ r₂ mask : ℕ} (hrr : r₁ ≤ r₂)
+    (hmask : mask < 2 ^ r₁.choose 2) :
+    maskEdgePairs r₂ mask =
+      (maskEdgePairs r₁ mask).map (Prod.map (Fin.castLE hrr) (Fin.castLE hrr)) := by
+  have hlen : r₁.choose 2 ≤ (allPairs r₂).length := by
+    rw [length_allPairs]
+    exact Nat.choose_le_choose 2 hrr
+  have htake : (allPairs r₂).take (r₁.choose 2) =
+      (allPairs r₁).map (Prod.map (Fin.castLE hrr) (Fin.castLE hrr)) := by
+    refine List.ext_getElem ?_ fun k hk1 hk2 => ?_
+    · simp only [List.length_take, List.length_map, length_allPairs]
+      rw [length_allPairs] at hlen
+      exact Nat.min_eq_left hlen
+    · have hk_lt : k < (allPairs r₁).length := by simpa [List.length_map] using hk2
+      let p := (allPairs r₁)[k]'hk_lt
+      have hplt : p.1.val < p.2.val := allPairs_lt (List.getElem_mem hk_lt)
+      have hpidx : pairIdx p.1.val p.2.val = k := pairIdx_getElem_allPairs hk_lt
+      rw [List.getElem_take, List.getElem_map]
+      have hget₂ := getElem_allPairs_pairIdx (r := r₂)
+        (a := Fin.castLE hrr p.1) (b := Fin.castLE hrr p.2) (by simpa using hplt)
+      dsimp only [p] at hget₂ hpidx
+      simpa [hpidx, Prod.map] using hget₂
+  have hsplit : allPairs r₂ =
+      (allPairs r₁).map (Prod.map (Fin.castLE hrr) (Fin.castLE hrr)) ++
+        (allPairs r₂).drop (r₁.choose 2) := by
+    rw [← htake, List.take_append_drop]
+  simp only [maskEdgePairs_eq_filterMaskAux]
+  rw [hsplit]
+  refine filterMaskAux_map_append _ mask (allPairs r₁) _ 0 fun k hk => ?_
+  rw [length_allPairs] at hk
+  exact Nat.testBit_eq_false_of_lt
+    (hmask.trans_le (Nat.pow_le_pow_right (by omega) (by simpa using hk)))
+
 theorem endsOfMask_isSimple (r mask : ℕ) : IsSimple (endsOfMask r mask) := by
-  have hnd : (maskEdgePairs r mask).Nodup := filterMaskAux_nodup mask (nodup_allPairs r) 0
+  have hnd : (maskEdgePairs r mask).Nodup := maskEdgePairs_nodup r mask
+  have hmem_all : ∀ x ∈ maskEdgePairs r mask, x ∈ allPairs r := by
+    intro x hx
+    rw [maskEdgePairs_eq_filterMaskAux] at hx
+    exact filterMaskAux_subset mask (allPairs r) 0 hx
   refine ⟨fun i => ?_, fun i₁ i₂ he => ?_⟩
   · have hmem : (maskEdgePairs r mask)[i.val] ∈ allPairs r :=
-      filterMaskAux_subset mask (allPairs r) 0 (List.getElem_mem i.isLt)
+      hmem_all _ (List.getElem_mem i.isLt)
     have hlt := allPairs_lt hmem
     simp only [endsOfMask, Sym2.mk_isDiag_iff]
     exact fun h => Nat.ne_of_lt hlt (congrArg Fin.val h)
   · have hmem₁ : (maskEdgePairs r mask)[i₁.val] ∈ allPairs r :=
-      filterMaskAux_subset mask (allPairs r) 0 (List.getElem_mem i₁.isLt)
+      hmem_all _ (List.getElem_mem i₁.isLt)
     have hmem₂ : (maskEdgePairs r mask)[i₂.val] ∈ allPairs r :=
-      filterMaskAux_subset mask (allPairs r) 0 (List.getElem_mem i₂.isLt)
+      hmem_all _ (List.getElem_mem i₂.isLt)
     have hlt₁ := allPairs_lt hmem₁
     have hlt₂ := allPairs_lt hmem₂
     dsimp only [endsOfMask] at he
@@ -756,7 +835,7 @@ private theorem buildTreeOfPairs_eval {e : ℕ} {α : Type} (f : Equiv.Perm (Fin
 
 theorem exists_correct_msfTree {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
     (P : Finset (Equiv.Perm (Fin e))) :
-    ∃ T : MSFTree e α, T.AgreesOn f P ∧ T.depth ≤ maxSimpleEdges e := by
+    ∃ T : MSFTree e α, T.AgreesOn f P ∧ T.depth ≤ e.choose 2 := by
   classical
   let T := buildTreeOfPairs f (f (Equiv.refl _)) (allPairs e) (Finset.univ.toList)
   refine ⟨T, fun p _ => ?_, ?_⟩
@@ -766,23 +845,23 @@ theorem exists_correct_msfTree {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) →
     rwa [length_allPairs] at hd
 
 theorem exists_correct_msfDT {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) :
-    ∃ T : MSFDT e, T.Correct ends ∧ T.depth ≤ maxSimpleEdges e := by
+    ∃ T : MSFDT e, T.Correct ends ∧ T.depth ≤ e.choose 2 := by
   obtain ⟨T, hAg, hd⟩ :=
     exists_correct_msfTree (fun p => Cslib.Multigraph.msf ends p Finset.univ) Finset.univ
   exact ⟨T, fun p => hAg p (Finset.mem_univ p), hd⟩
 
 /-- Minimum worst-case comparison depth of a decision tree computing `f` on subset `P`. -/
-@[expose] noncomputable def optDepthOn {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
+noncomputable def optDepthOn {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
     (P : Finset (Equiv.Perm (Fin e))) : ℕ :=
   letI := Classical.propDecidable
-  Nat.find (⟨maxSimpleEdges e, exists_correct_msfTree f P⟩ :
+  Nat.find (⟨e.choose 2, exists_correct_msfTree f P⟩ :
     ∃ d, ∃ T : MSFTree e α, T.AgreesOn f P ∧ T.depth ≤ d)
 
 theorem exists_opt_msfTree {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
     (P : Finset (Equiv.Perm (Fin e))) :
     ∃ T : MSFTree e α, T.AgreesOn f P ∧ T.depth = optDepthOn f P := by
   classical
-  have hspec := Nat.find_spec (⟨maxSimpleEdges e, exists_correct_msfTree f P⟩ :
+  have hspec := Nat.find_spec (⟨e.choose 2, exists_correct_msfTree f P⟩ :
     ∃ d, ∃ T : MSFTree e α, T.AgreesOn f P ∧ T.depth ≤ d)
   obtain ⟨T, hAg, hle⟩ := hspec
   have hge : optDepthOn f P ≤ T.depth := Nat.find_min' _ ⟨T, hAg, le_rfl⟩
@@ -801,8 +880,12 @@ theorem optDepthOn_mono {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
   exact (optDepthOn_le_of_agrees fun p hp => hAg p (h hp)).trans hd.le
 
 /-- Optimal comparison decision-tree depth `T*(G)` for multigraph `ends : Fin e → Sym2 (Fin n)`. -/
-@[expose] noncomputable def optDepth {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) : ℕ :=
+noncomputable def optDepth {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) : ℕ :=
   optDepthOn (fun p => Cslib.Multigraph.msf ends p Finset.univ) Finset.univ
+
+theorem optDepth_eq_optDepthOn {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) :
+    optDepth ends = optDepthOn (fun p => Cslib.Multigraph.msf ends p Finset.univ) Finset.univ := by
+  rfl
 
 theorem exists_opt_msfDT {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) :
     ∃ T : MSFDT e, T.Correct ends ∧ T.depth = optDepth ends := by
@@ -815,7 +898,7 @@ theorem optDepth_le_of_correct {e n : ℕ} {ends : Fin e → Sym2 (Fin n)} {T : 
   optDepthOn_le_of_agrees fun p _ => h p
 
 theorem optDepth_le_pairs {e n : ℕ} (ends : Fin e → Sym2 (Fin n)) :
-    optDepth ends ≤ maxSimpleEdges e := by
+    optDepth ends ≤ e.choose 2 := by
   obtain ⟨T, hT, hd⟩ := exists_correct_msfDT ends
   exact (optDepth_le_of_correct hT).trans hd
 
@@ -836,7 +919,7 @@ theorem optDepth_eq_zero_of_le_one {e n : ℕ} (he : e ≤ 1) (ends : Fin e → 
 /-! ## Complete Binary Trees (`IsComplete` and `padTo`) -/
 
 /-- Complete binary decision tree of uniform depth `d` with ordered distinct comparisons `i < j`. -/
-@[expose] def MSFTree.IsComplete {e : ℕ} {α : Type} : ℕ → MSFTree e α → Prop
+def MSFTree.IsComplete {e : ℕ} {α : Type} : ℕ → MSFTree e α → Prop
   | 0, .leaf _ => True
   | _ + 1, .leaf _ => False
   | 0, .node _ _ _ _ => False

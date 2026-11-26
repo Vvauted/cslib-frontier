@@ -9,39 +9,36 @@ module
 
 public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Canonical
 public import Mathlib.Logic.Equiv.Fin.Basic
-import Mathlib.Tactic.Linarith
 
 /-!
 # Additive Decomposition of Optimal MSF Decision-Tree Depth
 
-This module formalizes disjoint edge-union decomposition for optimal MSF decision trees
-([PettieRamachandran2002], Section 5.1): Property 5.3 cut-vertex sufficiency
-(`property53Pair_of_inter_le_one`), intra-block tree pruning and adversary lower bound (Lemma 5.4
+A step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), formalizing the additive
+decomposition theory of Section 5.1 (pp. 25–26): Property 5.3 cut-vertex sufficiency
+(`msfDecomposes_of_card_inter_le_one`), intra-block pruning and adversary lower bound (Lemma 5.4
 and Lemma 5.5 binary additivity `optDepth_edgeUnion_eq_add`), general list decomposition
-`optDepth_edgeUnionList_eq_sum` (Lemma 5.5), `sum_optDepth_le_optDepthMN` (Corollary 5.6 /
-Lemma 3.3), and the doubling inequality `two_mul_optDepthMN_le` (Corollary 5.7).
+`optDepth_edgeUnionList_eq_sum` (Lemma 5.5), `sum_optDepth_le_optDepthMN` (Corollary 5.6, p. 26),
+and the doubling inequality `two_mul_optDepthMN_le` (Corollary 5.7, p. 26).
 
 ## Main definitions
 
 * `Cslib.Query.MinimumSpanningForest.edgeUnion`,
   `Cslib.Query.MinimumSpanningForest.edgeUnionList`: disjoint edge unions sharing a common vertex
   set `Fin n`.
-* `Cslib.Query.MinimumSpanningForest.Property53Pair`,
+* `Cslib.Query.MinimumSpanningForest.MSFDecomposes`,
   `Cslib.Query.MinimumSpanningForest.ValidDecomp`: components sharing at most one vertex whose
-  optimal MSFs decompose independently.
-* `Cslib.Query.MinimumSpanningForest.MSFTree.restrictBlock`,
-  `Cslib.Query.MinimumSpanningForest.graftTree`: intra-block pruning and tree grafting.
+  optimal MSFs decompose independently (Property 5.3).
 
 ## Main results
 
-* `Cslib.Query.MinimumSpanningForest.property53Pair_of_inter_le_one`: subgraphs sharing at most
-  one vertex satisfy Property 5.3.
+* `Cslib.Query.MinimumSpanningForest.msfDecomposes_of_card_inter_le_one`: subgraphs sharing at
+  most one vertex satisfy Property 5.3 (`MSFDecomposes`).
 * `Cslib.Query.MinimumSpanningForest.optDepth_edgeUnion_eq_add`: binary additivity
-  `optDepth (edgeUnion ends₁ ends₂) = optDepth ends₁ + optDepth ends₂`.
+  `optDepth (edgeUnion ends₁ ends₂) = optDepth ends₁ + optDepth ends₂` (Lemma 5.4 / Lemma 5.5).
 * `Cslib.Query.MinimumSpanningForest.optDepth_edgeUnionList_eq_sum`: Lemma 5.5 of
   [PettieRamachandran2002].
-* `Cslib.Query.MinimumSpanningForest.sum_optDepth_le_optDepthMN`: Corollary 5.6 / Lemma 3.3 of
-  [PettieRamachandran2002].
+* `Cslib.Query.MinimumSpanningForest.sum_optDepth_le_optDepthMN`: Corollary 5.6 of
+  [PettieRamachandran2002] (Section 5.1, p. 26).
 * `Cslib.Query.MinimumSpanningForest.two_mul_optDepthMN_le`: Corollary 5.7 of
   [PettieRamachandran2002], `2 * optDepthMN m n ≤ optDepthMN (2 * m) (2 * n)`.
 -/
@@ -75,13 +72,11 @@ theorem edgeUnion_natAdd {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sym2 (Fin n
   congr 1
   exact Fin.ext (by simp)
 
-/-- Block-concatenated permutation placing all `Fin e₁` edges strictly before all `Fin e₂`
-edges. -/
-@[expose] def blockPerm {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂)) :
+private def blockPerm {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂)) :
     Equiv.Perm (Fin (e₁ + e₂)) :=
   (finSumFinEquiv.symm.trans (Equiv.sumCongr p₁ p₂)).trans finSumFinEquiv
 
-theorem blockPerm_castAdd {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂))
+private theorem blockPerm_castAdd {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂))
     (i : Fin e₁) : blockPerm p₁ p₂ (Fin.castAdd e₂ i) = Fin.castAdd e₂ (p₁ i) := by
   dsimp only [blockPerm]
   simp only [Equiv.trans_apply]
@@ -89,7 +84,7 @@ theorem blockPerm_castAdd {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂
   rw [← h1, Equiv.symm_apply_apply]
   rfl
 
-theorem blockPerm_natAdd {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂))
+private theorem blockPerm_natAdd {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂))
     (j : Fin e₂) : blockPerm p₁ p₂ (Fin.natAdd e₁ j) = Fin.natAdd e₁ (p₂ j) := by
   dsimp only [blockPerm]
   simp only [Equiv.trans_apply]
@@ -99,7 +94,7 @@ theorem blockPerm_natAdd {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ 
 
 /-- Property 5.3 of [PettieRamachandran2002] for `(ends₁, ends₂)`: for every permutation on
 `Fin (e₁ + e₂)`, `msf (edgeUnion ends₁ ends₂)` decomposes disjointly into the two component MSFs. -/
-@[expose] def Property53Pair {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sym2 (Fin n))
+def MSFDecomposes {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sym2 (Fin n))
     (ends₂ : Fin e₂ → Sym2 (Fin n)) : Prop :=
   ∀ p : Equiv.Perm (Fin (e₁ + e₂)),
     Cslib.Multigraph.msf (edgeUnion ends₁ ends₂) p Finset.univ =
@@ -107,6 +102,16 @@ theorem blockPerm_natAdd {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)) (p₂ 
           ⟨Fin.castAdd e₂, Fin.castAdd_injective _ _⟩ ∪
         (Cslib.Multigraph.msf ends₂ (fun j => p (Fin.natAdd e₁ j)) Finset.univ).map
           ⟨Fin.natAdd e₁, Fin.natAdd_injective _ _⟩
+
+theorem msfDecomposes_iff {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sym2 (Fin n))
+    (ends₂ : Fin e₂ → Sym2 (Fin n)) :
+    MSFDecomposes ends₁ ends₂ ↔ ∀ p : Equiv.Perm (Fin (e₁ + e₂)),
+      Cslib.Multigraph.msf (edgeUnion ends₁ ends₂) p Finset.univ =
+        (Cslib.Multigraph.msf ends₁ (fun i => p (Fin.castAdd e₂ i)) Finset.univ).map
+            ⟨Fin.castAdd e₂, Fin.castAdd_injective _ _⟩ ∪
+          (Cslib.Multigraph.msf ends₂ (fun j => p (Fin.natAdd e₁ j)) Finset.univ).map
+            ⟨Fin.natAdd e₁, Fin.natAdd_injective _ _⟩ :=
+  Iff.rfl
 
 private theorem joins_inter_eq {E V : Type*} (ends : E → Sym2 V)
     (E₁ E₂ S : Set E) (V₁ V₂ : Set V)
@@ -167,15 +172,16 @@ private theorem joins_emb_iff {E₁ E₂ V : Type*} (ends₁ : E₁ → Sym2 V) 
     refine Cslib.Multigraph.Joins.lift id (fun i hi a b hab => ?_) hc
     exact Cslib.Multigraph.Joins.of_mem ⟨hi, i, rfl⟩ (hab ▸ hEnds i)
 
-/-- Cut-vertex sufficiency for Property 5.3: if vertex supports `V₁`, `V₂` share at most one
-vertex, then `Property53Pair ends₁ ends₂` holds. -/
-theorem property53Pair_of_inter_le_one {e₁ e₂ n : ℕ}
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), Property 5.3 (§5.1, p. 25):
+if vertex supports `V₁`, `V₂` share at most one vertex, then `MSFDecomposes ends₁ ends₂` holds. -/
+theorem msfDecomposes_of_card_inter_le_one {e₁ e₂ n : ℕ}
     (ends₁ : Fin e₁ → Sym2 (Fin n)) (ends₂ : Fin e₂ → Sym2 (Fin n))
     (V₁ V₂ : Finset (Fin n))
     (hV₁ : ∀ i : Fin e₁, ∀ v ∈ ends₁ i, v ∈ V₁)
     (hV₂ : ∀ j : Fin e₂, ∀ v ∈ ends₂ j, v ∈ V₂)
     (hinter : (V₁ ∩ V₂).card ≤ 1) :
-    Property53Pair ends₁ ends₂ := by
+    MSFDecomposes ends₁ ends₂ := by
+  rw [msfDecomposes_iff]
   intro p
   have hV₁' : ∀ i : Fin e₁, ∀ a b : Fin n, ends₁ i = s(a, b) →
       a ∈ (V₁ : Set (Fin n)) ∧ b ∈ (V₁ : Set (Fin n)) := fun i a b hab =>
@@ -279,7 +285,7 @@ theorem property53Pair_of_inter_le_one {e₁ e₂ n : ℕ}
 
 /-- Prune inter-component comparisons on block-ordered permutations
 ([PettieRamachandran2002], Lemma 5.4). -/
-@[expose] def MSFTree.restrictBlock (e₁ e₂ : ℕ) {α : Type} :
+def MSFTree.restrictBlock (e₁ e₂ : ℕ) {α : Type} :
     MSFTree (e₁ + e₂) α → MSFTree (e₁ + e₂) α
   | .leaf a => .leaf a
   | .node i j l r =>
@@ -288,7 +294,7 @@ theorem property53Pair_of_inter_le_one {e₁ e₂ n : ℕ}
     else .node i j (l.restrictBlock e₁ e₂) (r.restrictBlock e₁ e₂)
 
 /-- Predicate asserting all internal comparisons stay within block `[0, e₁)` or `[e₁, e₁ + e₂)`. -/
-@[expose] def MSFTree.IsIntraBlock (e₁ e₂ : ℕ) {α : Type} : MSFTree (e₁ + e₂) α → Prop
+def MSFTree.IsIntraBlock (e₁ e₂ : ℕ) {α : Type} : MSFTree (e₁ + e₂) α → Prop
   | .leaf _ => True
   | .node i j l r =>
     ((i.val < e₁ ∧ j.val < e₁) ∨ (e₁ ≤ i.val ∧ e₁ ≤ j.val)) ∧
@@ -330,7 +336,7 @@ private theorem blockPerm_val_lt {e₁ e₂ : ℕ} (p₁ : Equiv.Perm (Fin e₁)
   simp only [Fin.val_castAdd, Fin.val_natAdd]
   exact Nat.lt_of_lt_of_le (p₁ _).isLt (Nat.le_add_right _ _)
 
-theorem MSFTree.restrictBlock_eval {e₁ e₂ : ℕ} {α : Type} (T : MSFTree (e₁ + e₂) α)
+private theorem MSFTree.restrictBlock_eval {e₁ e₂ : ℕ} {α : Type} (T : MSFTree (e₁ + e₂) α)
     (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂)) :
     (T.restrictBlock e₁ e₂).eval (blockPerm p₁ p₂) = T.eval (blockPerm p₁ p₂) := by
   induction T with
@@ -370,8 +376,9 @@ private theorem adversary_branch {eQ : ℕ} {αQ : Type} {fQ : Equiv.Perm (Fin e
         simpa using (Finset.mem_filter.mp hp).2
       obtain ⟨TL, hAgL, hdL⟩ := exists_opt_msfTree fQ PL
       obtain ⟨TR, hAgR, hdR⟩ := exists_opt_msfTree fQ PR
+      rw [MSFTree.agreesOn_iff] at hAgL hAgR
       let Tq : MSFTree eQ αQ := .node i' j' TL TR
-      have hAgQ : Tq.AgreesOn fQ Q := fun p hp => by
+      have hAgQ : Tq.AgreesOn fQ Q := (MSFTree.agreesOn_iff _ _ _).mpr fun p hp => by
         dsimp only [Tq, MSFTree.eval]
         split_ifs with hlt
         · exact hAgL p (Finset.mem_filter.mpr ⟨hp, decide_eq_true hlt⟩)
@@ -408,10 +415,12 @@ private theorem adversary_pair {e₁ e₂ : ℕ} {α₁ α₂ : Type}
   | leaf ans =>
     obtain ⟨p₂Star, hp₂Star⟩ := hP₂
     obtain ⟨p₁Star, hp₁Star⟩ := hP₁
-    have ha₁ : (MSFTree.leaf ans.1 : MSFTree e₁ α₁).AgreesOn f₁ P₁ := fun p₁ hp₁ => by
+    have ha₁ : (MSFTree.leaf ans.1 : MSFTree e₁ α₁).AgreesOn f₁ P₁ :=
+      (MSFTree.agreesOn_iff _ _ _).mpr fun p₁ hp₁ => by
       have h := congrArg Prod.fst (hAg p₁ hp₁ p₂Star hp₂Star)
       simpa [MSFTree.eval] using h
-    have ha₂ : (MSFTree.leaf ans.2 : MSFTree e₂ α₂).AgreesOn f₂ P₂ := fun p₂ hp₂ => by
+    have ha₂ : (MSFTree.leaf ans.2 : MSFTree e₂ α₂).AgreesOn f₂ P₂ :=
+      (MSFTree.agreesOn_iff _ _ _).mpr fun p₂ hp₂ => by
       have h := congrArg Prod.snd (hAg p₁Star hp₁Star p₂ hp₂)
       simpa [MSFTree.eval] using h
     have h1 : optDepthOn f₁ P₁ ≤ 0 := optDepthOn_le_of_agrees ha₁
@@ -470,7 +479,7 @@ private theorem adversary_pair {e₁ e₂ : ℕ} {α₁ α₂ : Type}
 
 /-- Compose sequential decision trees for two components by grafting `T₂` onto every leaf of
 `T₁`. -/
-@[expose] def graftTree {e₁ e₂ : ℕ} (T₁ : MSFDT e₁) (T₂ : MSFDT e₂) : MSFDT (e₁ + e₂) :=
+def graftTree {e₁ e₂ : ℕ} (T₁ : MSFDT e₁) (T₂ : MSFDT e₂) : MSFDT (e₁ + e₂) :=
   match T₁ with
   | .leaf A =>
     (T₂.mapLeaves fun B =>
@@ -528,14 +537,15 @@ theorem graftTree_eval {e₁ e₂ : ℕ} (T₁ : MSFDT e₁) (T₂ : MSFDT e₂)
       simp only [hlt, hlt', ↓reduceIte]
       exact ihr
 
-/-- Exact binary additivity `T*(G₁ ∪ G₂) = T*(G₁) + T*(G₂)` under Property 5.3
-([PettieRamachandran2002], Lemma 5.5). -/
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), Lemma 5.5 (§5.1, p. 26):
+binary additivity `T*(G₁ ∪ G₂) = T*(G₁) + T*(G₂)` under Property 5.3 (`MSFDecomposes`). -/
 theorem optDepth_edgeUnion_eq_add {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sym2 (Fin n))
-    (ends₂ : Fin e₂ → Sym2 (Fin n)) (h53 : Property53Pair ends₁ ends₂) :
+    (ends₂ : Fin e₂ → Sym2 (Fin n)) (h53 : MSFDecomposes ends₁ ends₂) :
     optDepth (edgeUnion ends₁ ends₂) = optDepth ends₁ + optDepth ends₂ := by
   classical
   have hlb : optDepth ends₁ + optDepth ends₂ ≤ optDepth (edgeUnion ends₁ ends₂) := by
     obtain ⟨T, hcorr, hd⟩ := exists_opt_msfDT (edgeUnion ends₁ ends₂)
+    rw [MSFDT.correct_iff] at hcorr
     let splitF : Finset (Fin (e₁ + e₂)) → Finset (Fin e₁) × Finset (Fin e₂) := fun S =>
       (S.preimage (Fin.castAdd e₂) (Fin.castAdd_injective _ _).injOn,
        S.preimage (Fin.natAdd e₁) (Fin.natAdd_injective _ _).injOn)
@@ -548,7 +558,7 @@ theorem optDepth_edgeUnion_eq_add {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sy
       intro p₁ _ p₂ _
       dsimp only [Tr]
       rw [MSFTree.mapLeaves_eval, MSFTree.restrictBlock_eval, hcorr (blockPerm p₁ p₂),
-        h53 (blockPerm p₁ p₂)]
+        (msfDecomposes_iff _ _).mp h53 (blockPerm p₁ p₂)]
       have hm₁ : Cslib.Multigraph.msf ends₁
           (fun i => blockPerm p₁ p₂ (Fin.castAdd e₂ i)) Finset.univ =
           Cslib.Multigraph.msf ends₁ p₁ Finset.univ :=
@@ -586,14 +596,17 @@ theorem optDepth_edgeUnion_eq_add {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sy
       dsimp only [Tr]
       rw [MSFTree.mapLeaves_depth]
       exact (T.restrictBlock_depth_le).trans hd.le
+    rw [optDepth_eq_optDepthOn ends₁, optDepth_eq_optDepthOn ends₂]
     exact hadv.trans hdepth
   have hub : optDepth (edgeUnion ends₁ ends₂) ≤ optDepth ends₁ + optDepth ends₂ := by
     obtain ⟨T₁, hcorr₁, hd₁⟩ := exists_opt_msfDT ends₁
     obtain ⟨T₂, hcorr₂, hd₂⟩ := exists_opt_msfDT ends₂
+    rw [MSFDT.correct_iff] at hcorr₁ hcorr₂
     let Tg := graftTree T₁ T₂
-    have hcorr : MSFDT.Correct (edgeUnion ends₁ ends₂) Tg := fun p => by
+    have hcorr : MSFDT.Correct (edgeUnion ends₁ ends₂) Tg :=
+        (MSFDT.correct_iff _ _).mpr fun p => by
       dsimp only [Tg]
-      rw [graftTree_eval, hcorr₁ _, hcorr₂ _, h53 p]
+      rw [graftTree_eval, hcorr₁ _, hcorr₂ _, (msfDecomposes_iff _ _).mp h53 p]
       have hm₁ : Cslib.Multigraph.msf ends₁
           (orderPerm (fun i => p (Fin.castAdd e₂ i))
             (p.injective.comp (Fin.castAdd_injective _ _))) Finset.univ =
@@ -608,7 +621,7 @@ theorem optDepth_edgeUnion_eq_add {e₁ e₂ n : ℕ} (ends₁ : Fin e₁ → Sy
     exact (optDepth_le_of_correct hcorr).trans ((graftTree_depth_le T₁ T₂).trans (by omega))
   exact le_antisymm hub hlb
 
-/-! ## List Decomposition, Lemma 5.5, Corollary 5.6 / Lemma 3.3, and Corollary 5.7 -/
+/-! ## List Decomposition, Lemma 5.5, Corollary 5.6, and Corollary 5.7 -/
 
 /-- Total edge count across a list of component subgraphs (definitionally recursive on `cons`). -/
 abbrev edgeCountList {n : ℕ} : List (Σ e, Fin e → Sym2 (Fin n)) → ℕ
@@ -667,11 +680,20 @@ theorem edgeUnionList_ends_mem_compVertsList {n : ℕ}
 
 /-- Valid sequential Partition decomposition (Property 5.3 hypothesis of [PettieRamachandran2002]
 in `cons` order): every component shares at most one vertex with the union of the rest. -/
-@[expose] def ValidDecomp {n : ℕ} : List (Σ e, Fin e → Sym2 (Fin n)) → Prop
+def ValidDecomp {n : ℕ} : List (Σ e, Fin e → Sym2 (Fin n)) → Prop
   | [] => True
   | c :: rest => (compVerts c.2 ∩ compVertsList rest).card ≤ 1 ∧ ValidDecomp rest
 
-/-- Lemma 5.5 of [PettieRamachandran2002]: for any valid Property 5.3 decomposition `Cs`,
+@[simp]
+theorem validDecomp_nil {n : ℕ} : ValidDecomp ([] : List (Σ e, Fin e → Sym2 (Fin n))) := trivial
+
+theorem validDecomp_cons {n : ℕ} (c : Σ e, Fin e → Sym2 (Fin n))
+    (rest : List (Σ e, Fin e → Sym2 (Fin n))) :
+    ValidDecomp (c :: rest) ↔ (compVerts c.2 ∩ compVertsList rest).card ≤ 1 ∧ ValidDecomp rest :=
+  Iff.rfl
+
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), Lemma 5.5 (§5.1, p. 26):
+for any valid Property 5.3 decomposition `Cs`,
 `optDepth (edgeUnionList Cs) = ∑ c ∈ Cs, optDepth c.2`. -/
 theorem optDepth_edgeUnionList_eq_sum {n : ℕ}
     (Cs : List (Σ e, Fin e → Sym2 (Fin n))) (h : ValidDecomp Cs) :
@@ -681,11 +703,11 @@ theorem optDepth_edgeUnionList_eq_sum {n : ℕ}
     simp only [List.map_nil, List.sum_nil]
     exact optDepth_eq_zero_of_le_one (Nat.zero_le 1) (edgeUnionList [])
   | cons c rest ih =>
-    obtain ⟨hinter, hrest⟩ := h
+    obtain ⟨hinter, hrest⟩ := (validDecomp_cons c rest).mp h
     rcases c with ⟨e₁, ends₁⟩
     dsimp only [edgeUnionList, List.map_cons, List.sum_cons]
-    have h53 : Property53Pair ends₁ (edgeUnionList rest) :=
-      property53Pair_of_inter_le_one ends₁ (edgeUnionList rest)
+    have h53 : MSFDecomposes ends₁ (edgeUnionList rest) :=
+      msfDecomposes_of_card_inter_le_one ends₁ (edgeUnionList rest)
         (compVerts ends₁) (compVertsList rest) (ends_mem_compVerts ends₁)
         (edgeUnionList_ends_mem_compVertsList rest) hinter
     have hadd : optDepth (edgeUnion ends₁ (edgeUnionList rest)) =
@@ -693,9 +715,9 @@ theorem optDepth_edgeUnionList_eq_sum {n : ℕ}
       optDepth_edgeUnion_eq_add ends₁ (edgeUnionList rest) h53
     rw [hadd, ih hrest, List.map_cons, List.sum_cons]
 
-/-- Corollary 5.6 / Lemma 3.3 of [PettieRamachandran2002]: if `Cs` is a valid Property 5.3
-decomposition whose union `edgeUnionList Cs` is simple and has at most `m` edges on `n` vertices,
-then `(Cs.map fun c => optDepth c.2).sum ≤ optDepthMN m n`. -/
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), Corollary 5.6 (§5.1, p. 26):
+if `Cs` is a valid Property 5.3 decomposition whose union `edgeUnionList Cs` is simple and has at
+most `m` edges on `n` vertices, then `(Cs.map fun c => optDepth c.2).sum ≤ optDepthMN m n`. -/
 theorem sum_optDepth_le_optDepthMN {m n : ℕ} (Cs : List (Σ e, Fin e → Sym2 (Fin n)))
     (hV : ValidDecomp Cs) (hsimp : IsSimple (edgeUnionList Cs))
     (hm : (Cs.map Sigma.fst).sum ≤ m) :
@@ -704,7 +726,8 @@ theorem sum_optDepth_le_optDepthMN {m n : ℕ} (Cs : List (Σ e, Fin e → Sym2 
   rw [← edgeCountList_eq_sum] at hm
   exact optDepth_le_optDepthMN_of_isSimple (edgeUnionList Cs) hsimp hm
 
-/-- Corollary 5.7 of [PettieRamachandran2002]: `2 * optDepthMN m n ≤ optDepthMN (2 * m) (2 * n)`. -/
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), Corollary 5.7 (§5.1, p. 26):
+`2 * optDepthMN m n ≤ optDepthMN (2 * m) (2 * n)`. -/
 theorem two_mul_optDepthMN_le (m n : ℕ) : 2 * optDepthMN m n ≤ optDepthMN (2 * m) (2 * n) := by
   obtain ⟨mask, hmask, hlen, heq⟩ := exists_endsOfMask_eq_optDepthMN m n
   let G := endsOfMask n mask
@@ -716,7 +739,7 @@ theorem two_mul_optDepthMN_le (m n : ℕ) : 2 * optDepthMN m n ≤ optDepthMN (2
       Fin.ext (by have := congrArg (Fin.val : Fin (2 * n) → ℕ) h; dsimp only at this; omega)⟩
   let C₁ : Fin e → Sym2 (Fin (2 * n)) := fun i => Sym2.map castN (G i)
   let C₂ : Fin e → Sym2 (Fin (2 * n)) := fun i => Sym2.map shiftN (G i)
-  have hG_simp := endsOfMask_isSimple n mask
+  have hG_simp := (isSimple_iff _).mp (endsOfMask_isSimple n mask)
   have hopt₁ : optDepth G = optDepth C₁ :=
     optDepth_reindex G C₁ (Equiv.refl _) castN fun _ => rfl
   have hopt₂ : optDepth G = optDepth C₂ :=
@@ -744,9 +767,10 @@ theorem two_mul_optDepthMN_le (m n : ℕ) : 2 * optDepthMN m n ≤ optDepthMN (2
       omega
     rw [hemp, Finset.card_empty]
     omega
-  have h53 : Property53Pair C₁ C₂ :=
-    property53Pair_of_inter_le_one C₁ C₂ V₁ V₂ hV₁ hV₂ hinter
+  have h53 : MSFDecomposes C₁ C₂ :=
+    msfDecomposes_of_card_inter_le_one C₁ C₂ V₁ V₂ hV₁ hV₂ hinter
   have hu_simp : IsSimple (edgeUnion C₁ C₂) := by
+    rw [isSimple_iff]
     refine ⟨fun i => ?_, fun i₁ i₂ he => ?_⟩
     · by_cases hi : i.val < e
       · let j : Fin e := ⟨i.val, hi⟩

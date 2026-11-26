@@ -19,8 +19,8 @@ covering:
 - Concrete graphs: `P_4` (`endsOfMask 4 37`), `K_3` (`endsOfMask 3 7`) + `le_two_mul_optDepthMN`
   (Prop 5.1) + `MSFDT.padTo`, and `C_4` via `optDepth_le_of_freeM`.
 - Disjoint-union decomposition: two triangles sharing a cut vertex
-  (`property53Pair_of_inter_le_one`, `optDepth_edgeUnion_eq_add`, `sum_optDepth_le_optDepthMN`,
-  `two_mul_optDepthMN_le`).
+  (`msfDecomposes_of_card_inter_le_one`, `optDepth_edgeUnion_eq_add`,
+  `sum_optDepth_le_optDepthMN`, `two_mul_optDepthMN_le`).
 - Boundary cases: empty graphs (`n = 0`, `m = 0`), 1-vertex self-loops, disconnected edges with an
   isolated vertex, parallel tie-breaking under flipped permutations, and `optDepthMN` monotonicity
   (`optDepthMN_mono_m`, `optDepthMN_mono_n`).
@@ -117,6 +117,7 @@ private theorem path4_not_joins_erase (e : Fin 3) :
     · exact absurd rfl hne
 
 theorem path4Tree_correct : path4Tree.Correct path4Ends := by
+  rw [MSFDT.correct_iff]
   intro p
   ext i
   have hi : i ∈ Cslib.Multigraph.msf path4Ends p Finset.univ := by
@@ -191,7 +192,7 @@ private theorem k3_other_two_joins {i j k : Fin 3} (hij : i ≠ j) (hik : i ≠ 
 private theorem k3_msf_of_max (p : Equiv.Perm (Fin 3)) {i j k : Fin 3}
     (hij : i ≠ j) (hik : i ≠ k) (hjk : j ≠ k) (hi : p i < p k) (hj : p j < p k) :
     Cslib.Multigraph.msf k3Ends p Finset.univ = {i, j} := by
-  have hsimp := endsOfMask_isSimple 3 7
+  have hsimp := (isSimple_iff _).mp (endsOfMask_isSimple 3 7)
   have hmem_of_lt : ∀ {x y : Fin 3}, x ≠ y → x ≠ k → y ≠ k → p x < p k →
       x ∈ Cslib.Multigraph.msf k3Ends p Finset.univ := fun {x y} hxy hxk hyk hxk_lt => by
     induction hx : k3Ends x using Sym2.ind with
@@ -227,6 +228,7 @@ private theorem k3_msf_of_max (p : Equiv.Perm (Fin 3)) {i j k : Fin 3}
   · exact iff_of_false hk_not (by rintro (rfl | rfl) <;> [exact hik rfl; exact hjk rfl])
 
 theorem k3Tree_correct : k3Tree.Correct k3Ends := by
+  rw [MSFDT.correct_iff]
   intro p
   dsimp only [k3Tree, MSFTree.eval]
   split_ifs with h01 h12 h02
@@ -451,7 +453,7 @@ example : optDepth c4Ends ≤ 3 := by
     rw [hstep, hstep, hstep]
     exact le_rfl
 
-/-! ### Decomposition (`Property53Pair`, Lemma 5.5, Corollary 5.6, Corollary 5.7) -/
+/-! ### Decomposition (`MSFDecomposes`, Lemma 5.5, Corollary 5.6, Corollary 5.7) -/
 
 @[expose] def triL : Fin 3 → Sym2 (Fin 5)
   | 0 => s(0, 1)
@@ -480,13 +482,14 @@ example :
     · simp only [triR, Sym2.mem_iff] at hv; rcases hv with rfl | rfl <;> decide
     · simp only [triR, Sym2.mem_iff] at hv; rcases hv with rfl | rfl <;> decide
   have hinter : (V₁ ∩ V₂).card ≤ 1 := by decide
-  have h53 : Property53Pair triL triR :=
-    property53Pair_of_inter_le_one triL triR V₁ V₂ hV₁ hV₂ hinter
+  have h53 : MSFDecomposes triL triR :=
+    msfDecomposes_of_card_inter_le_one triL triR V₁ V₂ hV₁ hV₂ hinter
   have hadd : optDepth (edgeUnion triL triR) = optDepth triL + optDepth triR :=
     optDepth_edgeUnion_eq_add triL triR h53
   let Cs : List (Σ e, Fin e → Sym2 (Fin 5)) := [⟨3, triL⟩, ⟨3, triR⟩]
   have hV : ValidDecomp Cs := by
-    refine ⟨?_, ?_, trivial⟩
+    rw [validDecomp_cons]
+    refine ⟨?_, (validDecomp_cons _ _).mpr ⟨?_, validDecomp_nil⟩⟩
     · have hsub1 : compVerts triL ⊆ V₁ := by
         intro v hv
         simp only [compVerts, Finset.mem_biUnion, Finset.mem_univ, Sym2.mem_toFinset,
@@ -503,6 +506,7 @@ example :
       exact (Finset.card_le_card (Finset.inter_subset_inter hsub1 hsub2)).trans hinter
     · simp [compVertsList]
   have hsimp : IsSimple (edgeUnionList Cs) := by
+    rw [isSimple_iff]
     refine ⟨fun i => ?_, fun i₁ i₂ he => ?_⟩
     · fin_cases i <;> decide
     · fin_cases i₁ <;> fin_cases i₂ <;> first | rfl | (exfalso; revert he; decide)
@@ -519,7 +523,10 @@ example :
       optDepth (fun _ : Fin 2 => s((0 : Fin 1), (0 : Fin 1))) = 0 ∧
       optDepthMN 1 4 = 0 ∧
       optDepthMN 3 3 ≤ optDepthMN 6 3 ∧
-      optDepthMN 3 3 ≤ optDepthMN 3 4 := by
+      optDepthMN 3 3 ≤ optDepthMN 3 4 ∧
+      optDepth (endsOfMask 3 3) ≤ optDepth (endsOfMask 3 7) ∧
+      optDepthMN 3 3 = ((Finset.range (2 ^ Nat.choose 3 2)).filter fun mask =>
+        (maskEdgePairs 3 mask).length = 3).sup fun mask => optDepth (endsOfMask 3 mask) := by
   have h00 : optDepth (endsOfMask 0 0) = 0 :=
     optDepth_eq_zero_of_le_one (Nat.zero_le 1) _
   have hmn0 : optDepthMN 0 0 = 0 := by
@@ -530,7 +537,8 @@ example :
     optDepth_eq_zero_of_le_one (by decide) _
   have hloop : optDepth (fun _ : Fin 2 => s((0 : Fin 1), (0 : Fin 1))) = 0 := by
     let T : MSFDT 2 := .leaf ∅
-    refine Nat.eq_zero_of_le_zero (optDepth_le_of_correct (T := T) fun p => ?_)
+    refine Nat.eq_zero_of_le_zero
+      (optDepth_le_of_correct (T := T) ((MSFDT.correct_iff _ _).mpr fun p => ?_))
     ext i
     simp only [T, MSFTree.eval, Finset.notMem_empty, false_iff]
     exact Cslib.Multigraph.notMem_msf_of_isDiag p (by simp)
@@ -538,8 +546,19 @@ example :
     obtain ⟨mask, _, hlen, heq⟩ := exists_endsOfMask_eq_optDepthMN 1 4
     rw [← heq]
     exact optDepth_eq_zero_of_le_one hlen _
+  have hsubmask : optDepth (endsOfMask 3 3) ≤ optDepth (endsOfMask 3 7) :=
+    optDepth_le_of_submask fun k hk => by
+      by_cases h0 : k = 0
+      · subst h0; decide
+      · by_cases h1 : k = 1
+        · subst h1; decide
+        · have h2 : 2 ≤ k := by omega
+          have hdiv : 3 / 2 ^ k = 0 :=
+            Nat.div_eq_of_lt (lt_of_lt_of_le (by decide) (Nat.pow_le_pow_right (by decide) h2))
+          rw [Nat.testBit, Nat.shiftRight_eq_div_pow, hdiv] at hk
+          exact absurd hk (by decide)
   exact ⟨h00, hmn0, h40, hloop, hm1, optDepthMN_mono_m (n := 3) (by decide),
-    optDepthMN_mono_n (m := 3) (by decide)⟩
+    optDepthMN_mono_n (m := 3) (by decide), hsubmask, optDepthMN_eq_exact (by decide)⟩
 
 /-- Parallel edges tie-breaking under `Equiv.refl` vs `revPerm 2`. -/
 @[expose] def paraEnds : Fin 2 → Sym2 (Fin 2) := fun _ => s(0, 1)
@@ -569,7 +588,8 @@ example :
       Cslib.Multigraph.msf paraEnds (revPerm 2) Finset.univ = {1} ∧
       optDepth paraEnds ≤ 1 := by
   let T : MSFDT 2 := .node 0 1 (.leaf {0}) (.leaf {1})
-  have hcorr : T.Correct paraEnds := fun p => by
+  have hcorrFun : ∀ p : Equiv.Perm (Fin 2),
+      T.eval p = Cslib.Multigraph.msf paraEnds p Finset.univ := fun p => by
     dsimp only [T, MSFTree.eval]
     split_ifs with hlt
     · exact (para_msf_of_lt p (by decide) (Fin.lt_def.mpr hlt)).symm
@@ -577,7 +597,9 @@ example :
         lt_of_le_of_ne (Fin.le_def.mpr (not_lt.mp hlt)) fun h => by
           have := p.injective h; exact absurd this (by decide)
       exact (para_msf_of_lt p (by decide) h10).symm
-  exact ⟨(hcorr (Equiv.refl (Fin 2))).symm, (hcorr (revPerm 2)).symm, optDepth_le_of_correct hcorr⟩
+  have hcorr : T.Correct paraEnds := (MSFDT.correct_iff _ _).mpr hcorrFun
+  exact ⟨(hcorrFun (Equiv.refl (Fin 2))).symm, (hcorrFun (revPerm 2)).symm,
+    optDepth_le_of_correct hcorr⟩
 
 /-- Cross-check `Cslib.Multigraph.msf` via `orderPerm` against `Kruskal.kruskalEdges`. -/
 @[expose] def crossEs : List (WeightedEdge 4 ℕ) :=

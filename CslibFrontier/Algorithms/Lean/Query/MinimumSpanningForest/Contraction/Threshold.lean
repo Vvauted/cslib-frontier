@@ -8,32 +8,33 @@ module
 -- upstream: candidate
 
 public import CslibFrontier.Algorithms.Lean.Kruskal.Basic
-public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Basic
+public import CslibFrontier.Foundations.Combinatorics.Multigraph.MinimumSpanningForest
 public import Mathlib.Order.Prod.Lex.Basic
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Algebra.Order.BigOperators.Group.List
 import Mathlib.Data.List.Count
-import Mathlib.Tactic.Linarith
 
 /-!
 # Threshold-Rank MSF Characterization and Contraction Preservation
 
-This module bridges `Cslib.Algorithms.Lean.Kruskal` (`WeightedEdge n ℕ`, `edgePartition`,
+Threshold-rank and contraction infrastructure toward Theorem 5.8 of [PettieRamachandran2002]
+(#8624). Bridges `Cslib.Algorithms.Lean.Kruskal` (`WeightedEdge n ℕ`, `edgePartition`,
 `IsMinSpanningForest`) with `Cslib.Multigraph` (`Joins`, `msf`, `isAcyclic_msf`,
 `isSpanningForest_msf`, `joins_msf_lt_iff`), proves the threshold-rank characterization of
-`IsMinSpanningForest` over `ℕ` weights (handling arbitrary duplicate edge weights), weak-support
-filtering (`WeaklySupported`, `isMinSpanningForest_of_weakSupport`), and contraction preservation
+`IsMinSpanningForest` over `ℕ` weights (handling arbitrary duplicate edge weights), defines
+`WeaklySupported` (the `WeightedEdge`-list / `edgePartition` counterpart of
+`Cslib.Multigraph.Supported` from [KhannaPuttermanSong2026], Sections 1.2 and 3.1, generalized to
+allow equal-weight substitutions), and proves weak-support filtering and contraction preservation
 (`exists_extend_isMinSpanningForest_of_cutStep`, `isMinSpanningForest_append_of_contract`).
 
 ## Main definitions
 
 * `Cslib.Query.MinimumSpanningForest.edgeEnds`: view `es : List (WeightedEdge n ℕ)` as a
   multigraph `Fin es.length → Sym2 (Fin n)`.
-* `Cslib.Query.MinimumSpanningForest.edgeWeight`,
-  `Cslib.Query.MinimumSpanningForest.edgeWeightPrefer`: injective lexicographic tie-broken edge
-  weights in `ℕ ×ₗ ℕ` and `ℕ ×ₗ (ℕ ×ₗ ℕ)`.
+* `Cslib.Query.MinimumSpanningForest.edgeWeight`: injective lexicographic edge weights in `ℕ ×ₗ ℕ`.
 * `Cslib.Query.MinimumSpanningForest.msfEdges`: edge list extracted from `Cslib.Multigraph.msf`.
-* `Cslib.Query.MinimumSpanningForest.WeaklySupported`: threshold support predicate allowing
+* `Cslib.Query.MinimumSpanningForest.WeaklySupported`: `WeightedEdge`-list counterpart of
+  `Cslib.Multigraph.Supported` ([KhannaPuttermanSong2026], Sections 1.2 and 3.1) allowing
   equal-weight substitutions.
 * `Cslib.Query.MinimumSpanningForest.contractEdge`,
   `Cslib.Query.MinimumSpanningForest.contractEdgeList`: graph contraction along `Fin n → Fin n'`.
@@ -46,7 +47,7 @@ filtering (`WeaklySupported`, `isMinSpanningForest_of_weakSupport`), and contrac
   preservation for `Kruskal.IsMinSpanningForest`.
 * `Cslib.Query.MinimumSpanningForest.exists_extend_isMinSpanningForest_of_cutStep`,
   `Cslib.Query.MinimumSpanningForest.isMinSpanningForest_append_of_contract`: contraction
-  correctness for cut steps and Borůvka/Prim rounds.
+  correctness for cut steps and contraction rounds.
 -/
 
 public section
@@ -73,16 +74,15 @@ theorem edgeWeight_injective {n : ℕ} (es : List (WeightedEdge n ℕ)) :
     Function.Injective (edgeWeight es) := fun _ _ h =>
   Fin.ext (congrArg (fun p : ℕ ×ₗ ℕ => (ofLex p).2) h)
 
-/-- Injective lexicographic weight preferring index `i₀` among equal-weight edges. -/
-@[expose] def edgeWeightPrefer {n : ℕ} (es : List (WeightedEdge n ℕ))
+private def edgeWeightPrefer {n : ℕ} (es : List (WeightedEdge n ℕ))
     (i₀ i : Fin es.length) : ℕ ×ₗ (ℕ ×ₗ ℕ) :=
   toLex (es[i.val].weight, toLex (if i = i₀ then 0 else 1, i.val))
 
-theorem edgeWeightPrefer_injective {n : ℕ} (es : List (WeightedEdge n ℕ))
+private theorem edgeWeightPrefer_injective {n : ℕ} (es : List (WeightedEdge n ℕ))
     (i₀ : Fin es.length) : Function.Injective (edgeWeightPrefer es i₀) := fun _ _ h =>
   Fin.ext (congrArg (fun p : ℕ ×ₗ (ℕ ×ₗ ℕ) => (ofLex (ofLex p).2).2) h)
 
-theorem edgeWeightPrefer_lt_self_iff {n : ℕ} (es : List (WeightedEdge n ℕ))
+private theorem edgeWeightPrefer_lt_self_iff {n : ℕ} (es : List (WeightedEdge n ℕ))
     (i₀ f : Fin es.length) :
     edgeWeightPrefer es i₀ f < edgeWeightPrefer es i₀ i₀ ↔
       es[f.val].weight < es[i₀.val].weight := by
@@ -126,7 +126,7 @@ theorem rel_edgePartition_map_iff_joins {n : ℕ} (es : List (WeightedEdge n ℕ
       · exact ih.trans _ _ _ (.symm _ _ (.rel _ _ ⟨es[i.val], him, h1.symm, h2.symm⟩))
 
 /-- MSF edge list extracted from `Cslib.Multigraph.msf` under weight function `w`. -/
-@[expose] noncomputable def msfEdges {n : ℕ} {W : Type} [LinearOrder W]
+noncomputable def msfEdges {n : ℕ} {W : Type} [LinearOrder W]
     (es : List (WeightedEdge n ℕ)) (w : Fin es.length → W) : List (WeightedEdge n ℕ) :=
   (Cslib.Multigraph.msf (edgeEnds es) w Finset.univ).toList.map fun i => es[i.val]
 
@@ -248,7 +248,9 @@ theorem msfEdges_threshold_partition {n : ℕ} {W : Type} [LinearOrder W]
 /-! ## Threshold-Rank Characterization and Weak Support -/
 
 /-- Edge `e` is weakly supported by `G_b` if `e.u` and `e.v` are connected in `G_b` using only
-edges of weight at most `e.weight`. -/
+edges of weight at most `e.weight`. This is the `WeightedEdge`-list / `edgePartition`
+counterpart of `Cslib.Multigraph.Supported` ([KhannaPuttermanSong2026], Sections 1.2 and 3.1)
+generalized to permit equal-weight substitutions (`f.weight ≤ e.weight`). -/
 @[expose] def WeaklySupported {n : ℕ} (G_b : List (WeightedEdge n ℕ))
     (e : WeightedEdge n ℕ) : Prop :=
   (edgePartition (G_b.filter fun f => decide (f.weight ≤ e.weight))).rel e.u e.v = true
@@ -360,7 +362,7 @@ theorem isAcyclic_subperm {n : ℕ} {F G : List (WeightedEdge n ℕ)} (hsub : F.
   obtain ⟨G', hperm, hsl⟩ := List.subperm_iff.mp hsub
   exact isAcyclic_sublist hsl ((Perm.isAcyclic_iff hperm).mpr hG)
 
-theorem layer_cake_totalWeight {n : ℕ} (W : ℕ) (L : List (WeightedEdge n ℕ))
+private theorem layer_cake_totalWeight {n : ℕ} (W : ℕ) (L : List (WeightedEdge n ℕ))
     (hW : ∀ e ∈ L, e.weight < W) :
     totalWeight L = ∑ t ∈ Finset.range W,
       (L.length - (L.filter fun e => decide (e.weight ≤ t)).length) := by
@@ -523,6 +525,17 @@ private theorem filter_sublist_of_imp {α : Type*} (p q : α → Bool)
     · simp only [hpq x hp, ↓reduceIte]
       exact List.Sublist.cons_cons x ih
 
+/-- Monotonicity of threshold `edgePartition` connectivity in both the edge list (`F.Subperm G`)
+and the weight threshold (`t₁ ≤ t₂`). -/
+theorem edgePartition_filter_mono_subperm {n : ℕ} {F G : List (WeightedEdge n ℕ)}
+    (hsub : F.Subperm G) {t₁ t₂ : ℕ} (ht : t₁ ≤ t₂) {u v : Fin n}
+    (hrel : (edgePartition (F.filter fun e => decide (e.weight ≤ t₁))).rel u v = true) :
+    (edgePartition (G.filter fun e => decide (e.weight ≤ t₂))).rel u v = true :=
+  edgePartition_mono_subperm
+    ((filter_sublist_of_imp _ _ (fun g hg => by
+      simp only [decide_eq_true_eq] at hg ⊢; omega) F).subperm.trans (hsub.filter _))
+    hrel
+
 private theorem rel_edgePartitionFrom_mono_init {n : ℕ} (p : Partition n)
     (L : List (WeightedEdge n ℕ)) {u v : Fin n} (h : (edgePartition L).rel u v = true) :
     (edgePartitionFrom p L).rel u v = true := by
@@ -545,11 +558,7 @@ private theorem edgePartitionFrom_filter_eq_of_weakSupport {n : ℕ}
       edgePartition (B.filter fun g => decide (g.weight ≤ t)) := by
   refine edgePartitionFrom_eq_self_of_forall _ _ fun f hf => ?_
   rw [List.mem_filter, decide_eq_true_eq] at hf
-  have hsl : (B.filter fun g => decide (g.weight ≤ f.weight)).Sublist
-      (B.filter fun g => decide (g.weight ≤ t)) :=
-    filter_sublist_of_imp _ _ (fun g hg => by
-      simp only [decide_eq_true_eq] at hg ⊢; omega) B
-  exact edgePartition_mono_subperm hsl.subperm (hAB f hf.1)
+  exact edgePartition_filter_mono_subperm (List.Subperm.refl _) hf.2 (hAB f hf.1)
 
 theorem weaklySupported_trans {n : ℕ} (A B : List (WeightedEdge n ℕ))
     (hAB : ∀ f ∈ A, WeaklySupported B f) {e : WeightedEdge n ℕ}

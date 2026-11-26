@@ -20,13 +20,14 @@ Kernel-checked tests for `Cslib.Query.MinimumSpanningForest` (`Threshold` and `R
   `msfEdges_threshold_partition`), cut-step extension and contraction lifting
   (`exists_extend_isMinSpanningForest_of_cutStep`, `isMinSpanningForest_append_of_contract`),
   weak-support pruning (`isMinSpanningForest_of_weakSupport`), `DynamicDJPTree` +
-  `lemma_2_1_dynamic` + `lemma_3_2_dynamic` + `isMinSpanningForest_of_lemma_3_2`, multi-round
-  `PartitionRound` (`weaklySupported_partition_rounds`, `lemma_3_3_conglomerate_size`), and
-  `dedupSimpleEdges` + `edgeEnds` + `edgeWeight` + `Cslib.Multigraph.msf`.
+  `DynamicDJPTree.rel_treeEdges_filter_of_border` + `weaklySupported_of_dynamicDJPTree` +
+  `isMinSpanningForest_of_dynamicDJPTree`, conglomerate stopping rule
+  (`maxsize_le_card_biUnion_of_stop`), and `dedupSimpleEdges` + `edgeEnds` + `edgeWeight` +
+  `Cslib.Multigraph.msf`.
 - Tier 2 (boundary cases): empty edge lists (`n = 0`, `n = 4`), 1-vertex self-loops,
   disconnected forest with isolated vertex, all-equal weights (`W = 0`, `W = 7`) and tie-breaking,
-  duplicate/reversed/self-loop deduplication + `lemma_3_3_optDepth_sum_le`, and corrupted border
-  edge `M_C` in `lemma_3_2_dynamic`.
+  duplicate/reversed/self-loop deduplication, and corrupted border edge `M_C` in
+  `weaklySupported_of_dynamicDJPTree`.
 - Tier 3 (cross-feature): `Kruskal.kruskalEdges` oracle cross-checks.
 -/
 
@@ -141,7 +142,8 @@ example : IsMinSpanningForest pathChordG pathChordGb := by
     rwa [hk] at h
   exact isMinSpanningForest_of_weakSupport pathChordG pathChordGb pathChordGb hsub hws hFb
 
-/-- T1.3: `DynamicDJPTree` + `lemma_2_1_dynamic` + `lemma_3_2_dynamic` (`n = 5`). -/
+/-- T1.3: `DynamicDJPTree` + `rel_treeEdges_filter_of_border` +
+`weaklySupported_of_dynamicDJPTree` (`n = 5`). -/
 @[expose] def djpTree5 : DynamicDJPTree 5 where
   numSteps := 2
   root := 0
@@ -188,20 +190,17 @@ example :
       Cslib.Multigraph.Joins djpTree5.ends Set.univ djpTree5.root 2 ∧
       (∀ e ∈ djpEs, WeaklySupported (djpFC ++ djpHLift ++ []) e) ∧
       IsMinSpanningForest djpEs (djpFC ++ djpHLift) := by
-  have hVC : ({0, 1, 2} : Finset (Fin 5)) = djpTree5.treeVerts djpTree5.numSteps := by decide
-  have h21 := lemma_2_1_dynamic djpTree5 (x := 0) (y := 2) (by decide) (by decide)
+  have hVC : djpTree5.treeVerts djpTree5.numSteps = ({0, 1, 2} : Finset (Fin 5)) := by decide
+  have h21 := djpTree5.rel_treeEdges_filter_of_border (x := 0) (y := 2) (by decide) (by decide)
     ⟨0, 3, 8⟩ ⟨2, 3, 5⟩ (.inl ⟨rfl, by decide⟩) (.inl ⟨rfl, by decide⟩)
     (fun s _ => by fin_cases s <;> decide) (fun s _ => by fin_cases s <;> decide)
   have hj := djpTree5.joins_treeVerts (x := 2) (by decide)
   have hDsub : djpTree5.treeEdges.Subperm djpC :=
     (show djpTree5.treeEdges.Sublist djpC by decide).subperm
-  have hCverts : ∀ e ∈ djpC, e.u ∈ ({0, 1, 2} : Finset (Fin 5)) ∧
-      e.v ∈ ({0, 1, 2} : Finset (Fin 5)) := by
-    intro e he
-    simp only [djpC, List.mem_cons, List.not_mem_nil, or_false] at he
-    rcases he with rfl | rfl | rfl <;> decide
-  have hHno : ∀ e ∈ djpH, ¬ (e.u ∈ ({0, 1, 2} : Finset (Fin 5)) ∧
-      e.v ∈ ({0, 1, 2} : Finset (Fin 5))) := by
+  have hHno : ∀ e ∈ djpH,
+      ¬ (e.u ∈ djpTree5.treeVerts djpTree5.numSteps ∧
+        e.v ∈ djpTree5.treeVerts djpTree5.numSteps) := by
+    rw [hVC]
     intro e he
     simp only [djpH, List.mem_cons, List.not_mem_nil, or_false] at he
     rcases he with rfl | rfl | rfl <;> decide
@@ -212,7 +211,9 @@ example :
     simp only [djpH, List.mem_cons, List.not_mem_nil, or_false] at he
     rcases he with rfl | rfl | rfl <;> fin_cases s <;> decide
   have hc : ∀ x y : Fin 5, djpContract x = djpContract y ↔
-      x = y ∨ (x ∈ ({0, 1, 2} : Finset (Fin 5)) ∧ y ∈ ({0, 1, 2} : Finset (Fin 5))) := by
+      x = y ∨ (x ∈ djpTree5.treeVerts djpTree5.numSteps ∧
+        y ∈ djpTree5.treeVerts djpTree5.numSteps) := by
+    rw [hVC]
     intro x y; fin_cases x <;> fin_cases y <;> decide
   have hkC : kruskalEdges djpC = djpFC := by
     rw [kruskalEdges, show sortEdges djpC = djpC by simp [djpC, sortEdges_cons_cons]]
@@ -238,52 +239,20 @@ example :
     have h := kruskalEdges_isMinSpanningForest (djpFC ++ djpHLift ++ [])
     rwa [hkF] at h
   exact ⟨h21, hj,
-    lemma_3_2_dynamic djpEs djpC [] djpH djpFC djpHLift djpTree5 {0, 1, 2} djpContract
-      List.Perm.rfl hVC hCverts hDsub hHno huncorr hc hFC hHLsub hHLmsf,
-    isMinSpanningForest_of_lemma_3_2 djpEs djpC [] djpH djpFC djpHLift (djpFC ++ djpHLift)
-      djpTree5 {0, 1, 2} djpContract List.Perm.rfl hVC hCverts hDsub hHno huncorr hc hFC
-      hHLsub hHLmsf hF⟩
+    weaklySupported_of_dynamicDJPTree djpEs djpC [] djpH djpFC djpHLift djpTree5 djpContract
+      List.Perm.rfl hDsub hHno huncorr hc hFC hHLsub hHLmsf,
+    isMinSpanningForest_of_dynamicDJPTree djpEs djpC [] djpH djpFC djpHLift (djpFC ++ djpHLift)
+      djpTree5 djpContract List.Perm.rfl hDsub hHno huncorr hc hFC hHLsub hHLmsf hF⟩
 
-/-- T1.4: `PartitionRound` + `weaklySupported_partition_rounds` + `lemma_3_3_conglomerate_size`. -/
-@[expose] def partRounds5 : List (PartitionRound 5) :=
-  [ { compEdges := [⟨0, 1, 2⟩], msfComp := [⟨0, 1, 2⟩], corrupted := [] }
-  , { compEdges := [⟨2, 3, 3⟩], msfComp := [⟨2, 3, 3⟩], corrupted := [⟨1, 2, 1⟩] } ]
-
-@[expose] def roundBaseEs : List (WeightedEdge 5 ℕ) :=
-  [⟨0, 1, 2⟩, ⟨2, 3, 3⟩, ⟨1, 2, 1⟩, ⟨0, 3, 9⟩]
-
+/-- T1.4: `maxsize_le_card_biUnion_of_stop` conglomerate size lower bound. -/
 @[expose] def roundVComp : Fin 2 → Finset (Fin 5)
   | 0 => {0, 1, 2}
   | 1 => {2, 3}
 
 example :
-    roundBaseEs.all (fun e =>
-      decide (WeaklySupported (partRounds5.flatMap PartitionRound.msfComp ++
-        ([] : List (WeightedEdge 5 ℕ)) ++ partRounds5.flatMap PartitionRound.corrupted) e)) =
-      true := by
-  decide
-
-example :
-    (∀ e ∈ roundBaseEs, WeaklySupported
-        ((([] : List (WeightedEdge 5 ℕ)) ++ partRounds5.flatMap PartitionRound.msfComp) ++
-          ([] : List (WeightedEdge 5 ℕ)) ++
-          (([] : List (WeightedEdge 5 ℕ)) ++ partRounds5.flatMap PartitionRound.corrupted)) e) ∧
-      (2 ≤ (({0, 1} : Finset (Fin 2)).biUnion roundVComp).card ∨
-        (({0, 1} : Finset (Fin 2)).card = 1 ∧ ∃ i₀ ∈ ({0, 1} : Finset (Fin 2)),
-          ¬ ∃ j : Fin 2, j ≠ i₀ ∧ (roundVComp i₀ ∩ roundVComp j).Nonempty)) := by
-  have hbase : ∀ e ∈ roundBaseEs, WeaklySupported ([] ++ roundBaseEs ++ []) e := by
-    intro e he
-    simp only [roundBaseEs, List.mem_cons, List.not_mem_nil, or_false] at he
-    rcases he with rfl | rfl | rfl | rfl <;> decide
-  have hsteps : ∀ H0, H0 = roundBaseEs → ∀ e ∈ H0, WeaklySupported
-      ((partRounds5.flatMap PartitionRound.msfComp) ++ [] ++
-        (partRounds5.flatMap PartitionRound.corrupted)) e := by
-    intro H0 h0 e he
-    subst h0
-    simp only [roundBaseEs, List.mem_cons, List.not_mem_nil, or_false] at he
-    rcases he with rfl | rfl | rfl | rfl <;> decide
-  have hws := weaklySupported_partition_rounds roundBaseEs partRounds5 [] [] [] roundBaseEs
-    hbase hsteps
+    2 ≤ (({0, 1} : Finset (Fin 2)).biUnion roundVComp).card ∨
+      (({0, 1} : Finset (Fin 2)).card = 1 ∧ ∃ i₀ ∈ ({0, 1} : Finset (Fin 2)),
+        ¬ ∃ j : Fin 2, j ≠ i₀ ∧ (roundVComp i₀ ∩ roundVComp j).Nonempty) := by
   have hstop : ∀ i : Fin 2,
       2 ≤ (roundVComp i).card ∨
       (∃ j : Fin 2, j.val < i.val ∧ (roundVComp i ∩ roundVComp j).Nonempty) ∨
@@ -304,7 +273,7 @@ example :
     · exact ⟨0, by decide, 1, by decide, ⟨2, Finset.mem_inter.mpr ⟨by decide, by decide⟩⟩⟩
     · exact ⟨1, by decide, 0, by decide, ⟨2, Finset.mem_inter.mpr ⟨by decide, by decide⟩⟩⟩
     · exact absurd hJss (lt_irrefl _)
-  exact ⟨hws, lemma_3_3_conglomerate_size roundVComp hstop {0, 1} (by decide) hclosed hconn⟩
+  exact maxsize_le_card_biUnion_of_stop roundVComp hstop {0, 1} (by decide) hclosed hconn
 
 /-- T1.5: `dedupSimpleEdges`, `edgeEnds`, `edgeWeight`, and `Cslib.Multigraph.msf` lifting. -/
 @[expose] def multiTriEs : List (WeightedEdge 3 ℕ) :=
@@ -500,7 +469,7 @@ example : dedupSimpleEdges dupLoopsEs = dupLoopsDedup := by decide
 example :
     IsSimple (edgeEnds (dedupSimpleEdges dupLoopsEs)) ∧
       IsMinSpanningForest dupLoopsEs [⟨2, 1, 2⟩, ⟨0, 1, 4⟩] ∧
-      optDepth (edgeEnds dupLoopsDedup) ≤ optDepthMN 2 3 := by
+      (edgePartition (dupLoopsEs.filter fun e => decide (e.weight ≤ 4))).rel 0 2 = true := by
   have hsimp := dedupSimpleEdges_isSimple dupLoopsEs
   have hd : dedupSimpleEdges dupLoopsEs = dupLoopsDedup := by decide
   have hk : kruskalEdges (dedupSimpleEdges dupLoopsEs) = [⟨2, 1, 2⟩, ⟨0, 1, 4⟩] := by
@@ -509,18 +478,13 @@ example :
     rfl
   have hF : IsMinSpanningForest (dedupSimpleEdges dupLoopsEs) [⟨2, 1, 2⟩, ⟨0, 1, 4⟩] :=
     hk ▸ kruskalEdges_isMinSpanningForest _
-  let Cs : List (List (WeightedEdge 3 ℕ)) := [dupLoopsDedup]
-  have hV : ValidDecomp (Cs.map fun es => ⟨es.length, edgeEnds es⟩) :=
-    ⟨by simp [compVertsList], trivial⟩
-  have hUsimp : IsSimple (edgeUnionList (Cs.map fun es => ⟨es.length, edgeEnds es⟩)) := by
-    refine ⟨fun i => ?_, fun i₁ i₂ he => ?_⟩
-    · fin_cases i <;> decide
-    · fin_cases i₁ <;> fin_cases i₂ <;> first | rfl | (exfalso; revert he; decide)
-  have h33 := lemma_3_3_optDepth_sum_le (m := 2) Cs hV hUsimp (by decide)
-  simp only [Cs, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, add_zero] at h33
-  exact ⟨hsimp, isMinSpanningForest_of_dedupSimpleEdges dupLoopsEs [⟨2, 1, 2⟩, ⟨0, 1, 4⟩] hF, h33⟩
+  have hsub : dupLoopsDedup.Subperm dupLoopsEs := hd ▸ dedupSimpleEdges_subperm dupLoopsEs
+  have hrel := edgePartition_filter_mono_subperm hsub (t₁ := 4) (t₂ := 4) le_rfl (u := 0) (v := 2)
+    (by decide)
+  exact ⟨hsimp, isMinSpanningForest_of_dedupSimpleEdges dupLoopsEs [⟨2, 1, 2⟩, ⟨0, 1, 4⟩] hF, hrel⟩
 
-/-- T2.6: Corrupted border edge `M_C` in `lemma_3_2_dynamic` (`weight < wPop 0`). -/
+/-- T2.6: Corrupted border edge `M_C` in `weaklySupported_of_dynamicDJPTree`
+(`weight < wPop 0`). -/
 @[expose] def corrDJP : DynamicDJPTree 3 where
   numSteps := 1
   root := 0
@@ -548,14 +512,13 @@ example : WeaklySupported (corrC ++ corrHLift ++ corrMC) ⟨1, 2, 15⟩ := by de
 example :
     (∀ e ∈ corrEs, WeaklySupported (corrC ++ corrHLift ++ corrMC) e) ∧
       IsMinSpanningForest corrEs [⟨1, 2, 3⟩, ⟨0, 1, 10⟩] := by
-  have hVC : ({0, 1} : Finset (Fin 3)) = corrDJP.treeVerts corrDJP.numSteps := by decide
-  have hCverts : ∀ e ∈ corrC, e.u ∈ ({0, 1} : Finset (Fin 3)) ∧
-      e.v ∈ ({0, 1} : Finset (Fin 3)) := by
-    intro e he; simp only [corrC, List.mem_singleton] at he; subst he; decide
+  have hVC : corrDJP.treeVerts corrDJP.numSteps = ({0, 1} : Finset (Fin 3)) := by decide
   have hDsub : corrDJP.treeEdges.Subperm corrC :=
     (show corrDJP.treeEdges.Sublist corrC by decide).subperm
-  have hHno : ∀ e ∈ corrH, ¬ (e.u ∈ ({0, 1} : Finset (Fin 3)) ∧
-      e.v ∈ ({0, 1} : Finset (Fin 3))) := by
+  have hHno : ∀ e ∈ corrH,
+      ¬ (e.u ∈ corrDJP.treeVerts corrDJP.numSteps ∧
+        e.v ∈ corrDJP.treeVerts corrDJP.numSteps) := by
+    rw [hVC]
     intro e he
     simp only [corrH, List.mem_cons, List.not_mem_nil, or_false] at he
     rcases he with rfl | rfl <;> decide
@@ -566,7 +529,9 @@ example :
     simp only [corrH, List.mem_cons, List.not_mem_nil, or_false] at he
     rcases he with rfl | rfl <;> fin_cases s <;> decide
   have hc : ∀ x y : Fin 3, corrMap x = corrMap y ↔
-      x = y ∨ (x ∈ ({0, 1} : Finset (Fin 3)) ∧ y ∈ ({0, 1} : Finset (Fin 3))) := by
+      x = y ∨ (x ∈ corrDJP.treeVerts corrDJP.numSteps ∧
+        y ∈ corrDJP.treeVerts corrDJP.numSteps) := by
+    rw [hVC]
     intro x y; fin_cases x <;> fin_cases y <;> decide
   have hkC : kruskalEdges corrC = corrC := by
     rw [kruskalEdges, show sortEdges corrC = corrC by simp [corrC]]
@@ -592,11 +557,11 @@ example :
     rfl
   have hF : IsMinSpanningForest (corrC ++ corrHLift ++ corrMC) [⟨1, 2, 3⟩, ⟨0, 1, 10⟩] :=
     hkF ▸ kruskalEdges_isMinSpanningForest _
-  exact ⟨lemma_3_2_dynamic corrEs corrC corrMC corrH corrC corrHLift corrDJP {0, 1} corrMap
-      List.Perm.rfl hVC hCverts hDsub hHno huncorr hc hFC hHLsub hHLmsf,
-    isMinSpanningForest_of_lemma_3_2 corrEs corrC corrMC corrH corrC corrHLift
-      [⟨1, 2, 3⟩, ⟨0, 1, 10⟩] corrDJP {0, 1} corrMap List.Perm.rfl hVC hCverts hDsub hHno
-      huncorr hc hFC hHLsub hHLmsf hF⟩
+  exact ⟨weaklySupported_of_dynamicDJPTree corrEs corrC corrMC corrH corrC corrHLift corrDJP
+      corrMap List.Perm.rfl hDsub hHno huncorr hc hFC hHLsub hHLmsf,
+    isMinSpanningForest_of_dynamicDJPTree corrEs corrC corrMC corrH corrC corrHLift
+      [⟨1, 2, 3⟩, ⟨0, 1, 10⟩] corrDJP corrMap List.Perm.rfl hDsub hHno huncorr hc hFC hHLsub
+      hHLmsf hF⟩
 
 /-! ### Tier 3: Cross-Feature Oracle Checks (`kruskalEdges` and `msfEdges`) -/
 
