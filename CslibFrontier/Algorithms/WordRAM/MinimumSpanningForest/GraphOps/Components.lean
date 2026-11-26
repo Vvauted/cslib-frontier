@@ -7,9 +7,10 @@ Authors: vvauted
 module
 -- upstream: candidate
 
-public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.CSR
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.IndexedEdges
 public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.Contraction.Threshold
 public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Basic
+import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.CSR
 import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
 import CslibFrontier.Tactic.UpdateSimp
@@ -35,7 +36,7 @@ undirected CSR graphs, reusing `ArrayOps.fillConstProg`, `Memory.allocBlockDirty
 * `realizes_connectedComponentsProg`, `connectedComponentsProg_spec`: correctness and linear cost.
 * `realizes_contractEdgesProg`, `contractEdgesProg_spec`: correctness and edge-contraction cost.
 * `realizes_compactVerticesProg`, `compactVerticesProg_spec`, `compactVertices_isSimple`,
-  `compactVertices_isMinSpanningForest_of_subperm`: correctness, simplicity, and MSF preservation.
+  `compactVertices_isMinSpanningForest`: correctness, simplicity, and MSF preservation.
 -/
 
 public section
@@ -62,27 +63,23 @@ word_enc_structure encComponentsResult : ComponentsResult where
 
 instance : WordEncoding ComponentsResult := ⟨2, encComponentsResult⟩
 
-/-- Arguments for `contractEdgesProg`: edge slice `(numVertices, numEdges, edgeBase)` and
+/-- Arguments for `contractEdgesProg`: edge slice `(numEdges, edgeBase)` and
 vertex component array `compBase`. -/
 structure ContractEdgesArgs where
-  /-- Number of vertices `n` in the input graph. -/
-  numVertices : ℕ
   /-- Number of stride-4 edges `m` at `edgeBase`. -/
   numEdges : ℕ
   /-- Base address of the input stride-4 `IndexedEdge` array. -/
   edgeBase : ℕ
-  /-- Base address of the length-`n` vertex component label array. -/
+  /-- Base address of the vertex component label array. -/
   compBase : ℕ
 
-/-- Faithful four-word encoding of `ContractEdgesArgs` as
-`[numVertices, numEdges, edgeBase, compBase]`. -/
+/-- Faithful three-word encoding of `ContractEdgesArgs` as `[numEdges, edgeBase, compBase]`. -/
 word_enc_structure encContractEdgesArgs : ContractEdgesArgs where
-  numVertices : wordWords,
   numEdges : wordWords,
   edgeBase : wordWords,
   compBase : wordWords
 
-instance : WordEncoding ContractEdgesArgs := ⟨4, encContractEdgesArgs⟩
+instance : WordEncoding ContractEdgesArgs := ⟨3, encContractEdgesArgs⟩
 
 /-- Output handles produced by `compactVerticesProg`. -/
 structure CompactResult where
@@ -154,13 +151,6 @@ private theorem framedTriple_seq_frame {α β : Type} {w : ℕ} {s : Memory.Stat
   · rw [memoryCost_bind']; omega
   · rw [StateTransitionSpec.clientState_bind]; exact (hm₁.mono hsub₁).trans (hm₂.mono hsub₂)
   · rw [StateTransitionSpec.clientResult_bind, StateTransitionSpec.clientState_bind]; exact hq
-
-private theorem framedTriple_empty_of_frontier {α : Type} {w : ℕ} {s : Memory.State}
-    {p : Memory.Prog α} {c fEnd : ℕ} {Q : α → Memory.State → Prop}
-    (h : Memory.FramedTriple w s p c (Set.Ico s.frontier fEnd) Q) :
-    Memory.FramedTriple w s p c ∅ Q :=
-  Memory.Triple.mono h le_rfl fun _ _ ⟨hm, hq⟩ =>
-    ⟨⟨hm.1, fun a ha _ => hm.2 a ha (by simp only [Set.mem_Ico, not_and, not_lt]; omega)⟩, hq⟩
 
 private theorem allocDirty_cr (s : Memory.State) (k : ℕ) :
     (Memory.spec 0).clientResult s (Memory.allocBlockDirty k) = ⟨s.frontier, k⟩ := rfl
@@ -1108,7 +1098,7 @@ private theorem connectedComponentsProg_word_spec {w n edgeBase : ℕ}
         res.numComps ≤ n ∧
         s'.frontier = s.frontier + (4 * n + 4 * m + 1) ∧
         Memory.WellFormed w s' ∧
-        (∀ u : Fin n, ∃ _ : s'.mem (res.compBase + u.val) < res.numComps, True) ∧
+        (∀ u : Fin n, s'.mem (res.compBase + u.val) < res.numComps) ∧
         (∀ c : Fin res.numComps, ∃ u : Fin n, s'.mem (res.compBase + u.val) = c.val) ∧
         (∀ x y : Fin n, s'.mem (res.compBase + x.val) = s'.mem (res.compBase + y.val) ↔
           (edgePartition (es.map IndexedEdge.toWeighted)).rel x y = true) ∧
@@ -1152,7 +1142,7 @@ private theorem connectedComponentsProg_word_spec {w n edgeBase : ℕ}
   let Post : ComponentsResult → Memory.State → Prop := fun res s' =>
     res.compBase = compBase ∧ res.numComps ≤ n ∧ s'.frontier = s.frontier + (4 * n + 4 * m + 1) ∧
     Memory.WellFormed w s' ∧
-    (∀ u : Fin n, ∃ _ : s'.mem (res.compBase + u.val) < res.numComps, True) ∧
+    (∀ u : Fin n, s'.mem (res.compBase + u.val) < res.numComps) ∧
     (∀ c : Fin res.numComps, ∃ u : Fin n, s'.mem (res.compBase + u.val) = c.val) ∧
     (∀ x y : Fin n, s'.mem (res.compBase + x.val) = s'.mem (res.compBase + y.val) ↔
       (edgePartition (es.map IndexedEdge.toWeighted)).rel x y = true) ∧
@@ -1165,7 +1155,7 @@ private theorem connectedComponentsProg_word_spec {w n edgeBase : ℕ}
     rintro ⟨hfr_o, hwf_o, _, hcid_o, hvis_o, hsurj_o, hconn_o⟩
     refine Memory.FramedTriple.pure ⟨rfl, hcid_o,
       by rw [hfr_o]; dsimp only [fEnd, queueBase, compBase, csrOff, s₃]; omega, hwf_o,
-      fun u => ⟨hvis_o u, trivial⟩, fun c => hsurj_o c.val c.isLt, fun x y => hconn_o x y, ?_⟩
+      hvis_o, fun c => hsurj_o c.val c.isLt, fun x y => hconn_o x y, ?_⟩
     set itProg := iterate ccOuterStep ⟨csrOff, csrAdj, compBase, queueBase, n⟩ n ⟨0, 0⟩
     set res_o := (Memory.spec 0).clientResult s₃ itProg
     set s' := (Memory.spec 0).clientState s₃ itProg
@@ -1183,14 +1173,15 @@ private theorem connectedComponentsProg_word_spec {w n edgeBase : ℕ}
       exact ⟨⟨s'.mem (compBase + r.val), hvis_o r⟩, Finset.mem_univ _,
         DisjointSet.Partition.classOf_eq_iff.mpr ((hconn_o _ r).mp
           (Classical.choose_spec (hsurj_o _ (hvis_o r))))⟩
-  exact framedTriple_empty_of_frontier ((framedTriple_seq_frame hft_csr (Set.empty_subset _) le_rfl
+  exact ((framedTriple_seq_frame hft_csr (Set.empty_subset _) le_rfl
     fun ⟨hco, hca, hcfr, _, _⟩ => Memory.FramedTriple.allocBlockDirty_bind
       (by rw [hcfr]; exact hfit_comp) (by
         rw [hcfr, hco, hca]
         exact framedTriple_seq_frame hft_fill (fun x hx =>
             hsub_S ⟨hx.1, hx.2.trans_le (by dsimp only [queueBase, compBase]; omega)⟩)
           le_rfl fun _ => Memory.FramedTriple.allocBlockDirty_bind (by rw [hfr_fill]; exact hfit_q)
-            (by rw [hfr_fill]; dsimp only [s₁]; exact hout_pure))).mono (by omega) fun _ _ h => h)
+            (by rw [hfr_fill]; dsimp only [s₁]; exact hout_pure))).frame_empty_of_ge_frontier
+    (S := Set.Ico s.frontier fEnd) fun _ ha => ha.1).mono (by omega) fun _ _ h => h
 
 private theorem buildUndirCSR_cs {w : ℕ} {g : GraphSlice} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
@@ -1281,7 +1272,7 @@ theorem connectedComponentsProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdg
         res.numComps ≤ n ∧
         s'.frontier = s.frontier + (4 * n + 4 * es.length + 1) ∧
         Memory.WellFormed w s' ∧
-        (∀ u : Fin n, ∃ _ : s'.mem (res.compBase + u.val) < res.numComps, True) ∧
+        (∀ u : Fin n, s'.mem (res.compBase + u.val) < res.numComps) ∧
         (∀ c : Fin res.numComps, ∃ u : Fin n, s'.mem (res.compBase + u.val) = c.val) ∧
         (∀ x y : Fin n, s'.mem (res.compBase + x.val) = s'.mem (res.compBase + y.val) ↔
           (edgePartition (es.map IndexedEdge.toWeighted)).rel x y = true) ∧
@@ -1437,7 +1428,7 @@ private theorem contractEdges_loop_spec {w : ℕ} {d : ContractEdgesArgs} {s : M
 
 private theorem contractEdgesProg_word_spec {w n n' : ℕ} {d : ContractEdgesArgs}
     {es : List (IndexedEdge n)} {compFn : Fin n → ℕ} {s : Memory.State}
-    (h16 : Fits w 16) (hwf : Memory.WellFormed w s) (_hn : d.numVertices = n)
+    (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
     (hm : d.numEdges = es.length) (hin : HoldsIndexedEdges d.edgeBase es s.mem)
     (hin_lt : d.edgeBase + 4 * es.length ≤ s.frontier)
     (hcomp : ∀ u : Fin n, s.mem (d.compBase + u.val) = compFn u)
@@ -1494,14 +1485,14 @@ private theorem contractEdgesProg_word_spec {w n n' : ℕ} {d : ContractEdgesArg
         exact ⟨m0.trans (by rw [hu, hcomp]), m1.trans (by rw [hv, hcomp]),
           m2.trans hw, m3.trans hid⟩,
         fun _ _ _ => by simp [esOut]⟩
-  exact framedTriple_empty_of_frontier
-    ((Memory.FramedTriple.allocBlockDirty_bind hfit hiter_ft).mono (by omega) fun _ _ h => h)
+  exact ((Memory.FramedTriple.allocBlockDirty_bind hfit hiter_ft).frame_empty_of_ge_frontier
+    (S := Set.Ico s.frontier (s.frontier + 4 * es.length))
+    fun _ ha => ha.1).mono (by omega) fun _ _ h => h
 
 /-- Uniform `Realizes .exact` certificate for `contractEdgesProg` with `work = 0`. -/
 theorem realizes_contractEdgesProg :
     Realizes .exact contractEdgesProg WordEncoding.encode WordEncoding.encode
-      (fun w d s => Fits w 16 ∧ Fits w (4 * d.numEdges) ∧ Fits w (s.frontier + 4 * d.numEdges) ∧
-        d.numEdges + 1 ≤ 2 ^ w ∧
+      (fun w d s => Fits w 16 ∧ Fits w (s.frontier + 4 * d.numEdges) ∧
         (∀ j < d.numEdges, d.edgeBase + 4 * j + 3 < s.frontier ∧
           d.compBase + s.mem (d.edgeBase + 4 * j) < s.frontier ∧
           d.compBase + s.mem (d.edgeBase + 4 * j + 1) < s.frontier))
@@ -1517,9 +1508,9 @@ theorem realizes_contractEdgesProg :
     | exact h.1.of_le (by decide)
     | exact h.2.1
     | exact iterationSafe_imp h.2.2.2 (fun _ => rfl) (fun _ _ hs => hs)
-  refine hraw.consequence (fun w d s _ hmem ⟨h16, h4m, hfit, _, hbounds⟩ => ?_)
+  refine hraw.consequence (fun w d s _ hmem ⟨h16, hfit, hbounds⟩ => ?_)
     (fun _ _ => le_rfl)
-  exact ⟨h16, h4m, hfit, (contractEdges_loop_spec h16 hmem hfit hbounds).1⟩
+  exact ⟨h16, hfit.of_le (by omega), hfit, (contractEdges_loop_spec h16 hmem hfit hbounds).1⟩
 
 /-- Framed specification for `contractEdgesProg`: allocates `4 * es.length` cells at
 `outBase = s.frontier` and writes remapped `IndexedEdge n'` entries along `compFn`, leaving all
@@ -1533,7 +1524,7 @@ theorem contractEdgesProg_spec {w n n' edgeBase compBase : ℕ}
     (hcomp_disj : compBase + n ≤ s.frontier)
     (hcomp_lt : ∀ e ∈ es, compFn e.u < n' ∧ compFn e.v < n')
     (hfit : Fits w (s.frontier + 4 * es.length)) :
-    Memory.FramedTriple w s (contractEdgesProg ⟨n, es.length, edgeBase, compBase⟩)
+    Memory.FramedTriple w s (contractEdgesProg ⟨es.length, edgeBase, compBase⟩)
       (10 * es.length + 1) ∅ fun out s' =>
         out = s.frontier ∧
         s'.frontier = s.frontier + 4 * es.length ∧
@@ -1546,7 +1537,7 @@ theorem contractEdgesProg_spec {w n n' edgeBase compBase : ℕ}
             (esOut[i]'hi').v.val = compFn (es[i]'hi).v ∧
             (esOut[i]'hi').weight = (es[i]'hi).weight ∧
             (esOut[i]'hi').id = (es[i]'hi).id :=
-  (contractEdgesProg_word_spec h16 hwf rfl rfl hin hin_lt hcomp hcomp_disj hcomp_lt hfit).2
+  (contractEdgesProg_word_spec h16 hwf rfl hin hin_lt hcomp hcomp_disj hcomp_lt hfit).2
 
 /-! ## `compactVerticesProg`: Isolated-Vertex Elimination -/
 
@@ -1834,7 +1825,7 @@ def compactVerticesProg (g : GraphSlice) : Memory.Prog CompactResult := do
   let _ ← fillConstProg markB.base 0 g.numVertices
   let _ ← iterate compactMarkStep ⟨g.edgeBase, markB.base⟩ g.numEdges 0
   let res ← iterate compactAssignStep markB.base g.numVertices ⟨0, 0⟩
-  let outBase ← contractEdgesProg ⟨g.numVertices, g.numEdges, g.edgeBase, markB.base⟩
+  let outBase ← contractEdgesProg ⟨g.numEdges, g.edgeBase, markB.base⟩
   pure ⟨outBase, res.count, markB.base⟩
 
 private theorem compactVerticesProg_word_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n)}
@@ -1899,7 +1890,7 @@ private theorem compactVerticesProg_word_spec {w n edgeBase : ℕ} {es : List (I
       (Memory.allocBlockDirty n >>= fun markB => fillConstProg markB.base 0 n >>= fun _ =>
         iterate compactMarkStep ⟨edgeBase, markB.base⟩ m 0 >>= fun _ =>
           iterate compactAssignStep markB.base n ⟨0, 0⟩ >>= fun res =>
-            contractEdgesProg ⟨n, m, edgeBase, markB.base⟩ >>= fun outBase =>
+            contractEdgesProg ⟨m, edgeBase, markB.base⟩ >>= fun outBase =>
               pure ⟨outBase, res.count, markB.base⟩) := rfl
   rw [hprog]
   let compFn : Fin n → ℕ := fun x => s₄.mem (markBase + x.val)
@@ -1919,12 +1910,12 @@ private theorem compactVerticesProg_word_spec {w n edgeBase : ℕ} {es : List (I
       (∀ y : Fin res.numVertices, s'.mem (res.liftBase + (lift y).val) = y.val) ∧
       (∀ y : Fin res.numVertices, ∃ e ∈ esOut, e.u = y ∨ e.v = y) ∧
       esOut.map (fun e => ⟨lift e.u, lift e.v, e.weight, e.id⟩) = es
-  have hcon_pure : Memory.FramedTriple w s₄ (contractEdgesProg ⟨n, m, edgeBase, markBase⟩ >>=
+  have hcon_pure : Memory.FramedTriple w s₄ (contractEdgesProg ⟨m, edgeBase, markBase⟩ >>=
       fun outBase => pure (⟨outBase, resA.count, markBase⟩ : CompactResult))
       (10 * m + 1 + 0) S_all Post := by
     refine framedTriple_seq_frame hft_con (Set.empty_subset _) (Set.empty_subset _) ?_
     rintro ⟨hout_eq, hfr_s', hwf_s', esOut, hlen_out, hout_mem, hel_out⟩
-    set s' := (Memory.spec 0).clientState s₄ (contractEdgesProg ⟨n, m, edgeBase, markBase⟩)
+    set s' := (Memory.spec 0).clientState s₄ (contractEdgesProg ⟨m, edgeBase, markBase⟩)
     have hm_con := (framedTriple_iff_realization.mp hft_con).2.2.1
     refine Memory.FramedTriple.pure ⟨rfl, hout_eq.trans hs4_fr, hca_le, by rw [hfr_s', hs4_fr],
       hwf_s', lift, esOut, hlift_inj, hlen_out, hout_mem, fun y => ?_, fun y => ?_, ?_⟩
@@ -1954,11 +1945,12 @@ private theorem compactVerticesProg_word_spec {w n edgeBase : ℕ} {es : List (I
       simp only [IndexedEdge.mk.injEq]; exact ⟨hu_fin, hv_fin, hw, hid⟩
   have hsub_mn : Set.Ico markBase (markBase + n) ⊆ S_all := fun x hx => by
     simp only [Set.mem_Ico] at hx; simp only [S_all, Set.mem_Ico]; dsimp only [fEnd] at *; omega
-  exact framedTriple_empty_of_frontier ((Memory.FramedTriple.allocBlockDirty_bind
+  exact ((Memory.FramedTriple.allocBlockDirty_bind
     (hfit.of_le (by omega)) (framedTriple_seq_frame hft_fill hsub_mn le_rfl fun _ =>
       framedTriple_seq_frame hft_mark hsub_mn le_rfl fun ⟨ht, _⟩ => by
         rw [ht]; exact framedTriple_seq_frame hft_ass hsub_mn le_rfl fun ⟨hr, hs', _⟩ => by
-          rw [hr, hs']; exact hcon_pure)).mono (by omega) fun _ _ h => h)
+          rw [hr, hs']; exact hcon_pure)).frame_empty_of_ge_frontier
+    (S := Set.Ico s.frontier fEnd) fun _ ha => ha.1).mono (by omega) fun _ _ h => h
 
 /-- Uniform `Realizes .exact` certificate for `compactVerticesProg` with `work = 0`. -/
 theorem realizes_compactVerticesProg :
@@ -1994,7 +1986,7 @@ theorem realizes_compactVerticesProg :
     all_goals
       rcases h with ⟨h16, hfit, hsafe_m, hsafe_a, hs4_fr, hbounds⟩
       first
-      | exact hfit.of_le (by omega) | exact h16.of_le (by decide) | exact hbounds
+      | exact h16.of_le (by decide) | exact hbounds
       | (rw [allocDirty_cr, allocDirty_cs]; done)
       | (rw [allocDirty_cr, allocDirty_cs]; dsimp only at *
          first
@@ -2155,7 +2147,7 @@ private theorem isAcyclic_contractEdgeList_of_injective {nOut n : ℕ}
 
 /-- Vertex compaction along an injective `lift` lifts any MSF `L_out` of the compacted edge list
 to an MSF `contractEdgeList lift L_out` of `es`. -/
-theorem compactVertices_isMinSpanningForest_of_subperm {nOut n : ℕ}
+theorem compactVertices_isMinSpanningForest {nOut n : ℕ}
     {lift : Fin nOut → Fin n} (hlift : Function.Injective lift)
     {esOut : List (IndexedEdge nOut)} {es : List (IndexedEdge n)}
     (hes : esOut.map (fun e => ⟨lift e.u, lift e.v, e.weight, e.id⟩) = es)
