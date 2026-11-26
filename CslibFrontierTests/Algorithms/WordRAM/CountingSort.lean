@@ -4,9 +4,10 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: vvauted
 -/
 
+module
 -- upstream: local-only (tests)
 
-import CslibFrontier.Algorithms.WordRAM.CountingSort
+public import CslibFrontier.Algorithms.WordRAM.CountingSort
 import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
 
@@ -17,6 +18,9 @@ Exercises `countingSortPure` (permutation, sortedness, equal-key stability), `co
 on stride-1 and stride-4 record arrays with equal keys, empty `count = 0` / `numKeys = 0` edge
 cases, and composite `Realizes .exact` (`work = 0`) clients via `realize`.
 -/
+
+-- This test module intentionally exports no declarations.
+set_option linter.privateModule false
 
 namespace CslibFrontierTests.Algorithms.WordRAM.CountingSort
 

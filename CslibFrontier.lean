@@ -3733,6 +3733,7 @@ public import CslibFrontier.Computability.Circuit.Boolean.CodeSubstitution
 public import CslibFrontier.MachineLearning.PACLearning.GrowthFunction
 public import CslibFrontier.Crypto.Computational.PedersenCommitment
 public import CslibFrontier.Computability.Circuit.Boolean.SemiCircuit.OfCircuit
+public import CslibFrontier.Computability.WordRAM.Realization.NatLog
 public import CslibFrontier.Computability.Program.Assemble
 public import CslibFrontier.Computability.Kolmogorov.Partrec
 public import CslibFrontier.Computability.LogSpaceDerandomization.SamplerPrefix

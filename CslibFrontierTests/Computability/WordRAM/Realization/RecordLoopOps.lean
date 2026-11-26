@@ -4,9 +4,11 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: vvauted
 -/
 
+module
 -- upstream: local-only (tests)
 
-import CslibFrontier.Computability.WordRAM.Realization.RecordOps
+public import CslibFrontier.Computability.WordRAM.Realization.NatLog
+public import CslibFrontier.Computability.WordRAM.Realization.RecordOps
 import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
 import Mathlib.Tactic.NormNum
@@ -17,6 +19,9 @@ import Mathlib.Tactic.NormNum
 Exercises `iterate_rat_witness_spec`, `boundedWhile_rat_witness_spec`, `HoldsRecords`,
 `concatRecordsProg` (non-empty and empty slices), `natLog2Prog`, and `iterLogProg`.
 -/
+
+-- This test module intentionally exports no declarations.
+set_option linter.privateModule false
 
 namespace CslibFrontierTests.Computability.WordRAM.Realization.RecordLoopOps
 

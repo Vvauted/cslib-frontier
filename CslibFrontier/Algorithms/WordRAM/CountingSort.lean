@@ -57,19 +57,6 @@ open Cslib.DataStructure Cslib.WordRAM Cslib.WordRAM.Realization
     List α :=
   (List.range numKeys).flatMap fun k => xs.filter (fun x => decide (keyOf x = k))
 
-private theorem perm_filter_complement {α : Type*} (p q : α → Bool) (xs : List α)
-    (hpart : ∀ x ∈ xs, (p x = true ∧ q x = false) ∨ (p x = false ∧ q x = true)) :
-    (xs.filter p ++ xs.filter q).Perm xs := by
-  induction xs with
-  | nil => simp
-  | cons a rest ih =>
-    have hrest := ih fun y hy => hpart y (List.mem_cons_of_mem a hy)
-    rcases hpart a List.mem_cons_self with ⟨hp, hq⟩ | ⟨hp, hq⟩
-    · simp only [List.filter_cons, hp, hq, Bool.false_eq_true, ↓reduceIte, List.cons_append]
-      exact List.Perm.cons a hrest
-    · simp only [List.filter_cons, hp, hq, Bool.false_eq_true, ↓reduceIte]
-      exact List.perm_middle.trans (List.Perm.cons a hrest)
-
 /-- When all keys lie below `numKeys`, `countingSortPure` permutes `xs`. -/
 theorem countingSortPure_perm {α : Type*} (numKeys : ℕ) (keyOf : α → ℕ) (xs : List α)
     (hbound : ∀ x ∈ xs, keyOf x < numKeys) :
@@ -93,18 +80,17 @@ theorem countingSortPure_perm {α : Type*} (numKeys : ℕ) (keyOf : α → ℕ) 
         · simp [h1]
       have heq : xs.filter (fun x => decide (keyOf x = b)) =
           (xs.filter (fun x => decide (keyOf x < b + 1))).filter
-            (fun x => decide (keyOf x = b)) := by
+            (fun x => !decide (keyOf x < b)) := by
         rw [List.filter_filter]
         refine List.filter_congr fun x _ => ?_
         by_cases h1 : keyOf x = b
         · simp [h1]
-        · simp [h1]
+        · by_cases h2 : keyOf x < b + 1
+          · have h3 : keyOf x < b := by omega
+            simp [h1, h2, h3]
+          · simp [h1, h2]
       rw [hlt, heq]
-      refine perm_filter_complement _ _ _ fun x hx => ?_
-      rw [List.mem_filter, decide_eq_true_eq] at hx
-      by_cases hxb : keyOf x < b
-      · exact Or.inl ⟨decide_eq_true hxb, decide_eq_false (by omega)⟩
-      · exact Or.inr ⟨decide_eq_false hxb, decide_eq_true (by omega)⟩
+      exact List.filter_append_perm _ _
   simpa [countingSortPure, List.filter_eq_self.mpr fun x hx => decide_eq_true (hbound x hx)] using
     hpref numKeys le_rfl
 
@@ -126,11 +112,8 @@ theorem countingSortPure_stable {α : Type*} (numKeys : ℕ) (keyOf : α → ℕ
 theorem countingSortPure_pairwise_key {α : Type*} (numKeys : ℕ) (keyOf : α → ℕ)
     (xs : List α) :
     (countingSortPure numKeys keyOf xs).Pairwise (fun x y => keyOf x ≤ keyOf y) := by
-  have htrue : xs.Pairwise (fun _ _ => True) := by
-    induction xs with
-    | nil => simp
-    | cons _ _ ih => exact List.pairwise_cons.mpr ⟨fun _ _ => trivial, ih⟩
-  refine List.Pairwise.imp ?_ (countingSortPure_stable numKeys keyOf htrue)
+  refine List.Pairwise.imp ?_ (countingSortPure_stable numKeys keyOf (R := fun _ _ => True)
+    (List.pairwise_iff_getElem.mpr fun _ _ _ _ _ => trivial))
   rintro x y (h | ⟨h, _⟩) <;> omega
 
 /-! ## Arguments and `Memory.Prog` implementation -/
@@ -283,10 +266,6 @@ private theorem sum_filter_eq_length {α : Type*} (keyOf : α → ℕ) :
       by_cases h : v = keyOf a <;> simp [eq_comm, h, Nat.add_comm]
     rw [hsplit, hrest, Finset.sum_ite_eq']
     simp only [Finset.mem_range, ha, ↓reduceIte, List.length_cons]
-
-private theorem getElem_list_eq {α : Type*} {l₁ l₂ : List α} (h : l₁ = l₂) {idx : ℕ}
-    (h₁ : idx < l₁.length) (h₂ : idx < l₂.length) : l₁[idx] = l₂[idx] := by
-  cases h; rfl
 
 private theorem countingSort_pass1 {w numKeys stride keyOff inBase cntBase : ℕ}
     {rows : List (Fin stride → ℕ)} {s₀ : Memory.State}
@@ -593,13 +572,11 @@ private theorem countingSort_pass3 {w numKeys stride keyOff inBase cntBase outBa
             (rows.take i).filter (fun r => decide (keyOf r = kv)) ++ [rows[i]] := by
           simpa only [↓reduceIte] using hfilt_succ kv
         have hr_eq : r = rows[i] := by
-          dsimp only [r]
-          have h1 := getElem_list_eq hfilt_kv hj (by rw [← hfilt_kv]; exact hj)
-          have h2 : ((rows.take i).filter (fun r => decide (keyOf r = kv)) ++ [rows[i]])[j]'
-              (by rw [← hfilt_kv]; exact hj) = rows[i] := by
-            rw [List.getElem_append_right (by dsimp only [bucketLen] at hj_eq; omega)]
-            simp [hj_eq, bucketLen]
-          exact h1.trans h2
+          have h1 : r = ((rows.take i).filter (fun r => decide (keyOf r = kv)) ++
+              [rows[i]])[j]'(by rw [← hfilt_kv]; exact hj) := getElem_congr_coll hfilt_kv
+          refine h1.trans ?_
+          rw [List.getElem_append_right (by dsimp only [bucketLen] at hj_eq; omega)]
+          simp [hj_eq, bucketLen]
         rw [hr_eq, ht']
         have hpos_j : pos = bucketOff kv + j := by rw [hj_eq]; exact hpos_eq
         change ArrayCopy.copyPrefix tMid.mem (inBase + stride * i) (outBase + stride * pos) stride
@@ -616,8 +593,9 @@ private theorem countingSort_pass3 {w numKeys stride keyOff inBase cntBase outBa
             simp only [hkv, ↓reduceIte, Nat.add_zero] at hs
             omega
         have hr_pref : r = ((rows.take i).filter (fun r => decide (keyOf r = v)))[j]'hj_lt := by
-          dsimp only [r]
-          have h1 := getElem_list_eq (hfilt_succ v) hj (by rw [← hfilt_succ v]; exact hj)
+          have h1 : r = ((rows.take i).filter (fun r => decide (keyOf r = v)) ++
+              if kv = v then [rows[i]] else [])[j]'(by rw [← hfilt_succ v]; exact hj) :=
+            getElem_congr_coll (hfilt_succ v)
           exact h1.trans (List.getElem_append_left hj_lt)
         rw [hr_pref, ht']
         have hne_slot : bucketOff v + j ≠ pos := by
@@ -686,7 +664,10 @@ private theorem countingSort_pass3 {w numKeys stride keyOff inBase cntBase outBa
         rw [List.length_append, hlen_ih, hbo_succ]
       refine ⟨by rw [hflat]; exact hlen_succ, fun idx hidx m => ?_⟩
       have hidx' : idx < (prefB ++ buckB).length := by rw [← hflat]; exact hidx
-      rw [getElem_list_eq hflat hidx hidx']
+      have hrow_congr : ((List.range (b + 1)).flatMap
+          (fun v => rows.filter fun r => decide (keyOf r = v)))[idx]'hidx =
+          (prefB ++ buckB)[idx]'hidx' := getElem_congr_coll hflat
+      rw [hrow_congr]
       by_cases hlt : idx < prefB.length
       · rw [List.getElem_append_left hlt]
         exact hmem_ih idx hlt m
@@ -700,9 +681,8 @@ private theorem countingSort_pass3 {w numKeys stride keyOff inBase cntBase outBa
           rw [← hlen_ih]
           omega
         have hbuck_eq : buckB[idx - prefB.length]'hj_lt =
-            ((rows.take k).filter fun r => decide (keyOf r = b))[idx - prefB.length]'hj_lt' := by
-          refine getElem_list_eq ?_ hj_lt hj_lt'
-          simp [buckB, k, List.take_of_length_le le_rfl]
+            ((rows.take k).filter fun r => decide (keyOf r = b))[idx - prefB.length]'hj_lt' :=
+          getElem_congr_coll (by simp [buckB, k, List.take_of_length_le le_rfl])
         rw [List.getElem_append_right (Nat.le_of_not_lt hlt), hbuck_eq]
         rw [hidx_eq] at hslice_b
         exact hslice_b
@@ -832,11 +812,7 @@ private theorem countingSort_pipeline {w numKeys stride keyOff inBase : ℕ}
       · rw [ht₃_end]
     exact Memory.FramedTriple.mono hft_inner (by rw [Nat.add_mul, Nat.mul_assoc]; omega)
       fun _ _ h => h
-  refine Memory.Triple.mono hft_body le_rfl fun _ _ ⟨hm, hq⟩ => ⟨?_, hq⟩
-  refine ⟨hm.1, fun a ha _ => hm.2 a ha ?_⟩
-  simp only [S, Set.mem_Ico, not_and, not_lt]
-  intro hge
-  exact absurd ha (Nat.not_lt.mpr hge)
+  exact hft_body.frame_empty_of_ge_frontier fun _ ha => ha.1
 
 /-- Framed specification for `countingSortProg`: stably sorts `rows` by key field `keyOff`
 into a freshly allocated block `out = ⟨s.frontier + numKeys, stride * rows.length⟩`, preserves all
