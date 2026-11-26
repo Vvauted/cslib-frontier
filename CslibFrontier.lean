@@ -5810,6 +5810,7 @@ public import CslibFrontier.Computability.WordRAM.PointerMachine.Operations
 public import CslibFrontier.Computability.Complexity.Problems.NAEThreeSAT
 public import CslibFrontier.Foundations.NumberTheory.CRTSign
 public import CslibFrontier.Crypto.Computational.Encryption.CCA.NonAdaptive
+public import CslibFrontier.Logics.Propositional.PseudoBoolean.PigeonholeSeparation
 public import CslibFrontier.Foundations.RingTheory.Specialization
 public import CslibFrontier.Computability.Circuit.Arithmetic.DepthFive.LowerBound
 public import CslibFrontier.Algorithms.LinearAlgebra.BareissElimination
