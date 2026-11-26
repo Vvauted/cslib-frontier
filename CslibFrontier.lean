@@ -6526,6 +6526,7 @@ public import CslibFrontier.Computability.Machines.Turing.MultiTape.Probabilisti
 public import CslibFrontier.Computability.Complexity.Classes.Time.ZeroError
 public import CslibFrontier.Crypto.Computational.SIS.ModuleEncryption.Sampling.Native
 public import CslibFrontier.Computability.Interactive.GKR.Uniform
+public import CslibFrontier.Foundations.Data.List.Subperm
 public import CslibFrontier.Crypto.Computational.RSALeastSignificantBit
 public import CslibFrontier.Crypto.Computational.MerkleSignature
 public import CslibFrontier.DataStructure.Dictionary.WordRAM.ResizableSuccinct.Migration.ParamsCompute.Primitives
