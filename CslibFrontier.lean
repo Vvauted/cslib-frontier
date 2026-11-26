@@ -5048,6 +5048,7 @@ public import CslibFrontier.Computability.Complexity.Problems.Graph.RotationSyst
 public import CslibFrontier.Computability.Complexity.Problems.NCL.Diagram.Pad
 public import CslibFrontier.Computability.Circuit.Boolean.Iteration.Depth
 public import CslibFrontier.Computability.WordRAM.Trace
+public import CslibFrontier.DataStructure.PriorityQueue.FibonacciHeap.Native.Reset
 public import CslibFrontier.DataStructure.Dictionary.SubconstantRedundancy.Canonical
 public import CslibFrontier.Algorithms.WordRAM.DPLL.Refutation
 public import CslibFrontier.Foundations.Data.MvPolynomial.PowerSum
