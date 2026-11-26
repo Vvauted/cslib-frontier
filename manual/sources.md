@@ -1245,9 +1245,9 @@ Shuchi Chawla, Jason D. Hartline, David L. Malec and Balasubramanian Sivan.
 
 Bernard Chazelle.
 "The Soft Heap: An Approximate Priority Queue with Optimal Error Rate."
-*Journal of the ACM* 47(6), 1012–1027, 2000 (bibliography key `Chazelle2000`). https://doi.org/10.1145/355541.355554 . Bibliographic metadata and the soft-heap model (`sift`/`fill-up`, error parameter `0 < ε ≤ 1 / 2`, `O(1)` amortized `delete`/`meld`/`findmin`, `O(log(1 / ε))` amortized `insert`, and at most `ε n` corrupted items) were checked via DOI records and Princeton/secondary summaries on 2026-11-25 UTC; the typeset JACM PDF was not opened on disk, so no internal theorem number or printed page locator is claimed.
+*Journal of the ACM* 47(6), 1012–1027, 2000 (bibliography key `Chazelle2000`). https://doi.org/10.1145/355541.355554 ; cited from https://www.cs.princeton.edu/~chazelle/pubs/sheap.pdf (NECI Research Tech Report 99-097, July 1999, 16 pp., labeled *Journal of the ACM*, 47(6), 2000, pp. 1012–1027, SHA-256 `469ee469a956b193e35f83015bf85d00507ec4fac839aae4902bcc6cb564fc29`), inspected on 2026-11-26 UTC for Section 1, preprint p. 2, Theorem 1.1 (`0 < ε ≤ 1 / 2`, `O(1)` amortized per operation except `O(log(1 / ε))` for `insert`, at most `ε n` corrupted items at any given time), Sections 3–4, preprint pp. 4–12 (`next`/`child` binary-tree queue encoding, `fix_minlist`, `sift(v)` with parity/gap branching, and `dismantle`), Section 5.1, preprint pp. 12–13 (`r = 2 + 2 ⌈log(1 / ε)⌉`, Lemmas 5.1–5.2 bounding corrupted items by `n / 2 ^ (r - 3)`), and Section 5.2, preprint pp. 14–15 (amortized running time).
 Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) for a single-heap Word-RAM soft-heap step toward [#8624](https://github.com/cslib-community/cslib-frontier/issues/8624) (`insert`, `extractMin`, and `collectCorrupted`, without `meld` or arbitrary-handle `delete`) parameterized by arbitrary rank threshold `r : ℕ` and `rankThresholdForEps ε` (`0 < ε : ℚ`).
-The `12 / 2 ^ r` `sizeCap` recurrence (`shInv_corrupted_le`), `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ`, and `+(r : ℚ)` baseline credit in `itemPhi` are that module's self-contained parameterization rather than locators claimed from `Chazelle2000`.
+The dismantling-free binary-tree representation, `defill` (`targetSize r k = 2 ^ ((k - r + 1) / 2)`), `12 / 2 ^ r` `sizeCap` recurrence (`shInv_corrupted_le`), `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ` (extending Theorem 1.1's `0 < ε ≤ 1 / 2`), and `+(r : ℚ)` baseline credit in `itemPhi` are that module's self-contained Word-RAM adaptation rather than locators claimed from `Chazelle2000`.
 
 <a id="chendeng06"></a>
 ## chendeng06
@@ -3076,14 +3076,6 @@ Volker Kaibel and Stefan Weltge.
 "A Short Proof that the Extension Complexity of the Correlation Polytope Grows Exponentially."
 *Discrete & Computational Geometry* 53(2), 397–401, 2015. https://doi.org/10.1007/s00454-014-9655-9 ; arXiv:1307.3543, https://arxiv.org/abs/1307.3543 . Checked against arXiv:1307.3543v6 (25 Feb 2016) on 2026-11-11 UTC: Section 2 (valid subsets of `D(n)`, Lemma 1 for the valid face `F_a`, Lemma 2 for the covering of `D(n)` of size `f`, Theorem 1 proving `xc(CORR(n)) ≥ 1.5^n` via `̺(n) ≤ 2^n`) and Section 3 (the rectangle covering number of `UDISJ(n)` and nondeterministic communication lower bound `log₂(1.5^n)`).
 Journal pagination was taken from bibliographic search records.
-
-<a id="kaplanzwick2009"></a>
-## kaplanzwick2009
-
-Haim Kaplan and Uri Zwick.
-"A Simpler Implementation and Analysis of Chazelle's Soft Heaps."
-*Proceedings of the Twentieth Annual ACM-SIAM Symposium on Discrete Algorithms (SODA 2009)*, 477–485, 2009 (bibliography key `KaplanZwick2009`). https://doi.org/10.1137/1.9781611973068.53 . Bibliographic metadata and the binary-tree soft-heap simplification were checked via SIAM DOI records and secondary summaries on 2026-11-25 UTC; the proceedings PDF was not opened on disk, so no internal theorem number or printed page locator beyond the bibliographic page span is claimed.
-Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) for the binary-tree `defill` design with `targetSize r k = 2 ^ ((k - r + 1) / 2)` toward [#8624](https://github.com/cslib-community/cslib-frontier/issues/8624), while the `12 / 2 ^ r` `sizeCap` recurrence, `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ`, and `+(r : ℚ)` baseline credit in `itemPhi` are that module's self-contained parameterization.
 
 <a id="kargerstein96"></a>
 ## kargerstein96

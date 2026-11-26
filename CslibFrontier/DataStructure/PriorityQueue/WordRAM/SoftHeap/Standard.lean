@@ -29,9 +29,10 @@ import Mathlib.Tactic.Ring
 /-!
 # Flat `Program .standard` Batch Driver for the Parametric Word-RAM Soft Heap
 
-Single-heap Word-RAM batch driver step toward #8624, after [Chazelle2000], [KaplanZwick2009],
-and [PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2 and Section 3.2, pp. 21–22, Figure 1
-and Lemma 3.3. Packages `shInsert`, `shExtractMin`, and batch `shCollectCorrupted` (without
+Single-heap Word-RAM batch driver step toward #8624, after [Chazelle2000], Theorem 1.1 and
+Section 5.1, Lemmas 5.1–5.2 (NECI TR 99-097 preprint, pp. 2, 12–13), and [PettieRamachandran2002],
+Section 2.4, p. 19, Lemma 2.2 and Section 3.2, pp. 21–22, Figure 1 and Lemma 3.3. Packages
+`shInsert`, `shExtractMin`, and batch `shCollectCorrupted` (without
 `meld` or arbitrary-handle `delete`) into a single flat deterministic width-blind standard-basis
 program (`Program .standard r`, `¬prog.ReadsWidth`, `prog.IsRandFree`) operating directly on
 `State.init I.encode` under `Fits w I.wordBound`, hiding `shFuelBound` internally and certifying
@@ -65,9 +66,8 @@ step counts alongside per-step corruption bounds and multiset-coupled `ckey` mon
 ## References
 
 * [B. Chazelle, *The Soft Heap: An Approximate Priority Queue with Optimal Error Rate*,
-  Journal of the ACM 47(6), 2000][Chazelle2000]
-* [H. Kaplan and U. Zwick, *A Simpler Implementation and Analysis of Chazelle's Soft Heaps*,
-  SODA 2009, pp. 477–485][KaplanZwick2009]
+  Journal of the ACM 47(6), 2000][Chazelle2000], Theorem 1.1 and Section 5.1, Lemmas 5.1–5.2
+  (NECI TR 99-097 preprint, pp. 2, 12–13).
 * [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
   Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2 and
   Section 3.2, pp. 21–22, Figure 1 and Lemma 3.3.
@@ -2000,8 +2000,9 @@ theorem shBatchProg_spec {w : ℕ} (I : SHBatchInput) (hw : Fits w I.wordBound) 
 /-- Single-heap batch step toward `#8624` (supporting `insert`, `extractMin`, and
 `collectCorrupted`, without `meld` or arbitrary-handle `delete`, matching
 `[PettieRamachandran2002]`, Section 3.2, pp. 21–22, Figure 1 and the remark after Lemma 3.3 on
-p. 22), after `[Chazelle2000]`, `[KaplanZwick2009]`, and `[PettieRamachandran2002]`,
-Section 2.4, p. 19, Lemma 2.2. There is a fixed deterministic width-blind standard-basis program
+p. 22), after `[Chazelle2000]`, Theorem 1.1 and Section 5.1, Lemmas 5.1–5.2 (NECI TR 99-097
+preprint, pp. 2, 12–13), and `[PettieRamachandran2002]`, Section 2.4, p. 19, Lemma 2.2. There is a
+fixed deterministic width-blind standard-basis program
 (`¬prog.ReadsWidth`, `prog.IsRandFree`) that, given `State.init I.encode` for any
 `I : SHBatchInput` and any word width `w` satisfying `Fits w I.wordBound`, executes `I.ops` in
 `n + 1 ≤ C * (I.numInserts * (I.rankThreshold + 1) + I.numExtracts + 1)` native instructions,
@@ -2109,11 +2110,13 @@ theorem exists_singleSoftHeap_batch_standard_program :
 /-- Single-heap batch step toward `#8624` (supporting `insert`, `extractMin`, and
 `collectCorrupted`, without `meld` or arbitrary-handle `delete`, matching
 `[PettieRamachandran2002]`, Section 3.2, pp. 21–22, Figure 1 and the remark after Lemma 3.3 on
-p. 22), after `[Chazelle2000]`, `[KaplanZwick2009]`, and `[PettieRamachandran2002]`,
-Section 2.4, p. 19, Lemma 2.2. Specializes `exists_singleSoftHeap_batch_standard_program` to any
-rational `0 < ε` (extending Lemma 2.2's `0 < ε < 1 / 2` via this module's self-contained
-`rankThresholdForEps ε` parameterization), guaranteeing at most `ε * #inserts` corrupted items at
-every step and `O(I.numInserts * (rankThresholdForEps ε + 1) + I.numExtracts + 1)` instructions. -/
+p. 22), after `[Chazelle2000]`, Theorem 1.1 and Section 5.1, Lemmas 5.1–5.2 (NECI TR 99-097
+preprint, pp. 2, 12–13), and `[PettieRamachandran2002]`, Section 2.4, p. 19, Lemma 2.2.
+Specializes `exists_singleSoftHeap_batch_standard_program` to any rational `0 < ε` (extending
+Chazelle Theorem 1.1's `0 < ε ≤ 1 / 2` and PR02 Lemma 2.2's `0 < ε < 1 / 2` via this module's
+self-contained `rankThresholdForEps ε` parameterization), guaranteeing at most `ε * #inserts`
+corrupted items at every step and
+`O(I.numInserts * (rankThresholdForEps ε + 1) + I.numExtracts + 1)` instructions. -/
 theorem exists_singleSoftHeap_batch_standard_program_eps :
     ∃ r C pc : ℕ, ∃ prog : Program .standard r,
       ¬prog.ReadsWidth ∧ prog.IsRandFree ∧

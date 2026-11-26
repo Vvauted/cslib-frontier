@@ -28,12 +28,13 @@ import Mathlib.Tactic.Ring
 # Soft-Heap Rank Parameters, Corruption Bound, and Item Potential
 
 Single-heap Word-RAM parameter and potential step toward #8624, after [Chazelle2000],
-[KaplanZwick2009], and [PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2. Supports
-`insert`, `extractMin`, and `collectCorrupted` without `meld` or arbitrary-handle `delete`,
-following Kaplan and Zwick's binary-tree `defill` simplification
-(`targetSize r k = 2 ^ ((k - r + 1) / 2)`). The `12 / 2 ^ r` `sizeCap` recurrence,
-`rankThresholdForEps ε` for arbitrary `0 < ε : ℚ` (extending PR02 Lemma 2.2's `0 < ε < 1 / 2`),
-and the `+(r : ℚ)` baseline credit in `itemPhi` are this module's self-contained parameterization.
+Theorem 1.1 and Section 5.1, Lemmas 5.1–5.2 (NECI TR 99-097 preprint, pp. 2, 12–13), and
+[PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2. Supports `insert`, `extractMin`, and
+`collectCorrupted` without `meld` or arbitrary-handle `delete`. The dismantling-free
+binary-tree `defill` parameterization (`targetSize r k = 2 ^ ((k - r + 1) / 2)`), the
+`12 / 2 ^ r` `sizeCap` recurrence, `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ` (extending
+Chazelle Theorem 1.1's `0 < ε ≤ 1 / 2` and PR02 Lemma 2.2's `0 < ε < 1 / 2`), and the `+(r : ℚ)`
+baseline credit in `itemPhi` are this module's self-contained Word-RAM adaptation.
 
 ## Main definitions
 
@@ -58,9 +59,8 @@ and the `+(r : ℚ)` baseline credit in `itemPhi` are this module's self-contain
 ## References
 
 * [B. Chazelle, *The Soft Heap: An Approximate Priority Queue with Optimal Error Rate*,
-  Journal of the ACM 47(6), 2000][Chazelle2000]
-* [H. Kaplan and U. Zwick, *A Simpler Implementation and Analysis of Chazelle's Soft Heaps*,
-  SODA 2009, pp. 477–485][KaplanZwick2009]
+  Journal of the ACM 47(6), 2000][Chazelle2000], Theorem 1.1 and Section 5.1, Lemmas 5.1–5.2
+  (NECI TR 99-097 preprint, pp. 2, 12–13).
 * [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
   Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2.
 -/

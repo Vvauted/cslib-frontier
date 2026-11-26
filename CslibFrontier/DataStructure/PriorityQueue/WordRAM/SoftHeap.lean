@@ -19,19 +19,21 @@ public import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Standar
 /-!
 # Parametric Single-Heap Word-RAM Soft Heap
 
-Single-heap Word-RAM soft-heap step toward #8624, after [Chazelle2000], [KaplanZwick2009],
-and [PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2 and Section 3.2, pp. 21–22, Figure 1
-and Lemma 3.3. Supports `insert`, `extractMin`, and `collectCorrupted` (without `meld` or
-arbitrary-handle `delete`) for arbitrary corruption rank threshold `r : ℕ` and
-`rankThresholdForEps ε = Nat.log 2 (Nat.ceil (12 / ε)) + 1` (`0 < ε : ℚ`), exported both as
-composable `Cslib.DataStructure.Memory.Prog` operations and as a standalone flat deterministic
-width-blind `Cslib.WordRAM.Program .standard r` batch driver (`SoftHeap.Standard`).
+Single-heap Word-RAM soft-heap step toward #8624, after [Chazelle2000], Theorem 1.1 and
+Section 5.1, Lemmas 5.1–5.2 (NECI TR 99-097 preprint, pp. 2, 12–13), and [PettieRamachandran2002],
+Section 2.4, p. 19, Lemma 2.2 and Section 3.2, pp. 21–22, Figure 1 and Lemma 3.3. Supports `insert`,
+`extractMin`, and `collectCorrupted` (without `meld` or arbitrary-handle `delete`) for arbitrary
+corruption rank threshold `r : ℕ` and `rankThresholdForEps ε = Nat.log 2 (Nat.ceil (12 / ε)) + 1`
+(`0 < ε : ℚ`), exported both as composable `Cslib.DataStructure.Memory.Prog` operations and as a
+standalone flat deterministic width-blind `Cslib.WordRAM.Program .standard r` batch driver
+(`SoftHeap.Standard`).
 
-The binary-tree `defill` ("double-even fill") design with `targetSize r k = 2 ^ ((k - r + 1) / 2)`
-follows Kaplan and Zwick's binary-tree simplification (`[KaplanZwick2009]`). The `12 / 2 ^ r`
-`sizeCap` recurrence, `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ` (extending PR02 Lemma 2.2's
-`0 < ε < 1 / 2`), and the `+(r : ℚ)` baseline credit in `itemPhi` are this module's self-contained
-parameterization.
+The dismantling-free binary-tree representation, `defill`
+(`targetSize r k = 2 ^ ((k - r + 1) / 2)`), the `12 / 2 ^ r` `sizeCap` recurrence,
+`rankThresholdForEps ε` for arbitrary `0 < ε : ℚ` (extending `[Chazelle2000]` Theorem 1.1's
+`0 < ε ≤ 1 / 2` and `[PettieRamachandran2002]` Lemma 2.2's `0 < ε < 1 / 2`), and the `+(r : ℚ)`
+baseline credit in `itemPhi` are this module's self-contained Word-RAM adaptation of
+`[Chazelle2000]` toward `[PettieRamachandran2002]`.
 
 ## Cost model and scope
 
@@ -87,9 +89,8 @@ parameterization.
 ## References
 
 * [B. Chazelle, *The Soft Heap: An Approximate Priority Queue with Optimal Error Rate*,
-  Journal of the ACM 47(6), 2000][Chazelle2000]
-* [H. Kaplan and U. Zwick, *A Simpler Implementation and Analysis of Chazelle's Soft Heaps*,
-  SODA 2009, pp. 477–485][KaplanZwick2009]
+  Journal of the ACM 47(6), 2000][Chazelle2000], Theorem 1.1 and Section 5.1, Lemmas 5.1–5.2
+  (NECI TR 99-097 preprint, pp. 2, 12–13).
 * [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
   Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.4, p. 19, Lemma 2.2 and
   Section 3.2, pp. 21–22, Figure 1 and Lemma 3.3.
