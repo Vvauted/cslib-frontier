@@ -135,6 +135,133 @@ private theorem rat_potential_step_add {a b : ℕ} {q₀ q₁ q₂ B R : ℚ}
     _ ≤ (q₀ + B) + R := add_le_add h₁ le_rfl
     _ = q₀ + (B + R) := add_assoc _ _ _
 
+private theorem iterate_witness_spec_core {δ σ : Type} {W M : Type*} [Add M] [LE M]
+    (castCost : ℕ → M) (stepCredit : M) (budget : ℕ → M)
+    (hbase : ∀ p : M, castCost 0 + p ≤ p + budget 0)
+    (hcomb : ∀ (a b n : ℕ) (q₀ q₁ q₂ : M),
+      castCost a + q₁ ≤ q₀ + stepCredit →
+      castCost b + q₂ ≤ q₁ + budget n →
+      castCost (a + b) + q₂ ≤ q₀ + budget (n + 1))
+    (body : δ × σ → Memory.Prog σ)
+    (safe : ℕ → δ × σ → Memory.State → Prop) (w : ℕ) (d : δ) (n : ℕ)
+    (inv : ℕ → W → σ → Memory.State → Prop) (pot : ℕ → W → M) (S : Set ℕ)
+    (hstep : ∀ k < n, ∀ wt a s, inv k wt a s →
+      safe w (d, a) s ∧
+      (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s (body (d, a))) ∧
+      let a' := (Memory.spec 0).clientResult s (body (d, a))
+      let s' := (Memory.spec 0).clientState s (body (d, a))
+      ∃ wt' : W,
+        inv (k + 1) wt' a' s' ∧
+        castCost (memoryCost (body (d, a)) s) + pot (k + 1) wt' ≤ pot k wt + stepCredit ∧
+        Memory.Modifies S s s')
+    (wt₀ : W) (a₀ : σ) (s₀ : Memory.State) (h₀ : inv 0 wt₀ a₀ s₀) :
+    let prog := iterate body d n a₀
+    let a' := (Memory.spec 0).clientResult s₀ prog
+    let s' := (Memory.spec 0).clientState s₀ prog
+    iterationSafe body safe w d n a₀ s₀ ∧
+    (Memory.spec w).ValidHistory s₀ ((Memory.spec w).clientHistory s₀ prog) ∧
+    Memory.Modifies S s₀ s' ∧
+    ∃ wt' : W, inv n wt' a' s' ∧
+      castCost (memoryCost prog s₀) + pot n wt' ≤ pot 0 wt₀ + budget n := by
+  induction n generalizing inv pot wt₀ a₀ s₀ with
+  | zero =>
+    refine ⟨trivial, trivial, Memory.Modifies.refl S s₀, wt₀, h₀, ?_⟩
+    change castCost (memoryCost (Pure.pure a₀) s₀) + pot 0 wt₀ ≤ pot 0 wt₀ + budget 0
+    rw [memoryCost_pure]
+    exact hbase (pot 0 wt₀)
+  | succ n ih =>
+    obtain ⟨hs₀, hv₀, wt₁, hinv₁, hpot₀, hr₀⟩ := hstep 0 (Nat.succ_pos n) wt₀ a₀ s₀ h₀
+    set a₁ := (Memory.spec 0).clientResult s₀ (body (d, a₀))
+    set s₁ := (Memory.spec 0).clientState s₀ (body (d, a₀))
+    obtain ⟨hsn, hvn, hrn, wt', hinvn, hpotn⟩ :=
+      ih (fun k => inv (k + 1)) (fun k => pot (k + 1))
+        (fun k hk => hstep (k + 1) (Nat.succ_lt_succ hk)) wt₁ a₁ s₁ hinv₁
+    refine ⟨⟨hs₀, by rw [clientResult_width, clientState_width]; exact hsn⟩, ?_, ?_, wt', ?_, ?_⟩
+    · rw [iterate, validHistory_bind']; exact ⟨hv₀, hvn⟩
+    · rw [iterate, StateTransitionSpec.clientState_bind]; exact Memory.Modifies.trans hr₀ hrn
+    · rw [iterate, StateTransitionSpec.clientResult_bind, StateTransitionSpec.clientState_bind]
+      exact hinvn
+    · rw [iterate, memoryCost_bind']
+      dsimp only [a₁, s₁] at hpot₀ hpotn
+      exact hcomb _ _ n _ _ _ hpot₀ hpotn
+
+private theorem boundedWhile_witness_spec_core {δ σ : Type} {W M : Type*} [Add M] [LE M]
+    (castCost : ℕ → M) (stepCredit : M) (budget : ℕ → M)
+    (hbase : ∀ (r : ℕ) (p : M), castCost 0 + p ≤ p + budget r)
+    (hcomb : ∀ (a b r r' : ℕ) (q₀ q₁ q₂ : M), r' < r →
+      castCost a + q₁ ≤ q₀ + stepCredit →
+      castCost b + q₂ ≤ q₁ + budget r' →
+      castCost (a + b) + q₂ ≤ q₀ + budget r)
+    (guard : δ → σ → Prop) [∀ d a, Decidable (guard d a)]
+    (body : δ × σ → Memory.Prog σ) (safe : ℕ → δ × σ → Memory.State → Prop)
+    (w : ℕ) (d : δ)
+    (I : W → σ → Memory.State → Prop) (rank : W → ℕ) (pot : W → M) (S : Set ℕ)
+    (hzero : ∀ wt a s, I wt a s → rank wt = 0 → ¬guard d a)
+    (hstep : ∀ wt a s, I wt a s → guard d a →
+      safe w (d, a) s ∧
+      (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s (body (d, a))) ∧
+      let a' := (Memory.spec 0).clientResult s (body (d, a))
+      let s' := (Memory.spec 0).clientState s (body (d, a))
+      ∃ wt' : W,
+        I wt' a' s' ∧
+        castCost (memoryCost (body (d, a)) s) + pot wt' ≤ pot wt + stepCredit ∧
+        Memory.Modifies S s s' ∧
+        rank wt' < rank wt) :
+    ∀ (fuel : ℕ) (wt : W) (a : σ) (s : Memory.State), I wt a s → rank wt ≤ fuel →
+      let prog := boundedWhile guard body d fuel a
+      let a' := (Memory.spec 0).clientResult s prog
+      let s' := (Memory.spec 0).clientState s prog
+      whileSafe guard body safe w d fuel a s ∧
+      (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s prog) ∧
+      ¬guard d a' ∧
+      Memory.Modifies S s s' ∧
+      ∃ wt' : W, I wt' a' s' ∧
+        castCost (memoryCost prog s) + pot wt' ≤ pot wt + budget (rank wt) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro wt a s hi hr
+    have hg : ¬guard d a := hzero wt a s hi (Nat.eq_zero_of_le_zero hr)
+    refine ⟨hg, trivial, hg, Memory.Modifies.refl S s, wt, hi, ?_⟩
+    dsimp only [boundedWhile]
+    rw [memoryCost_pure]
+    exact hbase (rank wt) (pot wt)
+  | succ fuel ih =>
+    intro wt a s hi hr
+    cases (inferInstance : Decidable (guard d a)) with
+    | isTrue hg =>
+      obtain ⟨hs, hv₁, wt₁, hi₁, hpot₀, hr₁, hrank₁⟩ := hstep wt a s hi hg
+      set a₁ := (Memory.spec 0).clientResult s (body (d, a))
+      set s₁ := (Memory.spec 0).clientState s (body (d, a))
+      obtain ⟨hs₂, hv₂, hstop, hr₂, wt', hi', hpot₂⟩ := ih wt₁ a₁ s₁ hi₁ (by omega)
+      have hbw : boundedWhile guard body d (fuel + 1) a =
+          (body (d, a) >>= boundedWhile guard body d fuel) := by
+        simp [boundedWhile, hg, ← PFunctor.FreeM.bind_eq_bind]
+      refine ⟨?_, ?_, ?_, ?_, wt', ?_, ?_⟩
+      · simp only [whileSafe, hg, ↓reduceIte]
+        exact ⟨hs, hs₂⟩
+      · rw [hbw]
+        exact validHistory_bind_step hv₁ hv₂
+      · rw [hbw, StateTransitionSpec.clientResult_bind]
+        exact hstop
+      · rw [hbw, StateTransitionSpec.clientState_bind]
+        exact Memory.Modifies.trans hr₁ hr₂
+      · rw [hbw, StateTransitionSpec.clientResult_bind, StateTransitionSpec.clientState_bind]
+        exact hi'
+      · rw [hbw, memoryCost_bind']
+        dsimp only [a₁, s₁] at hpot₀ hpot₂
+        exact hcomb _ _ _ _ _ _ _ hrank₁ hpot₀ hpot₂
+    | isFalse hg =>
+      have hbw := boundedWhile_of_not guard body d (fuel + 1) a hg
+      refine ⟨by simp [whileSafe, hg], ?_, ?_, ?_, wt, ?_, ?_⟩
+      · rw [hbw]; exact validHistory_pure w _ _
+      · rw [hbw, StateTransitionSpec.clientResult_pure]; exact hg
+      · rw [hbw, StateTransitionSpec.clientState_pure]; exact Memory.Modifies.refl S s
+      · rw [hbw, StateTransitionSpec.clientResult_pure, StateTransitionSpec.clientState_pure]
+        exact hi
+      · rw [hbw, memoryCost_pure]
+        exact hbase (rank wt) (pot wt)
+
 /-- Amortized rational potential-method induction for `iterate` parameterized by an abstract
 witness type `W`, rational step credit `B : ℚ`, and `Memory.Modifies` framing. -/
 theorem iterate_rat_witness_spec {δ σ : Type} {W : Type*}
@@ -157,29 +284,13 @@ theorem iterate_rat_witness_spec {δ σ : Type} {W : Type*}
     iterationSafe body safe w d n a₀ s₀ ∧
     (Memory.spec w).ValidHistory s₀ ((Memory.spec w).clientHistory s₀ prog) ∧
     Memory.Modifies S s₀ s' ∧
-    ∃ wt' : W, inv n wt' a' s' ∧ (memoryCost prog s₀ : ℚ) + pot n wt' ≤ pot 0 wt₀ + B * n := by
-  induction n generalizing inv pot wt₀ a₀ s₀ with
-  | zero =>
-    refine ⟨trivial, trivial, Memory.Modifies.refl S s₀, wt₀, h₀, ?_⟩
-    change (memoryCost (Pure.pure a₀) s₀ : ℚ) + pot 0 wt₀ ≤ pot 0 wt₀ + B * ((0 : ℕ) : ℚ)
-    rw [memoryCost_pure]
-    simp
-  | succ n ih =>
-    obtain ⟨hs₀, hv₀, wt₁, hinv₁, hpot₀, hr₀⟩ := hstep 0 (Nat.succ_pos n) wt₀ a₀ s₀ h₀
-    set a₁ := (Memory.spec 0).clientResult s₀ (body (d, a₀))
-    set s₁ := (Memory.spec 0).clientState s₀ (body (d, a₀))
-    obtain ⟨hsn, hvn, hrn, wt', hinvn, hpotn⟩ :=
-      ih (fun k => inv (k + 1)) (fun k => pot (k + 1))
-        (fun k hk => hstep (k + 1) (Nat.succ_lt_succ hk)) wt₁ a₁ s₁ hinv₁
-    refine ⟨⟨hs₀, by rw [clientResult_width, clientState_width]; exact hsn⟩, ?_, ?_, wt', ?_, ?_⟩
-    · rw [iterate, validHistory_bind']; exact ⟨hv₀, hvn⟩
-    · rw [iterate, StateTransitionSpec.clientState_bind]; exact Memory.Modifies.trans hr₀ hrn
-    · rw [iterate, StateTransitionSpec.clientResult_bind, StateTransitionSpec.clientState_bind]
-      exact hinvn
-    · rw [iterate, memoryCost_bind']
-      dsimp only [a₁, s₁] at hpot₀ hpotn
-      rw [Nat.cast_succ, mul_add, mul_one, add_comm (B * (n : ℚ)) B]
-      exact rat_potential_step_add hpot₀ hpotn
+    ∃ wt' : W, inv n wt' a' s' ∧ (memoryCost prog s₀ : ℚ) + pot n wt' ≤ pot 0 wt₀ + B * n :=
+  iterate_witness_spec_core (M := ℚ) (fun k => (k : ℚ)) B (fun k => B * k)
+    (fun _ => by simp)
+    (fun _ _ m _ _ _ h₁ h₂ => by
+      rw [Nat.cast_succ, mul_add, mul_one, add_comm (B * (m : ℚ)) B]
+      exact rat_potential_step_add h₁ h₂)
+    body safe w d n inv pot S hstep wt₀ a₀ s₀ h₀
 
 /-- Amortized rational potential-method induction for `boundedWhile` parameterized by an abstract
 witness type `W`, nonnegative step credit `B : ℚ`, rank `rank : W → ℕ`, and `Memory.Modifies`
@@ -209,56 +320,21 @@ theorem boundedWhile_rat_witness_spec {δ σ : Type} {W : Type*}
       ¬guard d a' ∧
       Memory.Modifies S s s' ∧
       ∃ wt' : W, I wt' a' s' ∧
-        (memoryCost prog s : ℚ) + pot wt' ≤ pot wt + B * rank wt := by
-  intro fuel
-  induction fuel with
-  | zero =>
-    intro wt a s hi hr
-    have hg : ¬guard d a := hzero wt a s hi (Nat.eq_zero_of_le_zero hr)
-    refine ⟨hg, trivial, hg, Memory.Modifies.refl S s, wt, hi, ?_⟩
-    simp only [boundedWhile, memoryCost_pure, Nat.cast_zero, zero_add]
-    exact le_add_of_nonneg_right (mul_nonneg hB (Nat.cast_nonneg _))
-  | succ fuel ih =>
-    intro wt a s hi hr
-    by_cases hg : guard d a
-    · obtain ⟨hs, hv₁, wt₁, hi₁, hpot₀, hr₁, hrank₁⟩ := hstep wt a s hi hg
-      set a₁ := (Memory.spec 0).clientResult s (body (d, a))
-      set s₁ := (Memory.spec 0).clientState s (body (d, a))
-      obtain ⟨hs₂, hv₂, hstop, hr₂, wt', hi', hpot₂⟩ := ih wt₁ a₁ s₁ hi₁ (by omega)
-      have hbw : boundedWhile guard body d (fuel + 1) a =
-          (body (d, a) >>= boundedWhile guard body d fuel) := by
-        simp [boundedWhile, hg, ← PFunctor.FreeM.bind_eq_bind]
-      have hrank_q : (rank wt₁ : ℚ) + 1 ≤ (rank wt : ℚ) := by
-        have hle := (Nat.cast_le (α := ℚ)).mpr hrank₁
+        (memoryCost prog s : ℚ) + pot wt' ≤ pot wt + B * rank wt :=
+  boundedWhile_witness_spec_core (M := ℚ) (fun k => (k : ℚ)) B (fun r => B * r)
+    (fun r _ => by
+      rw [Nat.cast_zero, zero_add]
+      exact le_add_of_nonneg_right (mul_nonneg hB (Nat.cast_nonneg r)))
+    (fun _ _ r r' _ _ _ hrank h₁ h₂ => by
+      have hrank_q : (r' : ℚ) + 1 ≤ (r : ℚ) := by
+        have hle := (Nat.cast_le (α := ℚ)).mpr hrank
         rwa [Nat.cast_succ] at hle
-      have hmul : B + B * (rank wt₁ : ℚ) ≤ B * (rank wt : ℚ) :=
+      have hmul : B + B * (r' : ℚ) ≤ B * (r : ℚ) :=
         calc
-          B + B * (rank wt₁ : ℚ) = B * ((rank wt₁ : ℚ) + 1) := by
-            rw [mul_add, mul_one, add_comm]
-          _ ≤ B * (rank wt : ℚ) := mul_le_mul_of_nonneg_left hrank_q hB
-      refine ⟨?_, ?_, ?_, ?_, wt', ?_, ?_⟩
-      · simp only [whileSafe, hg, ↓reduceIte]
-        exact ⟨hs, hs₂⟩
-      · rw [hbw]
-        exact validHistory_bind_step hv₁ hv₂
-      · rw [hbw, StateTransitionSpec.clientResult_bind]
-        exact hstop
-      · rw [hbw, StateTransitionSpec.clientState_bind]
-        exact Memory.Modifies.trans hr₁ hr₂
-      · rw [hbw, StateTransitionSpec.clientResult_bind, StateTransitionSpec.clientState_bind]
-        exact hi'
-      · rw [hbw, memoryCost_bind']
-        dsimp only [a₁, s₁] at hpot₀ hpot₂
-        exact (rat_potential_step_add hpot₀ hpot₂).trans (add_le_add le_rfl hmul)
-    · have hbw := boundedWhile_of_not guard body d (fuel + 1) a hg
-      refine ⟨by simp [whileSafe, hg], ?_, ?_, ?_, wt, ?_, ?_⟩
-      · rw [hbw]; exact validHistory_pure w _ _
-      · rw [hbw, StateTransitionSpec.clientResult_pure]; exact hg
-      · rw [hbw, StateTransitionSpec.clientState_pure]; exact Memory.Modifies.refl S s
-      · rw [hbw, StateTransitionSpec.clientResult_pure, StateTransitionSpec.clientState_pure]
-        exact hi
-      · rw [hbw, memoryCost_pure, Nat.cast_zero, zero_add]
-        exact le_add_of_nonneg_right (mul_nonneg hB (Nat.cast_nonneg _))
+          B + B * (r' : ℚ) = B * ((r' : ℚ) + 1) := by rw [mul_add, mul_one, add_comm]
+          _ ≤ B * (r : ℚ) := mul_le_mul_of_nonneg_left hrank_q hB
+      exact (rat_potential_step_add h₁ h₂).trans (add_le_add le_rfl hmul))
+    guard body safe w d I rank pot S hzero hstep
 
 /-! ## Single-pass `iterate` and `boundedWhile` `ℕ`-potential inductions -/
 
@@ -283,20 +359,21 @@ theorem iterate_potential_spec {δ σ : Type} (body : δ × σ → Memory.Prog �
     memoryCost prog s₀ + pot n a' s' ≤ pot 0 a₀ s₀ + B * n ∧
     Memory.Modifies S s₀ s' ∧
     inv n a' s' := by
-  obtain ⟨hsafe, hv, hmod, wt', ⟨hwt', hinv⟩, hq⟩ :=
-    iterate_rat_witness_spec (W := σ × Memory.State) body safe w d (B : ℚ) n
-      (fun k wt a s => wt = (a, s) ∧ inv k a s) (fun k wt => (pot k wt.1 wt.2 : ℚ)) S
+  obtain ⟨hsafe, hv, hmod, wt', ⟨hwt', hinv⟩, hle⟩ :=
+    iterate_witness_spec_core (W := σ × Memory.State) (M := ℕ)
+      (fun k => k) B (fun k => B * k)
+      (fun _ => by omega)
+      (fun _ _ _ _ _ _ h₁ h₂ => by rw [Nat.mul_succ]; omega)
+      body safe w d n (fun k wt a s => wt = (a, s) ∧ inv k a s)
+      (fun k wt => pot k wt.1 wt.2) S
       (fun k hk wt a s ⟨hwt, hi⟩ => by
         subst hwt
         obtain ⟨hs, hv, hc, hm, hi'⟩ := hstep k hk a s hi
-        refine ⟨hs, hv, ((Memory.spec 0).clientResult s (body (d, a)),
-          (Memory.spec 0).clientState s (body (d, a))), ⟨rfl, hi'⟩, ?_, hm⟩
-        dsimp only
-        exact_mod_cast hc)
+        exact ⟨hs, hv, ((Memory.spec 0).clientResult s (body (d, a)),
+          (Memory.spec 0).clientState s (body (d, a))), ⟨rfl, hi'⟩, hc, hm⟩)
       (a₀, s₀) a₀ s₀ ⟨rfl, h₀⟩
   subst hwt'
-  dsimp only at hq
-  exact ⟨hsafe, hv, by exact_mod_cast hq, hmod, hinv⟩
+  exact ⟨hsafe, hv, hle, hmod, hinv⟩
 
 /-- Amortized potential-method induction for `boundedWhile` with `Memory.Modifies` framing. -/
 theorem boundedWhile_potential_spec {δ σ : Type}
@@ -325,23 +402,25 @@ theorem boundedWhile_potential_spec {δ σ : Type}
       Memory.Modifies S s s' ∧
       memoryCost prog s + pot a' s' ≤ pot a s + B * rank a s := by
   intro fuel a s hi hr
-  obtain ⟨hsafe, hv, hstop, hmod, wt', ⟨hwt', hi'⟩, hq⟩ :=
-    boundedWhile_rat_witness_spec (W := σ × Memory.State) guard body safe w d (B : ℚ)
-      (Nat.cast_nonneg B) (fun wt a s => wt = (a, s) ∧ I a s)
-      (fun wt => rank wt.1 wt.2) (fun wt => (pot wt.1 wt.2 : ℚ)) S
+  obtain ⟨hsafe, hv, hstop, hmod, wt', ⟨hwt', hi'⟩, hle⟩ :=
+    boundedWhile_witness_spec_core (W := σ × Memory.State) (M := ℕ)
+      (fun k => k) B (fun r => B * r)
+      (fun _ _ => by omega)
+      (fun _ _ r r' _ _ _ hrank h₁ h₂ => by
+        have hmul : B * (r' + 1) ≤ B * r := Nat.mul_le_mul_left B hrank
+        rw [Nat.mul_succ] at hmul
+        omega)
+      guard body safe w d (fun wt a s => wt = (a, s) ∧ I a s)
+      (fun wt => rank wt.1 wt.2) (fun wt => pot wt.1 wt.2) S
       (fun wt a s ⟨hwt, hI⟩ hrank => by subst hwt; exact hzero a s hI hrank)
       (fun wt a s ⟨hwt, hI⟩ hg => by
         subst hwt
         obtain ⟨hs, hv, hc, hm, hI', hrank'⟩ := hstep a s hI hg
-        refine ⟨hs, hv, ((Memory.spec 0).clientResult s (body (d, a)),
-          (Memory.spec 0).clientState s (body (d, a))), ⟨rfl, hI'⟩, ?_, hm, ?_⟩
-        · dsimp only
-          exact_mod_cast hc
-        · exact hrank')
+        exact ⟨hs, hv, ((Memory.spec 0).clientResult s (body (d, a)),
+          (Memory.spec 0).clientState s (body (d, a))), ⟨rfl, hI'⟩, hc, hm, hrank'⟩)
       fuel (a, s) a s ⟨rfl, hi⟩ hr
   subst hwt'
-  dsimp only at hq
-  exact ⟨hsafe, hv, hstop, hi', hmod, by exact_mod_cast hq⟩
+  exact ⟨hsafe, hv, hstop, hi', hmod, hle⟩
 
 /-- Rank-bounded loop invariant induction for `boundedWhile` with worst-case cost `B` per
 iteration and `Memory.Modifies` framing. -/
