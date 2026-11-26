@@ -63,6 +63,7 @@ structure CopyIndexedEdgeArgs where
   /-- Destination edge ordinal inside `dstBase`. -/
   dstIdx : ℕ
 
+/-- Four-word encoding of `CopyIndexedEdgeArgs` as `(srcBase, dstBase, srcIdx, dstIdx)`. -/
 word_enc_structure encCopyIndexedEdgeArgs : CopyIndexedEdgeArgs where
   srcBase : wordWords,
   dstBase : wordWords,
