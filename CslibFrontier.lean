@@ -6393,6 +6393,7 @@ public import CslibFrontier.Foundations.Probability.Gaussian.Fourier
 public import CslibFrontier.Crypto.Primitives.HQC.SupportSampling
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Capacity
 public import CslibFrontier.Computability.Complexity.Problems.NCL.HWord.RewriteProjection
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Dedup
 public import CslibFrontier.Logics.Propositional.CSP.Planar.Substitution.Table
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Interpreter.AccSize
 public import CslibFrontier.Computability.TreeEval.Ary.IterativePacked
