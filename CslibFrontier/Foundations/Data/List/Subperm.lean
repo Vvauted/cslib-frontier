@@ -20,22 +20,21 @@ This module adds generic structural lemmas for `List.Subperm` (`<+~`) missing fr
 * Mapping without requiring injectivity (`List.subperm_map`) and lifting a subpermutation back
   through `List.map` (`List.Subperm.exists_map`, `List.subperm_map_iff`).
 * Preserving `List.Nodup` (`List.Subperm.nodup`).
-* Erasing a matched head element (`List.Subperm.cons_erase_left`).
+* Erasing a matched head element (`List.cons_subperm_iff_subperm_erase`).
 * Combining disjoint subpermutations (`List.Subperm.append_of_disjoint`) and flattening lists of
   pairwise-disjoint or aligned subpermutations (`List.Subperm.flatten_of_pairwise_disjoint`,
-  `List.Subperm.flatten_of_forall₂`, `List.subperm_flatten_of_forall`).
+  `List.Subperm.flatten_of_forall₂`).
 
 ## Main results
 
 * `List.subperm_map`: `xs <+~ ys → xs.map f <+~ ys.map f` for arbitrary `f`.
 * `List.Subperm.exists_map`, `List.subperm_map_iff`: preimage lifting along `List.map`.
 * `List.Subperm.nodup`: subpermutations of duplicate-free lists are duplicate-free.
-* `List.Subperm.cons_erase_left`: `x :: xs <+~ ys → xs <+~ ys.erase x`.
+* `List.cons_subperm_iff_subperm_erase`: `a :: xs <+~ ys ↔ a ∈ ys ∧ xs <+~ ys.erase a`.
 * `List.Subperm.append_of_disjoint`: disjoint subpermutations of `zs` concatenate into `zs`.
 * `List.Subperm.flatten_of_pairwise_disjoint`: pairwise-disjoint subpermutations of `G` flatten
   into `G`.
-* `List.Subperm.flatten_of_forall₂`, `List.subperm_flatten_of_forall`: pointwise subpermutations
-  flatten to a subpermutation.
+* `List.Subperm.flatten_of_forall₂`: pointwise subpermutations flatten to a subpermutation.
 -/
 
 public section
@@ -68,10 +67,14 @@ theorem Subperm.nodup {α : Type*} {xs ys : List α} (h : xs <+~ ys) (hys : ys.N
   obtain ⟨zs, hp, hs⟩ := subperm_iff.mp h
   exact hs.nodup (hp.nodup_iff.mpr hys)
 
-/-- Dropping the head from the left of `x :: xs <+~ ys` erases `x` on the right. -/
-theorem Subperm.cons_erase_left {α : Type*} [BEq α] [LawfulBEq α] {x : α} {xs ys : List α}
-    (h : x :: xs <+~ ys) : xs <+~ ys.erase x := by
-  simpa [erase_cons_head] using h.erase x
+/-- Dropping a matched head `a` from the left of `a :: xs <+~ ys` is equivalent to `a ∈ ys`
+together with `xs <+~ ys.erase a`. -/
+theorem cons_subperm_iff_subperm_erase {α : Type*} [BEq α] [LawfulBEq α]
+    {a : α} {xs ys : List α} :
+    a :: xs <+~ ys ↔ a ∈ ys ∧ xs <+~ ys.erase a := by
+  refine ⟨fun h => ⟨h.subset mem_cons_self, by simpa [erase_cons_head] using h.erase a⟩, ?_⟩
+  rintro ⟨ha, h⟩
+  exact ((subperm_cons a).mpr h).trans (perm_cons_erase ha).symm.subperm
 
 /-- Two disjoint subpermutations of `zs` concatenate to a subpermutation of `zs`. -/
 theorem Subperm.append_of_disjoint {α : Type*} {xs ys zs : List α}
@@ -110,23 +113,5 @@ theorem Subperm.flatten_of_forall₂ {α : Type*} {xs ys : List (List α)}
   induction h with
   | nil => exact nil_subperm
   | cons h₁ _ ih => exact h₁.append ih
-
-/-- Indexed pointwise subpermutations of equal-length lists flatten to a subpermutation. -/
-theorem subperm_flatten_of_forall {α : Type*} (xs ys : List (List α))
-    (hlen : xs.length = ys.length)
-    (hsub : ∀ i (hi : i < xs.length), xs[i] <+~ ys[i]'(hlen ▸ hi)) :
-    xs.flatten <+~ ys.flatten := by
-  refine Subperm.flatten_of_forall₂ ?_
-  induction xs generalizing ys with
-  | nil =>
-    cases ys with
-    | nil => exact .nil
-    | cons _ _ => simp at hlen
-  | cons x xs ih =>
-    cases ys with
-    | nil => simp at hlen
-    | cons y ys =>
-      exact .cons (hsub 0 (Nat.zero_lt_succ _))
-        (ih ys (by simpa using hlen) fun i hi => hsub (i + 1) (Nat.succ_lt_succ hi))
 
 end List

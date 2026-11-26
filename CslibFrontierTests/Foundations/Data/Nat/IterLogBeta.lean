@@ -98,8 +98,20 @@ example : iterClogBeta (100 / 5) 5 < iterClogBeta (100 / 200) 200 :=
 example : iterClogBeta (1000 / 30) 30 < iterClogBeta (1000 / 200) 200 :=
   iterClogBeta_div_lt_of_mul_le (by decide) (by decide) (by decide) (by decide)
 
+example (m n t : ℕ) (ht : 2 * m / n ≤ max 1 t) :
+    m * iterClogBeta t n ≤ 2 * m + 6 * n * max 1 (iterClog 1 n) ∧
+      m * iterClogBeta t n ≤ 3 * m + 8 * n * max 1 (iterClog 2 n) ∧
+      m * iterClogBeta t n ≤ 4 * m + 10 * n * max 1 (iterClog 3 n) :=
+  ⟨mul_iterClogBeta_le_of_div_le 1 m n t ht,
+    mul_iterClogBeta_le_of_div_le 2 m n t ht,
+    mul_iterClogBeta_le_of_div_le 3 m n t ht⟩
+
 example (m n : ℕ) :
-    m * iterClogBeta (2 * m / n) n ≤ 4 * m + 32 * n * max 1 (iterLog 3 n) :=
-  mul_iterClogBeta_div_le_iterLog m n
+    m * iterClogBeta (2 * m / n) n ≤ 2 * m + 12 * n * max 1 (iterLog 1 n) ∧
+      m * iterClogBeta (2 * m / n) n ≤ 3 * m + 16 * n * max 1 (iterLog 2 n) ∧
+      m * iterClogBeta (2 * m / n) n ≤ 4 * m + 20 * n * max 1 (iterLog 3 n) :=
+  ⟨mul_iterClogBeta_div_le_iterLog (by decide : 1 ≤ 1) m n,
+    mul_iterClogBeta_div_le_iterLog (by decide : 1 ≤ 2) m n,
+    mul_iterClogBeta_div_le_iterLog (by decide : 1 ≤ 3) m n⟩
 
 end CslibFrontierTests.IterLogBeta

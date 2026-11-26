@@ -5,7 +5,7 @@ Authors: Renfei Zhou, vvauted
 -/
 
 module
--- upstream: candidate (Mathlib, next to `Mathlib/Data/Nat/Log.lean`)
+-- upstream: candidate
 
 public import CslibFrontier.Foundations.Data.Nat.LogStar
 public import CslibFrontier.Init
@@ -60,14 +60,19 @@ and `lt_floorLogStar_iff : k < floorLogStar n ↔ 1 < iterLog k n`).
   `Nat.clog_clog_max_four_le_two_mul_iterLog`: positivity, clamping identity, and ceiling
   comparison at `k = 2`.
 * `Nat.iterClog_le_iff_le_iterPow2`, `Nat.iterClog_mono`, `Nat.iterClog_anti_left`,
-  `Nat.iterLog_le_iterClog`, `Nat.iterClog_le_iterLog_add_one`: Galois correspondence, monotonicity,
-  and floor/ceiling comparisons for `iterClog` and `iterPow2`.
+  `Nat.iterLog_le_iterClog`, `Nat.iterClog_le_iterLog_add_one`: Galois correspondence,
+  monotonicity, and floor/ceiling comparisons for `iterClog` and `iterPow2`.
 * `Nat.iterClogBeta_le_iff`, `Nat.iterClogBeta_le_iff_le_iterPow2`,
   `Nat.iterClogBeta_mono_right`, `Nat.iterClogBeta_anti_left`, `Nat.iterClogBeta_of_le_one`:
   threshold characterization, monotonicity, and `logStar` specialization for `iterClogBeta`.
 * `Nat.iterClogBeta_lt_of_two_pow_le`, `Nat.iterClogBeta_div_lt_of_mul_le`,
   `Nat.mul_iterClogBeta_le_of_div_le`, `Nat.mul_iterClogBeta_div_le_iterLog`: strict phase-rank
-  drop and multiplicative bounds for `t = 2 * m / n`.
+  drop and `k`-parameterized multiplicative bounds for `t = 2 * m / n`.
+
+## References
+
+* [M. L. Fredman and R. E. Tarjan, *Fibonacci Heaps and Their Uses in Improved Network Optimization
+  Algorithms*, Section 3, pp. 606–607][FredmanTarjan1987]
 -/
 
 public section
@@ -369,14 +374,6 @@ theorem iterClog_le_iterLog_add_one {k : ℕ} (hk : 1 ≤ k) (n : ℕ) :
     rw [iterClog_succ, iterLog_succ]
     exact (Nat.clog_mono_right 2 (ih (by omega))).trans (clog_two_succ_le_log_succ _)
 
-/-- For `k ≥ 1`, `iterClog k n ≤ 2 * max 1 (iterLog k n)`. -/
-theorem iterClog_le_two_mul_max_iterLog {k : ℕ} (hk : 1 ≤ k) (n : ℕ) :
-    iterClog k n ≤ 2 * max 1 (iterLog k n) := by
-  have h := iterClog_le_iterLog_add_one hk n
-  have := le_max_left 1 (iterLog k n)
-  have := le_max_right 1 (iterLog k n)
-  omega
-
 /-- Iterated base-2 exponential tower `(2 ^ ·)^[k] x`: `iterPow2 0 x = x` and
 `iterPow2 (k + 1) x = 2 ^ iterPow2 k x`. -/
 @[expose] def iterPow2 : ℕ → ℕ → ℕ
@@ -452,8 +449,11 @@ theorem iterClog_le_one_iff_logStar_le (k n : ℕ) : iterClog k n ≤ 1 ↔ logS
 
 /-! ### Generalized iterated-logarithm stopping index (`iterClogBeta`) -/
 
-/-- Bounded upward search helper for `iterClogBeta`: returns the least `m ≥ k` within `fuel`
-steps satisfying `iterClog m n ≤ max 1 t`. -/
+/-- Bounded upward search helper for `iterClogBeta`: `iterClogBetaAux t n fuel k` scans upward
+from `k` through `k + fuel` for the least `m ≥ k` satisfying `iterClog m n ≤ max 1 t`. When
+`fuel = 0`, it returns `k` unconditionally even if `max 1 t < iterClog k n`; it is guaranteed to
+return the least satisfying `m ≥ k` only under the precondition `iterClog (k + fuel) n ≤ max 1 t`,
+and otherwise returns `k + fuel`. -/
 @[expose] def iterClogBetaAux (t n : ℕ) : ℕ → ℕ → ℕ
   | 0, k => k
   | fuel + 1, k =>
@@ -597,46 +597,57 @@ theorem iterClogBeta_lt_of_two_pow_le {t₁ t₂ n₁ n₂ : ℕ} (hn : n₂ ≤
       (hn.trans (hcur.trans (iterPow2_mono (iterClogBeta t₁ n₁ - 1) hstep)))
   omega
 
-private theorem mul_four_add_le_pow (u : ℕ) :
-    u * (4 + u) ≤ 32 * max 1 (2 ^ (u - 1)) := by
-  by_cases hu : u ≤ 4
-  · calc u * (4 + u) ≤ 4 * 8 := Nat.mul_le_mul hu (by omega)
-      _ = 32 := rfl
-      _ ≤ 32 * max 1 (2 ^ (u - 1)) :=
-        Nat.le_mul_of_pos_right 32 (lt_of_lt_of_le Nat.zero_lt_one (le_max_left _ _))
-  · have hu5 : 5 ≤ u := by omega
-    have hpow : u * (4 + u) ≤ 32 * 2 ^ (u - 1) := by
-      induction u, hu5 using Nat.le_induction with
-      | base => decide
-      | succ k hk ih =>
-        have hpow_k : 2 ^ k = 2 * 2 ^ (k - 1) := by
-          conv_lhs => rw [← Nat.sub_add_cancel (by omega : 1 ≤ k), Nat.pow_succ']
-        have h16 : 16 ≤ 2 ^ (k - 1) :=
-          (by decide : 16 ≤ 2 ^ 4).trans (Nat.pow_le_pow_right Nat.two_pos (by omega))
-        have hk_lt : k < 2 * 2 ^ (k - 1) := by
-          rw [← hpow_k]
-          exact Nat.lt_two_pow_self
-        have hmul : (k + 1) * (4 + (k + 1)) = k * (4 + k) + (2 * k + 5) := by
-          simp only [Nat.add_mul, Nat.mul_add]
-          omega
-        rw [Nat.add_sub_cancel, hpow_k, hmul]
-        omega
-    exact hpow.trans (Nat.mul_le_mul_left 32 (le_max_right _ _))
+private theorem mul_succ_le_pow {u : ℕ} (hu : 1 ≤ u) :
+    u * (1 + u) ≤ 8 * 2 ^ (u - 1) := by
+  induction u, hu using Nat.le_induction with
+  | base => decide
+  | succ j hj ih =>
+    have hj_pow : j ≤ 2 ^ (j - 1) := by
+      have := Nat.lt_two_pow_self (n := j - 1)
+      omega
+    have hmul : (j + 1) * (1 + (j + 1)) = j * (1 + j) + 2 * (j + 1) := by
+      simp only [Nat.add_mul, Nat.mul_add]
+      omega
+    have hpow : 2 ^ j = 2 * 2 ^ (j - 1) := by
+      conv_lhs => rw [← Nat.sub_add_cancel hj, Nat.pow_succ']
+    rw [hmul, Nat.add_sub_cancel, hpow]
+    omega
 
-/-- Fourth-step bound `iterClog 4 n * iterClogBeta t n ≤ 32 * max 1 (iterClog 3 n)`. -/
-theorem iterClog_four_mul_iterClogBeta_le (t n : ℕ) :
-    iterClog 4 n * iterClogBeta t n ≤ 32 * max 1 (iterClog 3 n) := by
-  set u := iterClog 4 n
-  have hbeta : iterClogBeta t n ≤ 4 + u := iterClogBeta_le_add_iterClog (by decide) t n
+private theorem mul_add_add_le_pow (k u : ℕ) :
+    u * (k + 1 + u) ≤ 4 * (k + 2) * max 1 (2 ^ (u - 1)) := by
+  rcases Nat.eq_zero_or_pos u with rfl | hu
+  · simp
+  · have hu_pow : u ≤ 2 ^ (u - 1) := by
+      have := Nat.lt_two_pow_self (n := u - 1)
+      omega
+    have hsq : u * (1 + u) ≤ 8 * 2 ^ (u - 1) := mul_succ_le_pow hu
+    have huk : u * k ≤ 4 * k * 2 ^ (u - 1) := by
+      calc u * k ≤ 2 ^ (u - 1) * k := Nat.mul_le_mul_right k hu_pow
+        _ = 1 * (k * 2 ^ (u - 1)) := by rw [Nat.one_mul, Nat.mul_comm]
+        _ ≤ 4 * (k * 2 ^ (u - 1)) := Nat.mul_le_mul_right _ (by decide)
+        _ = 4 * k * 2 ^ (u - 1) := (Nat.mul_assoc 4 k _).symm
+    have hsum : u * (k + 1 + u) ≤ 4 * (k + 2) * 2 ^ (u - 1) := by
+      calc u * (k + 1 + u) = u * k + u * (1 + u) := by
+            rw [Nat.add_assoc, Nat.mul_add]
+        _ ≤ 4 * k * 2 ^ (u - 1) + 8 * 2 ^ (u - 1) := Nat.add_le_add huk hsq
+        _ = 4 * (k + 2) * 2 ^ (u - 1) := by
+            rw [← Nat.add_mul, Nat.mul_add]
+    exact hsum.trans (Nat.mul_le_mul_left (4 * (k + 2)) (le_max_right _ _))
+
+private theorem iterClog_succ_mul_iterClogBeta_le (k t n : ℕ) :
+    iterClog (k + 1) n * iterClogBeta t n ≤ 4 * (k + 2) * max 1 (iterClog k n) := by
+  set u := iterClog (k + 1) n
+  have hbeta : iterClogBeta t n ≤ k + 1 + u :=
+    iterClogBeta_le_add_iterClog (Nat.le_add_left 1 k) t n
   rcases Nat.eq_zero_or_pos u with hu0 | hu_pos
   · rw [hu0, Nat.zero_mul]
     exact Nat.zero_le _
-  · have hlt_pow : 2 ^ (u - 1) < iterClog 3 n :=
+  · have hlt_pow : 2 ^ (u - 1) < iterClog k n :=
       (Nat.lt_clog_iff_pow_lt Nat.one_lt_two).mp
-        (show u - 1 < Nat.clog 2 (iterClog 3 n) by change u - 1 < u; omega)
-    have hpow_le : max 1 (2 ^ (u - 1)) ≤ max 1 (iterClog 3 n) := max_le_max_left 1 hlt_pow.le
+        (show u - 1 < Nat.clog 2 (iterClog k n) by change u - 1 < u; omega)
+    have hpow_le : max 1 (2 ^ (u - 1)) ≤ max 1 (iterClog k n) := max_le_max_left 1 hlt_pow.le
     exact (Nat.mul_le_mul_left u hbeta).trans
-      ((mul_four_add_le_pow u).trans (Nat.mul_le_mul_left 32 hpow_le))
+      ((mul_add_add_le_pow k u).trans (Nat.mul_le_mul_left (4 * (k + 2)) hpow_le))
 
 /-- For fixed `c`, `n ↦ iterClogBeta (c / n) n` is monotone. -/
 theorem iterClogBeta_div_mono_right (c : ℕ) : Monotone (fun n => iterClogBeta (c / n) n) := by
@@ -670,46 +681,59 @@ theorem iterClogBeta_div_lt_of_mul_le {c n₁ n₂ : ℕ} (hn₂ : 1 ≤ n₂) (
     · rw [Nat.max_eq_right hpos]
       exact ((Nat.le_succ _).trans hdiv).trans (le_max_right 1 _)
 
-/-- Multiplicative phase bound whenever `2 * m / n ≤ max 1 t`:
-`m * iterClogBeta t n ≤ 4 * m + 16 * n * max 1 (iterClog 3 n)`. -/
-theorem mul_iterClogBeta_le_of_div_le {m n t : ℕ} (ht : 2 * m / n ≤ max 1 t) :
-    m * iterClogBeta t n ≤ 4 * m + 16 * n * max 1 (iterClog 3 n) := by
+/-- Multiplicative phase bound parameterized by `k : ℕ` whenever `2 * m / n ≤ max 1 t`:
+`m * iterClogBeta t n ≤ (k + 1) * m + 2 * (k + 2) * n * max 1 (iterClog k n)`. -/
+theorem mul_iterClogBeta_le_of_div_le (k m n t : ℕ) (ht : 2 * m / n ≤ max 1 t) :
+    m * iterClogBeta t n ≤ (k + 1) * m + 2 * (k + 2) * n * max 1 (iterClog k n) := by
   rcases Nat.eq_zero_or_pos n with rfl | hn
   · have h1 : iterClogBeta t 0 = 1 := iterClogBeta_eq_one_iff.mpr (Nat.zero_le _)
-    rw [h1]
-    omega
-  · by_cases h4 : iterClog 4 n ≤ max 1 t
-    · have hb : iterClogBeta t n ≤ 4 := (iterClogBeta_le_iff (by decide : 1 ≤ 4)).mpr h4
-      exact (Nat.mul_le_mul_left m hb).trans (by omega)
-    · have hlt : max 1 t < iterClog 4 n := Nat.lt_of_not_ge h4
-      have hd : 2 * m / n + 1 ≤ iterClog 4 n := by omega
+    rw [h1, Nat.mul_one]
+    exact Nat.le_add_right_of_le (Nat.le_mul_of_pos_left m (Nat.succ_pos k))
+  · by_cases hk : iterClog (k + 1) n ≤ max 1 t
+    · have hb : iterClogBeta t n ≤ k + 1 := (iterClogBeta_le_iff (Nat.le_add_left 1 k)).mpr hk
+      exact (Nat.mul_le_mul_left m hb).trans
+        (by rw [Nat.mul_comm m (k + 1)]; exact Nat.le_add_right _ _)
+    · have hlt : max 1 t < iterClog (k + 1) n := Nat.lt_of_not_ge hk
+      have hd : 2 * m / n + 1 ≤ iterClog (k + 1) n := by omega
       have hdiv := Nat.lt_div_mul_add (a := 2 * m) hn
       have hmul := Nat.mul_le_mul_left n hd
       rw [Nat.mul_add, Nat.mul_one, Nat.mul_comm n (2 * m / n)] at hmul
-      have h2m_lt : 2 * m < n * iterClog 4 n := by omega
-      have h2m_beta : 2 * (m * iterClogBeta t n) ≤ 2 * (16 * n * max 1 (iterClog 3 n)) := by
+      have h2m_lt : 2 * m < n * iterClog (k + 1) n := by omega
+      have h2m_beta :
+          2 * (m * iterClogBeta t n) ≤ 2 * (2 * (k + 2) * n * max 1 (iterClog k n)) := by
         calc 2 * (m * iterClogBeta t n)
             = (2 * m) * iterClogBeta t n := by rw [Nat.mul_assoc]
-          _ ≤ (n * iterClog 4 n) * iterClogBeta t n := Nat.mul_le_mul_right _ h2m_lt.le
-          _ = n * (iterClog 4 n * iterClogBeta t n) := Nat.mul_assoc _ _ _
-          _ ≤ n * (32 * max 1 (iterClog 3 n)) :=
-            Nat.mul_le_mul_left n (iterClog_four_mul_iterClogBeta_le t n)
-          _ = 2 * (16 * n * max 1 (iterClog 3 n)) := by
-            rw [← Nat.mul_assoc, Nat.mul_comm n 32,
-              show 32 * n = 2 * (16 * n) by omega, Nat.mul_assoc]
+          _ ≤ (n * iterClog (k + 1) n) * iterClogBeta t n :=
+            Nat.mul_le_mul_right _ h2m_lt.le
+          _ = n * (iterClog (k + 1) n * iterClogBeta t n) := Nat.mul_assoc _ _ _
+          _ ≤ n * (4 * (k + 2) * max 1 (iterClog k n)) :=
+            Nat.mul_le_mul_left n (iterClog_succ_mul_iterClogBeta_le k t n)
+          _ = 2 * (2 * (k + 2) * n * max 1 (iterClog k n)) := by
+            rw [← Nat.mul_assoc, Nat.mul_comm n (4 * (k + 2)),
+              show 4 * (k + 2) * n = 2 * (2 * (k + 2) * n) by
+                rw [show (4 : ℕ) = 2 * 2 by rfl]; simp only [Nat.mul_assoc]]
+            simp only [Nat.mul_assoc]
       omega
 
-/-- Multiplicative phase bound via `iterLog 3 n`:
-`m * iterClogBeta (2 * m / n) n ≤ 4 * m + 32 * n * max 1 (iterLog 3 n)`. -/
-theorem mul_iterClogBeta_div_le_iterLog (m n : ℕ) :
-    m * iterClogBeta (2 * m / n) n ≤ 4 * m + 32 * n * max 1 (iterLog 3 n) := by
-  have h1 := mul_iterClogBeta_le_of_div_le (le_max_right 1 (2 * m / n))
-  have h2 := iterClog_le_two_mul_max_iterLog (by decide : 1 ≤ 3) n
-  have h3 : max 1 (iterClog 3 n) ≤ 2 * max 1 (iterLog 3 n) := by
-    have := le_max_left 1 (iterLog 3 n)
+/-- Multiplicative phase bound via `iterLog k n` for `1 ≤ k`:
+`m * iterClogBeta (2 * m / n) n ≤ (k + 1) * m + 4 * (k + 2) * n * max 1 (iterLog k n)`. -/
+theorem mul_iterClogBeta_div_le_iterLog {k : ℕ} (hk : 1 ≤ k) (m n : ℕ) :
+    m * iterClogBeta (2 * m / n) n ≤ (k + 1) * m + 4 * (k + 2) * n * max 1 (iterLog k n) := by
+  have h1 := mul_iterClogBeta_le_of_div_le k m n (2 * m / n) (le_max_right 1 (2 * m / n))
+  have h2 := iterClog_le_iterLog_add_one hk n
+  have h3 : max 1 (iterClog k n) ≤ 2 * max 1 (iterLog k n) := by
+    have := le_max_left 1 (iterLog k n)
+    have := le_max_right 1 (iterLog k n)
     omega
-  have h4 := Nat.mul_le_mul_left (16 * n) h3
-  rw [← Nat.mul_assoc, show 16 * n * 2 = 32 * n by omega] at h4
-  omega
+  have h4 : 2 * (k + 2) * n * max 1 (iterClog k n) ≤
+      4 * (k + 2) * n * max 1 (iterLog k n) := by
+    calc 2 * (k + 2) * n * max 1 (iterClog k n)
+        ≤ 2 * (k + 2) * n * (2 * max 1 (iterLog k n)) := Nat.mul_le_mul_left _ h3
+      _ = 2 * (2 * (k + 2) * n) * max 1 (iterLog k n) := by
+        rw [Nat.mul_left_comm (2 * (k + 2) * n) 2 _, ← Nat.mul_assoc]
+      _ = 4 * (k + 2) * n * max 1 (iterLog k n) := by
+        rw [show (4 : ℕ) = 2 * 2 by rfl, Nat.mul_assoc 2 2 (k + 2),
+          Nat.mul_assoc 2 (2 * (k + 2)) n]
+  exact h1.trans (Nat.add_le_add_left h4 _)
 
 end Nat
