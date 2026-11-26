@@ -8,8 +8,7 @@ module
 -- upstream: candidate
 
 public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Canonical
--- `import all` exposes the unexposed `MSFTree.IsComplete` cases across the module boundary.
-import all CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Basic
+public import CslibFrontier.Foundations.Data.Nat.IterLog
 import Mathlib.Data.Nat.Bitwise
 import Mathlib.Data.Nat.Choose.Basic
 import Mathlib.Data.Nat.Log
@@ -21,18 +20,27 @@ import Mathlib.Tactic.Ring
 
 Defines the lookup-table memory layout (`HoldsCompleteTree`, `HoldsDTTable`, `DTTableInBounds`),
 pure decision-tree evaluation (`walkCompleteTree`) and skeleton decoding (`skelToTree`), the
-vertex threshold `dtThreshold` (`O(log log log n₀)`) with its `dtPrecompCost` bound, and canonical
-bitmask reindexing (`dtGraphMask`) over `#8768`'s `Cslib.Query.MinimumSpanningForest` primitives.
+vertex threshold `dtThreshold` (`O(log log log n₀)`) with its `dtPrecompCost` target budget, and
+canonical bitmask reindexing (`dtGraphMask`) over `Cslib.Query.MinimumSpanningForest` primitives.
 
 ## Main definitions
 
-* `log3Nat`, `dtPrecompCost`, `dtThreshold`: triple-log vertex threshold and exponential table
-  precomputation budget.
+* `dtPrecompCost`, `dtThreshold`: double-exponential table precomputation target budget and
+  triple-log vertex threshold using `Nat.iterLog 3`.
 * `HoldsCompleteTree`, `HoldsDTTable`, `DTTableInBounds`: Word-RAM memory predicates for
   optimal MSF decision trees indexed by canonical simple-graph bitmasks.
-* `walkCompleteTree`, `skelToTree`: pure complete-tree walk and base-`choose e 2` skeleton
-  decoder, together with `walkSkelNode` and `exists_skelCode_of_complete_correct`.
+* `walkCompleteTree`, `skelToTree`, `walkSkelNode`: pure complete-tree walk and base-`choose e 2`
+  skeleton decoder.
 * `edgePairIdx`, `dtGraphMask`: canonical bitmask encoding of unordered edge-pair lists.
+
+## Main results
+
+* `dtPrecompCost_dtThreshold_le`, `dtThreshold_eq_iterLog_of_large`: budget containment and
+  asymptotic equality `dtThreshold n₀ = Nat.iterLog 3 n₀`.
+* `walkCompleteTree_eval`, `holdsDTTable_for_le`: evaluation and bitmask table specialization.
+* `holdsCompleteTree_skelToTree`, `exists_skelCode_of_complete_correct`: complete-tree skeleton
+  decoding and separating-skeleton existence.
+* `endsOfMask_reindex_dtGraphMask`: isomorphism between `dtGraphMask es` and explicit edge lists.
 
 ## References
 
@@ -48,11 +56,7 @@ open Cslib.Query.MinimumSpanningForest
 
 /-! ## Section 1: Decision-Tree Threshold and Precomputation Cost Bounds -/
 
-/-- Triple iterated binary logarithm `⌊log₂ ⌊log₂ ⌊log₂ n⌋⌋⌋`. -/
-@[expose] def log3Nat (n : ℕ) : ℕ :=
-  Nat.log 2 (Nat.log 2 (Nat.log 2 n))
-
-/-- Closed-form upper bound on the memory cost and space usage of `precomputeDTProg r0`. -/
+/-- Target double-exponential budget for decision-tree table precomputation on `r0` vertices. -/
 @[expose] def dtPrecompCost (r0 : ℕ) : ℕ :=
   if r0 ≤ 1 then 64 else 2 ^ (2 ^ (4 * r0 ^ 4 + 16))
 
@@ -65,10 +69,10 @@ theorem dtPrecompCost_ge_64 (r0 : ℕ) : 64 ≤ dtPrecompCost r0 := by
       (by decide : 6 ≤ 2 ^ 16).trans (Nat.pow_le_pow_right (by decide) (by omega))
     exact (by decide : 64 ≤ 2 ^ 6).trans (Nat.pow_le_pow_right (by decide) h1)
 
-/-- Decision-tree vertex threshold `r0 ∈ [1, max 1 (log3Nat n₀)]` maximizing `r0`
+/-- Decision-tree vertex threshold `r0 ∈ [1, max 1 (Nat.iterLog 3 n₀)]` maximizing `r0`
 subject to `dtPrecompCost r0 ≤ n₀`, falling back to `1` for small `n₀`. -/
 @[expose] def dtThreshold (n₀ : ℕ) : ℕ :=
-  ((List.range (max 1 (log3Nat n₀) + 1)).filter fun r =>
+  ((List.range (max 1 (Nat.iterLog 3 n₀) + 1)).filter fun r =>
     decide (1 ≤ r ∧ dtPrecompCost r ≤ n₀)).foldl max 1
 
 private theorem foldl_max_spec (xs : List ℕ) (init : ℕ) :
@@ -92,10 +96,11 @@ private theorem foldl_max_spec (xs : List ℕ) (init : ℕ) :
 theorem dtThreshold_ge_one (n₀ : ℕ) : 1 ≤ dtThreshold n₀ :=
   (foldl_max_spec _ 1).1
 
-/-- `dtThreshold n₀` never exceeds `max 1 (log3Nat n₀)`. -/
-theorem dtThreshold_le_max_one_log3 (n₀ : ℕ) :
-    dtThreshold n₀ ≤ max 1 (log3Nat n₀) := by
-  refine (foldl_max_spec _ 1).2.2 (· ≤ max 1 (log3Nat n₀)) (le_max_left 1 (log3Nat n₀)) ?_
+/-- `dtThreshold n₀` never exceeds `max 1 (Nat.iterLog 3 n₀)`. -/
+theorem dtThreshold_le_max_one_iterLog (n₀ : ℕ) :
+    dtThreshold n₀ ≤ max 1 (Nat.iterLog 3 n₀) := by
+  refine (foldl_max_spec _ 1).2.2 (· ≤ max 1 (Nat.iterLog 3 n₀))
+    (le_max_left 1 (Nat.iterLog 3 n₀)) ?_
   intro r hr
   rw [List.mem_filter, List.mem_range] at hr
   omega
@@ -113,7 +118,7 @@ theorem dtPrecompCost_dtThreshold_le_add (n₀ : ℕ) :
     dtPrecompCost (dtThreshold n₀) ≤ n₀ + 64 := by
   by_cases h : 64 ≤ n₀
   · exact (dtPrecompCost_dtThreshold_le h).trans (Nat.le_add_right n₀ 64)
-  · have hempty : ((List.range (max 1 (log3Nat n₀) + 1)).filter fun r =>
+  · have hempty : ((List.range (max 1 (Nat.iterLog 3 n₀) + 1)).filter fun r =>
         decide (1 ≤ r ∧ dtPrecompCost r ≤ n₀)) = [] := by
       rw [List.filter_eq_nil_iff]
       intro r _
@@ -144,15 +149,15 @@ private theorem poly_le_two_pow_of_ge_24 {r : ℕ} (hr : 24 ≤ r) :
     have hpow : 2 ^ (k + 1) = 2 * 2 ^ k := by ring
     omega
 
-/-- For all sufficiently large `n₀`, `dtThreshold n₀` equals `log3Nat n₀`. -/
-theorem dtThreshold_eq_log3_of_large :
-    ∃ R₀ : ℕ, ∀ n₀ : ℕ, R₀ ≤ log3Nat n₀ → dtThreshold n₀ = log3Nat n₀ := by
+/-- For all sufficiently large `n₀`, `dtThreshold n₀` equals `Nat.iterLog 3 n₀`. -/
+theorem dtThreshold_eq_iterLog_of_large :
+    ∃ R₀ : ℕ, ∀ n₀ : ℕ, R₀ ≤ Nat.iterLog 3 n₀ → dtThreshold n₀ = Nat.iterLog 3 n₀ := by
   refine ⟨24, fun n₀ hr => ?_⟩
-  set r := log3Nat n₀
+  set r := Nat.iterLog 3 n₀
   have hL2_pos : 0 < Nat.log 2 (Nat.log 2 n₀) := by
     by_contra h0
     have hz : Nat.log 2 (Nat.log 2 n₀) = 0 := by omega
-    have hr0 : r = 0 := by simp [r, log3Nat, hz]
+    have hr0 : r = 0 := by simp [r, Nat.iterLog_succ, hz]
     omega
   have hL1_pos : 0 < Nat.log 2 n₀ := by
     by_contra h0
@@ -179,7 +184,7 @@ theorem dtThreshold_eq_log3_of_large :
       decide (1 ≤ k ∧ dtPrecompCost k ≤ n₀) := by
     rw [List.mem_filter, List.mem_range, decide_eq_true_eq]
     exact ⟨by omega, by omega, hcost⟩
-  exact le_antisymm (hmax ▸ dtThreshold_le_max_one_log3 n₀) ((foldl_max_spec _ 1).2.1 r hmem)
+  exact le_antisymm (hmax ▸ dtThreshold_le_max_one_iterLog n₀) ((foldl_max_spec _ 1).2.1 r hmem)
 
 /-! ## Section 2: Table Layouts and Canonical Decision-Tree Bridges -/
 
@@ -379,78 +384,12 @@ private theorem holdsDTTable_cast_aux (e₁ e₂ dInit entryPtr : ℕ) (he : e�
   subst he
   have hσ : (Fin.castOrderIso (rfl : e₁ = e₁)).toEquiv = Equiv.refl (Fin e₁) := by
     ext x; rfl
-  have hmap_id : ∀ (T : MSFDT e₁),
-      (T.mapLeaves (Finset.map (Equiv.refl (Fin e₁)).toEmbedding)).liftEmb
-        (Equiv.refl (Fin e₁)) = T := by
-    intro T
-    induction T with
-    | leaf ans =>
-      simp only [MSFTree.mapLeaves, MSFTree.liftEmb]
-      congr 1; ext x; simp
-    | node i j l r ihl ihr =>
-      simp only [MSFTree.mapLeaves, MSFTree.liftEmb]
-      exact congrArg₂ (MSFTree.node i j) ihl ihr
+  have hmap : Finset.map (Equiv.refl (Fin e₁)).toEmbedding = id := funext fun s => by
+    ext x; simp
+  have hlid : (⇑(Equiv.refl (Fin e₁)) : Fin e₁ → Fin e₁) = id := rfl
   dsimp only
-  rw [hσ, hmap_id T₁]
+  rw [hσ, hmap, MSFTree.mapLeaves_id, hlid, MSFTree.liftEmb_id]
   exact ⟨hcomp, hhold⟩
-
-private theorem msf_reindex_perm {e₁ e₂ n₁ n₂ : ℕ}
-    (ends₁ : Fin e₁ → Sym2 (Fin n₁)) (ends₂ : Fin e₂ → Sym2 (Fin n₂))
-    (σ : Fin e₁ ≃ Fin e₂) (φ : Fin n₁ ↪ Fin n₂)
-    (hEnds : ∀ i : Fin e₁, Sym2.map φ (ends₁ i) = ends₂ (σ i))
-    (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂))
-    (hp : ∀ a b : Fin e₁, (p₁ a).val < (p₁ b).val ↔ (p₂ (σ a)).val < (p₂ (σ b)).val) :
-    Cslib.Multigraph.msf ends₂ p₂ Finset.univ =
-      (Cslib.Multigraph.msf ends₁ p₁ Finset.univ).map σ.toEmbedding := by
-  have hj_iff : ∀ (i : Fin e₁) (a₁ b₁ : Fin n₁),
-      Cslib.Multigraph.Joins ends₁
-          {f | f ∈ (Finset.univ : Finset (Fin e₁)) ∧ p₁ f < p₁ i} a₁ b₁ ↔
-        Cslib.Multigraph.Joins ends₂
-          {f | f ∈ (Finset.univ : Finset (Fin e₂)) ∧ p₂ f < p₂ (σ i)} (φ a₁) (φ b₁) := by
-    intro i a₁ b₁
-    have hflt : ((Finset.univ.filter fun e => (p₁ e).val < (p₁ i).val).map
-        σ.toEmbedding : Finset (Fin e₂)) =
-        Finset.univ.filter fun f => (p₂ f).val < (p₂ (σ i)).val := by
-      ext f
-      simp only [Finset.mem_map, Finset.mem_filter, Finset.mem_univ, true_and,
-        Equiv.coe_toEmbedding]
-      exact ⟨fun ⟨e, he, hfe⟩ => hfe ▸ (hp e i).mp he,
-        fun hf => ⟨σ.symm f, (hp _ _).mpr (by simpa using hf), σ.apply_symm_apply f⟩⟩
-    have hs1 : {f | f ∈ (Finset.univ : Finset (Fin e₁)) ∧ p₁ f < p₁ i} =
-        ↑(Finset.univ.filter fun e => (p₁ e).val < (p₁ i).val) := by
-      ext e
-      simp only [Set.mem_ofPred_eq, Finset.mem_univ, true_and, Finset.mem_coe, Finset.mem_filter,
-        Fin.lt_def]
-    have hs2 : {f | f ∈ (Finset.univ : Finset (Fin e₂)) ∧ p₂ f < p₂ (σ i)} =
-        ↑(Finset.univ.filter fun f => (p₂ f).val < (p₂ (σ i)).val) := by
-      ext f
-      simp only [Set.mem_ofPred_eq, Finset.mem_univ, true_and, Finset.mem_coe, Finset.mem_filter,
-        Fin.lt_def]
-    rw [hs1, hs2, ← hflt]
-    exact joins_reindex ends₁ ends₂ σ.toEmbedding φ hEnds _ a₁ b₁
-  ext g
-  rw [Finset.mem_map]
-  constructor
-  · intro hg
-    let i := σ.symm g
-    have hgi : σ i = g := σ.apply_symm_apply g
-    refine ⟨i, ?_, hgi⟩
-    obtain ⟨a₁, b₁, hab₁⟩ : ∃ a₁ b₁, ends₁ i = s(a₁, b₁) :=
-      Sym2.ind (fun x y => ⟨x, y, rfl⟩) (ends₁ i)
-    have hab₂ : ends₂ g = s(φ a₁, φ b₁) := by rw [← hgi, ← hEnds i, hab₁]; rfl
-    rw [Cslib.Multigraph.mem_msf_iff p₂ hab₂] at hg
-    rw [Cslib.Multigraph.mem_msf_iff p₁ hab₁]
-    exact ⟨Finset.mem_univ _, fun hj => hg.2 (hgi ▸ (hj_iff i a₁ b₁).mp hj)⟩
-  · rintro ⟨i, hi, rfl⟩
-    obtain ⟨a₁, b₁, hab₁⟩ : ∃ a₁ b₁, ends₁ i = s(a₁, b₁) :=
-      Sym2.ind (fun x y => ⟨x, y, rfl⟩) (ends₁ i)
-    have hab₂ : ends₂ (σ.toEmbedding i) = s(φ a₁, φ b₁) := by
-      change ends₂ (σ i) = s(φ a₁, φ b₁)
-      rw [← hEnds i, hab₁]
-      rfl
-    rw [Cslib.Multigraph.mem_msf_iff p₁ hab₁] at hi
-    rw [Cslib.Multigraph.mem_msf_iff p₂ hab₂]
-    exact ⟨Finset.mem_univ _, fun hj => hi.2 ((hj_iff i a₁ b₁).mpr hj)⟩
 
 /-- Specialize a `HoldsDTTable r0` entry at `mask < 2 ^ v.choose 2` to `v ≤ r0`. -/
 theorem holdsDTTable_for_le {r0 v tableBase mask : ℕ} {mem : ℕ → ℕ}
@@ -478,6 +417,7 @@ theorem holdsDTTable_for_le {r0 v tableBase mask : ℕ} {mem : ℕ → ℕ}
   have hmask_r0 : mask < 2 ^ r0.choose 2 :=
     hmask.trans_le (Nat.pow_le_pow_right (by decide) hch)
   obtain ⟨he_r0, hd_r0, hpairs_r0, T_r0, hcomp_r0, hcorr_r0, hhold_r0⟩ := htab mask hmask_r0
+  rw [MSFDT.correct_iff] at hcorr_r0
   have hcast := maskEdgePairs_cast hvr hmask
   have hlen : (maskEdgePairs r0 mask).length = (maskEdgePairs v mask).length := by
     rw [hcast, List.length_map]
@@ -490,7 +430,8 @@ theorem holdsDTTable_for_le {r0 v tableBase mask : ℕ} {mem : ℕ → ℕ}
   have haux := holdsDTTable_cast_aux _ _ _ _ hlen T_r0 hcomp_r0 hhold_r0
   have hd_v : mem (mem (tableBase + mask) + 1) = optDepth (endsOfMask v mask) := by
     rw [hd_r0, optDepth_endsOfMask_le hvr hmask]
-  refine ⟨hmask_r0, he_r0.trans hlen, hd_v, ?_, fun j hj => ?_, T, haux.1, fun p => ?_, haux.2⟩
+  refine ⟨hmask_r0, he_r0.trans hlen, hd_v, ?_, fun j hj => ?_, T, haux.1,
+    (MSFDT.correct_iff _ _).mpr fun p => ?_, haux.2⟩
   · rw [hd_v]
     exact optDepth_endsOfMask_le_optDepthMN hmask le_rfl
   · have hj_r0 : j < (maskEdgePairs r0 mask).length := hlen.symm ▸ hj
@@ -545,20 +486,11 @@ private theorem foldl_or_testBit {α : Type*} (f : α → ℕ) (xs : List α) (i
   induction xs generalizing init with
   | nil => simp
   | cons x rest ih =>
-    simp only [List.foldl_cons, ih, Nat.testBit_or, Nat.testBit_shiftLeft, ge_iff_le]
+    simp only [List.foldl_cons, ih]
+    simp only [Nat.testBit_or, Nat.one_shiftLeft, Nat.testBit_two_pow]
     by_cases hfx : f x = k
     · subst hfx; simp
-    · have h1 : (decide (f x ≤ k) && Nat.testBit 1 (k - f x)) = false := by
-        cases hle : decide (f x ≤ k)
-        · rfl
-        · rw [decide_eq_true_eq] at hle
-          have hnz : 1 < 2 ^ (k - f x) := Nat.one_lt_two_pow (by omega)
-          have htb : Nat.testBit 1 (k - f x) = false := by
-            rw [Nat.testBit_eq_decide_div_mod_eq]
-            have hdiv : 1 / 2 ^ (k - f x) = 0 := Nat.div_eq_of_lt hnz
-            simp [hdiv]
-          simp [htb]
-      simp [h1, hfx]
+    · simp [hfx]
 
 /-- Characterizes bit `k` of `dtGraphMask es` as existence of an edge with `edgePairIdx = k`. -/
 theorem dtGraphMask_testBit {v : ℕ} (es : List (Fin v × Fin v)) (k : ℕ) :
@@ -772,8 +704,7 @@ private theorem sum_range_shift_mul (B N : ℕ) (g : ℕ → ℕ) :
     rw [Finset.sum_range_succ, Finset.sum_range_succ, ih]
     ring
 
-/-- Base-`B` digit decoding of `∑ k < N, f k * B^k` when `∀ k < N, f k < B`. -/
-theorem baseB_digit_decode (B N : ℕ) (f : ℕ → ℕ) (hf : ∀ k < N, f k < B) :
+private theorem baseB_digit_decode (B N : ℕ) (f : ℕ → ℕ) (hf : ∀ k < N, f k < B) :
     ∀ m < N, ((∑ k ∈ Finset.range N, f k * B ^ k) / B ^ m) % B = f m := by
   induction N generalizing f with
   | zero => intro m hm; omega
@@ -793,8 +724,7 @@ theorem baseB_digit_decode (B N : ℕ) (f : ℕ → ℕ) (hf : ∀ k < N, f k < 
         ih (fun k => f (k + 1)) (fun k hk => hf (k + 1) (Nat.succ_lt_succ hk))
           m (Nat.lt_of_succ_lt_succ hm)
 
-/-- Total sum `∑ k < N, f k * B^k` is strictly below `B^N` when `∀ k < N, f k < B`. -/
-theorem baseB_sum_lt (B N : ℕ) (f : ℕ → ℕ) (hf : ∀ k < N, f k < B) :
+private theorem baseB_sum_lt (B N : ℕ) (f : ℕ → ℕ) (hf : ∀ k < N, f k < B) :
     ∑ k ∈ Finset.range N, f k * B ^ k < B ^ N := by
   induction N generalizing f with
   | zero => simp
@@ -804,29 +734,6 @@ theorem baseB_sum_lt (B N : ℕ) (f : ℕ → ℕ) (hf : ∀ k < N, f k < B) :
     have hf0 := hf 0 (Nat.zero_lt_succ N)
     simp only [pow_zero, mul_one]
     nlinarith
-
-/-- Characterization of `MSFTree.IsComplete` at a leaf of depth `0`. -/
-@[simp] theorem msfTree_isComplete_leaf {e : ℕ} {α : Type} {ans : α} :
-    (MSFTree.leaf ans : MSFTree e α).IsComplete 0 :=
-  trivial
-
-/-- Characterization of `MSFTree.IsComplete` at depth `0` on an internal node. -/
-@[simp] theorem msfTree_isComplete_zero_node {e : ℕ} {α : Type} {i j : Fin e}
-    {l r : MSFTree e α} :
-    ¬ (MSFTree.node i j l r).IsComplete 0 := by
-  simp [MSFTree.IsComplete]
-
-/-- Characterization of `MSFTree.IsComplete` at positive depth on a leaf. -/
-@[simp] theorem msfTree_isComplete_succ_leaf {e d : ℕ} {α : Type} {ans : α} :
-    ¬ (MSFTree.leaf ans : MSFTree e α).IsComplete (d + 1) := by
-  simp [MSFTree.IsComplete]
-
-/-- Characterization of `MSFTree.IsComplete` at depth `d + 1` on an internal node. -/
-@[simp] theorem msfTree_isComplete_node {e d : ℕ} {α : Type} {i j : Fin e}
-    {l r : MSFTree e α} :
-    (MSFTree.node i j l r).IsComplete (d + 1) ↔
-      i.val < j.val ∧ l.IsComplete d ∧ r.IsComplete d :=
-  Iff.rfl
 
 /-- Decode a base-`e.choose 2` skeleton integer `skelCode` and leaf bitmask table
 `leafMask` into a complete `MSFDT e` of uniform depth `d`, rooted at `node`. -/
@@ -855,14 +762,11 @@ theorem skelToTree_isComplete (e : ℕ) (he : 2 ≤ e) (dInit skelCode : ℕ)
     intro node
     dsimp only [skelToTree]
     split_ifs with h
-    · exact msfTree_isComplete_node.mpr
+    · exact MSFTree.isComplete_node.mpr
         ⟨allPairs_lt (List.getElem_mem h), ih (2 * node), ih (2 * node + 1)⟩
-    · exact msfTree_isComplete_node.mpr ⟨Nat.zero_lt_one, ih (2 * node), ih (2 * node + 1)⟩
+    · exact MSFTree.isComplete_node.mpr ⟨Nat.zero_lt_one, ih (2 * node), ih (2 * node + 1)⟩
 
 /-! ## Section 3: Pure Skeleton Walk, Permutation Coding, and Arithmetic Bounds -/
-
-private theorem choose_two_eq_div (n : ℕ) : n.choose 2 = n * (n - 1) / 2 :=
-  Nat.choose_two_right n
 
 private def pathFromRoot : ℕ → List Bool
   | 0 => []
@@ -924,10 +828,10 @@ private theorem subtreeAtPath_isComplete {e d k : ℕ} {T : MSFDT e}
       cases T with
       | leaf _ =>
         rw [show k + 1 + d = (k + d) + 1 by omega] at hcomp
-        exact absurd hcomp msfTree_isComplete_succ_leaf
+        exact absurd hcomp MSFTree.isComplete_succ_leaf
       | node i j l r =>
         rw [show k + 1 + d = (k + d) + 1 by omega] at hcomp
-        obtain ⟨_, hl, hr⟩ := msfTree_isComplete_node.mp hcomp
+        obtain ⟨_, hl, hr⟩ := MSFTree.isComplete_node.mp hcomp
         dsimp only [subtreeAtPath]
         split_ifs
         · exact ih hr bs (by simpa using hbs)
@@ -1061,7 +965,7 @@ theorem holdsCompleteTree_skelToTree {e dInit intBase leafBase allPairA allPairB
     have hnode_lt : node < 2 ^ dInit := hhi.trans_le hpow_le
     have hk_lt : node - 1 < 2 ^ dInit - 1 := by omega
     have hnp_pos : 0 < e.choose 2 := by
-      rw [choose_two_eq_div]
+      rw [Nat.choose_two_right]
       exact Nat.div_pos (Nat.mul_le_mul he (Nat.sub_le_sub_right he 1)) (by decide)
     have hpk_lt :
         (skelCode / (e.choose 2) ^ (node - 1)) % e.choose 2 < (allPairs e).length := by
@@ -1097,9 +1001,10 @@ theorem exists_skelCode_of_complete_correct {e n d : ℕ} (he : 2 ≤ e)
         walkSkelNode e he skelCode d 1 p = walkSkelNode e he skelCode d 1 q →
         Cslib.Multigraph.msf ends p Finset.univ = Cslib.Multigraph.msf ends q Finset.univ := by
   obtain ⟨T, hcomp, hcorr⟩ := (exists_complete_correct_iff he ends d).mpr hopt
+  rw [MSFDT.correct_iff] at hcorr
   let numPairs := e.choose 2
   have hnp_pos : 0 < numPairs := by
-    dsimp only [numPairs]; rw [choose_two_eq_div]
+    dsimp only [numPairs]; rw [Nat.choose_two_right]
     exact Nat.div_pos (Nat.mul_le_mul he (Nat.sub_le_sub_right he 1)) (by decide)
   let f : ℕ → ℕ := fun k =>
     if _ : k < 2 ^ d - 1 then
@@ -1123,7 +1028,7 @@ theorem exists_skelCode_of_complete_correct {e n d : ℕ} (he : 2 ≤ e)
       rcases hdp : d - (pathFromRoot (k + 1)).length with _ | d'
       · omega
       · rw [hdp] at hsub
-        obtain ⟨hij, _, _⟩ := msfTree_isComplete_node.mp hsub
+        obtain ⟨hij, _, _⟩ := MSFTree.isComplete_node.mp hsub
         exact pairIdx_lt_choose_two hij j.isLt
   let skelCode := ∑ k ∈ Finset.range (2 ^ d - 1), f k * numPairs ^ k
   have hcode_lt : skelCode < numPairs ^ (2 ^ d - 1) :=
@@ -1140,7 +1045,7 @@ theorem exists_skelCode_of_complete_correct {e n d : ℕ} (he : 2 ≤ e)
       have hsub := subtreeAtPath_isComplete (k := (pathFromRoot node).length) (d := 0)
         (by rwa [hsum, Nat.add_zero]) (pathFromRoot node) rfl
       cases heq : subtreeAtPath T (pathFromRoot node) with
-      | node _ _ _ _ => rw [heq] at hsub; exact absurd hsub msfTree_isComplete_zero_node
+      | node _ _ _ _ => rw [heq] at hsub; exact absurd hsub MSFTree.isComplete_zero_node
       | leaf ans => exact ⟨ans, heq, rfl⟩
     | succ rem ih =>
       intro node p h1 hsum
@@ -1151,10 +1056,10 @@ theorem exists_skelCode_of_complete_correct {e n d : ℕ} (he : 2 ≤ e)
       have hsub := subtreeAtPath_isComplete (k := (pathFromRoot node).length) (d := rem + 1)
         (hsum ▸ hcomp) (pathFromRoot node) rfl
       cases heq : subtreeAtPath T (pathFromRoot node) with
-      | leaf _ => rw [heq] at hsub; exact absurd hsub msfTree_isComplete_succ_leaf
+      | leaf _ => rw [heq] at hsub; exact absurd hsub MSFTree.isComplete_succ_leaf
       | node i j l r =>
         rw [heq] at hsub
-        obtain ⟨hij, _, _⟩ := msfTree_isComplete_node.mp hsub
+        obtain ⟨hij, _, _⟩ := MSFTree.isComplete_node.mp hsub
         have hdec : (skelCode / numPairs ^ (node - 1)) % numPairs = f (node - 1) :=
           baseB_digit_decode numPairs (2 ^ d - 1) f hf_lt (node - 1) (by omega)
         have hf_eq : f (node - 1) = pairIdx i.val j.val := by
@@ -1200,304 +1105,6 @@ theorem exists_skelCode_of_complete_correct {e n d : ℕ} (he : 2 ≤ e)
   rw [← heq, hlp] at hlq
   cases hlq
   rfl
-
-/-- Casted separating-skeleton existence lemma specialized to `maskEdgePairs r0 mask`. -/
-theorem dtExistsGoodSkel {r0 mask e d : ℕ} (he2 : 2 ≤ e)
-    (he_eq : e = (maskEdgePairs r0 mask).length) (hopt : optDepth (endsOfMask r0 mask) ≤ d) :
-    ∃ skelCode < (e.choose 2) ^ (2 ^ d - 1),
-      ∀ p q : Equiv.Perm (Fin e),
-        walkSkelNode e he2 skelCode d 1 p = walkSkelNode e he2 skelCode d 1 q →
-        let σ : Fin e ≃ Fin (maskEdgePairs r0 mask).length := (Fin.castOrderIso he_eq).toEquiv
-        Cslib.Multigraph.msf (endsOfMask r0 mask) (σ.symm.trans (p.trans σ)) Finset.univ =
-          Cslib.Multigraph.msf (endsOfMask r0 mask) (σ.symm.trans (q.trans σ)) Finset.univ := by
-  subst e
-  obtain ⟨sc, hsc_lt, hgood⟩ := exists_skelCode_of_complete_correct he2 (endsOfMask r0 mask) hopt
-  refine ⟨sc, hsc_lt, fun p q hwalk => ?_⟩
-  have hid : ∀ r : Equiv.Perm (Fin (maskEdgePairs r0 mask).length),
-      ((Fin.castOrderIso rfl).toEquiv.symm.trans (Equiv.trans r (Fin.castOrderIso rfl).toEquiv)) =
-        r := fun r => by ext x; rfl
-  dsimp only
-  rw [hid p, hid q]
-  exact hgood p q hwalk
-
-/-- Casted `HoldsCompleteTree` and `MSFDT.IsComplete` helper along `Equiv.Perm`/`Fin` cast. -/
-theorem dtHoldsCompleteTreeCast {e₁ e₂ d intBase leafBase : ℕ} {mem : ℕ → ℕ}
-    (heq : e₁ = e₂) (T : MSFDT e₁) (hcomp : T.IsComplete d)
-    (hhold : HoldsCompleteTree d intBase leafBase d 1 mem T) :
-    let σ : Fin e₁ ≃ Fin e₂ := (Fin.castOrderIso heq).toEquiv
-    let T' := (T.mapLeaves (Finset.map σ.toEmbedding)).liftEmb σ
-    T'.IsComplete d ∧ HoldsCompleteTree d intBase leafBase d 1 mem T' := by
-  subst e₁
-  have hid : (Fin.castOrderIso rfl).toEquiv = Equiv.refl (Fin e₂) := by ext x; rfl
-  have hmap : ∀ {α : Type} (f : α → α) (hf : ∀ x, f x = x) (t : MSFTree e₂ α),
-      t.mapLeaves f = t := fun f hf t => by
-    induction t with
-    | leaf a => simp [MSFTree.mapLeaves, hf a]
-    | node i j l r ihl ihr => simp [MSFTree.mapLeaves, ihl, ihr]
-  have hlift : ∀ {α : Type} (g : Fin e₂ → Fin e₂) (hg : ∀ x, g x = x) (t : MSFTree e₂ α),
-      t.liftEmb g = t := fun g hg t => by
-    induction t with
-    | leaf _ => rfl
-    | node i j l r ihl ihr => simp [MSFTree.liftEmb, hg i, hg j, ihl, ihr]
-  dsimp only
-  rw [hid, hmap _ (fun s => by ext x; simp), hlift (⇑(Equiv.refl (Fin e₂))) (fun _ => rfl)]
-  exact ⟨hcomp, hhold⟩
-
-private theorem pow_two_pow_add_le {a b m : ℕ}
-    (ha : a ≤ 2 ^ (2 ^ m)) (hb : b ≤ 2 ^ (2 ^ m)) :
-    a + b ≤ 2 ^ (2 ^ (m + 1)) := by
-  calc a + b ≤ 2 ^ (2 ^ m) + 2 ^ (2 ^ m) := Nat.add_le_add ha hb
-    _ = 2 ^ (2 ^ m + 1) := by rw [Nat.pow_succ']; ring
-    _ ≤ 2 ^ (2 ^ (m + 1)) := by
-      refine Nat.pow_le_pow_right (by decide) ?_
-      have h1 : 1 ≤ 2 ^ m := Nat.two_pow_pos m
-      rw [Nat.pow_succ']
-      omega
-
-private theorem pow_two_pow_mul_le {a b m : ℕ}
-    (ha : a ≤ 2 ^ (2 ^ m)) (hb : b ≤ 2 ^ (2 ^ m)) :
-    a * b ≤ 2 ^ (2 ^ (m + 1)) := by
-  calc a * b ≤ 2 ^ (2 ^ m) * 2 ^ (2 ^ m) := Nat.mul_le_mul ha hb
-    _ = 2 ^ (2 ^ m + 2 ^ m) := (Nat.pow_add 2 (2 ^ m) (2 ^ m)).symm
-    _ = 2 ^ (2 ^ (m + 1)) := by rw [Nat.pow_succ', two_mul]
-
-private theorem pow_two_pow_mono {x m₁ m₂ : ℕ}
-    (hx : x ≤ 2 ^ (2 ^ m₁)) (hm : m₁ ≤ m₂) :
-    x ≤ 2 ^ (2 ^ m₂) :=
-  hx.trans (Nat.pow_le_pow_right (by decide) (Nat.pow_le_pow_right (by decide) hm))
-
-private theorem choose_two_le_sq (r : ℕ) : r.choose 2 ≤ r ^ 2 := by
-  rw [choose_two_eq_div]
-  calc r * (r - 1) / 2 ≤ r * (r - 1) := Nat.div_le_self _ 2
-    _ ≤ r * r := Nat.mul_le_mul_left r (Nat.sub_le r 1)
-    _ = r ^ 2 := (sq r).symm
-
-private theorem maxD_le_pow_four (r0 : ℕ) : (r0.choose 2).choose 2 ≤ r0 ^ 4 := by
-  calc (r0.choose 2).choose 2 ≤ (r0.choose 2) ^ 2 := choose_two_le_sq _
-    _ ≤ (r0 ^ 2) ^ 2 := Nat.pow_le_pow_left (choose_two_le_sq r0) 2
-    _ = r0 ^ 4 := by ring
-
-private theorem nat_le_two_pow (n : ℕ) : n ≤ 2 ^ n := Nat.lt_two_pow_self.le
-
-private theorem pow_self_le_two_pow_four {e r0 : ℕ} (he : e ≤ r0.choose 2) :
-    e ^ e ≤ 2 ^ (r0 ^ 4) := by
-  rcases Nat.eq_zero_or_pos r0 with rfl | hr
-  · have he0 : e = 0 := by rw [Nat.choose_zero_succ] at he; omega
-    subst he0; decide
-  · have he2 : e ≤ r0 ^ 2 := he.trans (choose_two_le_sq r0)
-    calc e ^ e ≤ (r0 ^ 2) ^ e := Nat.pow_le_pow_left he2 e
-      _ ≤ (r0 ^ 2) ^ (r0 ^ 2) := Nat.pow_le_pow_right (Nat.pow_pos hr) he2
-      _ ≤ (2 ^ (r0 ^ 2)) ^ (r0 ^ 2) := Nat.pow_le_pow_left (nat_le_two_pow _) _
-      _ = 2 ^ (r0 ^ 2 * r0 ^ 2) := (Nat.pow_mul 2 _ _).symm
-      _ = 2 ^ (r0 ^ 4) := by ring_nf
-
-private theorem numSkels_le_two_pow_two_pow {e d r0 : ℕ}
-    (he : e ≤ r0.choose 2) (hd : d ≤ (r0.choose 2).choose 2) :
-    (e.choose 2) ^ (2 ^ d - 1) ≤ 2 ^ (2 ^ (2 * r0 ^ 4)) := by
-  have hnp : e.choose 2 ≤ r0 ^ 4 := (Nat.choose_le_choose 2 he).trans (maxD_le_pow_four r0)
-  have h2d : 2 ^ d - 1 ≤ 2 ^ (r0 ^ 4) :=
-    (Nat.sub_le _ 1).trans (Nat.pow_le_pow_right (by decide) (hd.trans (maxD_le_pow_four r0)))
-  calc (e.choose 2) ^ (2 ^ d - 1)
-      ≤ (2 ^ (r0 ^ 4)) ^ (2 ^ d - 1) :=
-        Nat.pow_le_pow_left (hnp.trans (nat_le_two_pow _)) _
-    _ ≤ (2 ^ (r0 ^ 4)) ^ (2 ^ (r0 ^ 4)) :=
-        Nat.pow_le_pow_right (Nat.two_pow_pos _) h2d
-    _ = 2 ^ (r0 ^ 4 * 2 ^ (r0 ^ 4)) := (Nat.pow_mul 2 _ _).symm
-    _ ≤ 2 ^ (2 ^ (r0 ^ 4) * 2 ^ (r0 ^ 4)) :=
-        Nat.pow_le_pow_right (by decide) (Nat.mul_le_mul_right _ (nat_le_two_pow _))
-    _ = 2 ^ (2 ^ (2 * r0 ^ 4)) := by rw [← Nat.pow_add, two_mul]
-
-/-- Double-exponential containment lemma proving any tower below `2^(2^(2*r0^4 + 40))` fits inside
-`dtPrecompCost r0` for `2 ≤ r0`. -/
-theorem le_dtPrecompCost_of_exp_le {r0 k x : ℕ} (hr2 : 2 ≤ r0)
-    (hk : k ≤ 2 * r0 ^ 4 + 40) (hx : x ≤ 2 ^ (2 ^ k)) :
-    x ≤ dtPrecompCost r0 := by
-  have hnot : ¬ r0 ≤ 1 := by omega
-  dsimp only [dtPrecompCost]
-  simp only [hnot, ↓reduceIte]
-  have hr4 : 16 ≤ r0 ^ 4 := by
-    have h2 : 4 ≤ r0 * r0 := Nat.mul_le_mul hr2 hr2
-    calc 16 = 4 * 4 := rfl
-      _ ≤ (r0 * r0) * (r0 * r0) := Nat.mul_le_mul h2 h2
-      _ = r0 ^ 4 := by ring
-  exact pow_two_pow_mono hx (by omega)
-
-/-- Tower-of-two bounds showing per-mask space and time budgets for `precomputeDTProg` are
-strictly dominated by `dtPrecompCost r0`. -/
-theorem dtPrecompArithBounds {r0 e : ℕ} (hr2 : 2 ≤ r0) (he_le : e ≤ r0.choose 2) :
-    let maxE := r0.choose 2
-    let numMasks := 2 ^ maxE
-    let maxD := maxE.choose 2
-    let maxNumSkels := (e.choose 2) ^ (2 ^ maxD - 1)
-    e ^ e + (2 + e + 2 * (2 ^ maxD - 1) + 2 ^ maxD) ≤ 2 ^ (2 ^ (2 * r0 ^ 4 + 5)) ∧
-    e ^ e + 1 ≤ 2 ^ (2 ^ (2 * r0 ^ 4 + 2)) ∧
-    maxNumSkels + 1 ≤ 2 ^ (2 ^ (2 * r0 ^ 4 + 2)) ∧
-    1 + 5 * maxE + 1 + 2 * e + (2 + e ^ e * (2 + 7 * e + r0 + e * (5 + 2 * r0)) +
-      e * (1 + 2 * e) + (maxD + 1) * (2 * 2 ^ maxD + 1 +
-        maxNumSkels * (5 + 2 * e + 9 * 2 ^ maxD + e ^ e * (4 + 5 * maxD)))) ≤
-      2 ^ (2 ^ (2 * r0 ^ 4 + 11)) ∧
-    9 + 5 * maxE ≤ 2 ^ (2 ^ (2 * r0 ^ 4 + 11)) ∧
-    numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD + r0 + 1 ≤ 2 ^ (2 ^ (2 * r0 ^ 4 + 5)) ∧
-    numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD + r0 + 1 +
-      numMasks * 2 ^ (2 ^ (2 * r0 ^ 4 + 5)) ≤ dtPrecompCost r0 ∧
-    16 + r0 * (1 + 2 * r0) + numMasks * 2 ^ (2 ^ (2 * r0 ^ 4 + 11)) ≤ dtPrecompCost r0 := by
-  intro maxE numMasks maxD maxNumSkels
-  let m0 := 2 * r0 ^ 4 + 1
-  have hr4 : 16 ≤ r0 ^ 4 := by
-    have h2 : 4 ≤ r0 * r0 := Nat.mul_le_mul hr2 hr2
-    calc 16 = 4 * 4 := rfl
-      _ ≤ (r0 * r0) * (r0 * r0) := Nat.mul_le_mul h2 h2
-      _ = r0 ^ 4 := by ring
-  have hm0_le : 2 ^ (r0 ^ 4) ≤ 2 ^ (2 ^ m0) :=
-    Nat.pow_le_pow_right (by decide) ((nat_le_two_pow _).trans
-      (Nat.pow_le_pow_right (by decide) (by dsimp only [m0]; omega)))
-  have h16_le : 16 ≤ 2 ^ (2 ^ m0) := by
-    calc (16 : ℕ) = 2 ^ 4 := rfl
-      _ ≤ 2 ^ (2 ^ m0) := Nat.pow_le_pow_right (by decide)
-          ((by dsimp only [m0]; omega : 4 ≤ m0).trans (nat_le_two_pow m0))
-  have hr02_le4 : r0 ^ 2 ≤ r0 ^ 4 := by
-    calc r0 ^ 2 = r0 ^ 2 * 1 := (Nat.mul_one _).symm
-      _ ≤ r0 ^ 2 * r0 ^ 2 := Nat.mul_le_mul_left _ (by nlinarith)
-      _ = r0 ^ 4 := by ring
-  have hr0_le4 : r0 ≤ r0 ^ 4 := (by nlinarith : r0 ≤ r0 ^ 2).trans hr02_le4
-  have hr0_le : r0 ≤ 2 ^ (2 ^ m0) := (nat_le_two_pow r0).trans
-    ((Nat.pow_le_pow_right (by decide) hr0_le4).trans hm0_le)
-  have hmaxE_le : maxE ≤ 2 ^ (2 ^ m0) :=
-    ((choose_two_le_sq r0).trans hr02_le4).trans ((nat_le_two_pow (r0 ^ 4)).trans hm0_le)
-  have hnm_le : numMasks ≤ 2 ^ (2 ^ m0) := by
-    calc numMasks = 2 ^ maxE := rfl
-      _ ≤ 2 ^ (r0 ^ 2) := Nat.pow_le_pow_right (by decide) (choose_two_le_sq r0)
-      _ ≤ 2 ^ (r0 ^ 4) := Nat.pow_le_pow_right (by decide) hr02_le4
-      _ ≤ 2 ^ (2 ^ m0) := hm0_le
-  have hmaxD_le : maxD ≤ 2 ^ (2 ^ m0) :=
-    (maxD_le_pow_four r0).trans ((nat_le_two_pow _).trans hm0_le)
-  have h2mD_le : 2 ^ maxD ≤ 2 ^ (2 ^ m0) :=
-    (Nat.pow_le_pow_right (by decide) (maxD_le_pow_four r0)).trans hm0_le
-  have he_le' : e ≤ 2 ^ (2 ^ m0) := he_le.trans hmaxE_le
-  have hee_le : e ^ e ≤ 2 ^ (2 ^ m0) := (pow_self_le_two_pow_four he_le).trans hm0_le
-  have hns_le : maxNumSkels ≤ 2 ^ (2 ^ m0) :=
-    (numSkels_le_two_pow_two_pow he_le le_rfl).trans
-      (Nat.pow_le_pow_right (by decide) (Nat.pow_le_pow_right (by decide)
-        (by dsimp only [m0]; omega)))
-  have h2_le : 2 ≤ 2 ^ (2 ^ m0) := (by decide : 2 ≤ 16).trans h16_le
-  have h_one : 1 ≤ 2 ^ (2 ^ m0) := (by decide : 1 ≤ 16).trans h16_le
-  have h_4 : 4 ≤ 2 ^ (2 ^ m0) := (by decide : 4 ≤ 16).trans h16_le
-  have h_5 : 5 ≤ 2 ^ (2 ^ m0) := (by decide : 5 ≤ 16).trans h16_le
-  have h_7 : 7 ≤ 2 ^ (2 ^ m0) := (by decide : 7 ≤ 16).trans h16_le
-  have h_9 : 9 ≤ 2 ^ (2 ^ m0) := (by decide : 9 ≤ 16).trans h16_le
-  have hee1 : e ^ e + 1 ≤ 2 ^ (2 ^ (2 * r0 ^ 4 + 2)) :=
-    pow_two_pow_add_le hee_le h_one
-  have hns1 : maxNumSkels + 1 ≤ 2 ^ (2 ^ (2 * r0 ^ 4 + 2)) :=
-    pow_two_pow_add_le hns_le h_one
-  have hfr_d : e ^ e + (2 + e + 2 * (2 ^ maxD - 1) + 2 ^ maxD) ≤ 2 ^ (2 ^ (m0 + 4)) := by
-    have h2e : 2 + e ≤ 2 ^ (2 ^ (m0 + 1)) := pow_two_pow_add_le h2_le he_le'
-    have h2d : 2 * (2 ^ maxD - 1) ≤ 2 ^ (2 ^ (m0 + 1)) :=
-      (Nat.mul_le_mul_left 2 (Nat.sub_le _ 1)).trans (pow_two_pow_mul_le h2_le h2mD_le)
-    have h3 : 2 + e + 2 * (2 ^ maxD - 1) ≤ 2 ^ (2 ^ (m0 + 2)) := pow_two_pow_add_le h2e h2d
-    have h4 : 2 + e + 2 * (2 ^ maxD - 1) + 2 ^ maxD ≤ 2 ^ (2 ^ (m0 + 3)) :=
-      pow_two_pow_add_le h3 (pow_two_pow_mono h2mD_le (by omega))
-    exact pow_two_pow_add_le (pow_two_pow_mono hee_le (by omega)) h4
-  have h_all : numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD + r0 + 1 ≤
-      2 ^ (2 ^ (m0 + 4)) := by
-    have ha1 : numMasks + 9 * maxE ≤ 2 ^ (2 ^ (m0 + 2)) :=
-      pow_two_pow_add_le (pow_two_pow_mono hnm_le (by omega)) (pow_two_pow_mul_le h_9 hmaxE_le)
-    have ha2 : 2 * maxD + 3 * 2 ^ maxD ≤ 2 ^ (2 ^ (m0 + 2)) :=
-      pow_two_pow_add_le (pow_two_pow_mul_le h2_le hmaxD_le)
-        (pow_two_pow_mul_le ((by decide : 3 ≤ 16).trans h16_le) h2mD_le)
-    have ha3 : numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD ≤ 2 ^ (2 ^ (m0 + 3)) :=
-      (by omega : numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD ≤
-        (numMasks + 9 * maxE) + (2 * maxD + 3 * 2 ^ maxD)).trans (pow_two_pow_add_le ha1 ha2)
-    have ha4 : r0 + 1 ≤ 2 ^ (2 ^ (m0 + 3)) :=
-      pow_two_pow_mono (pow_two_pow_add_le hr0_le h_one) (by omega)
-    exact (by omega : numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD + r0 + 1 ≤
-      (numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD) + (r0 + 1)).trans
-      (pow_two_pow_add_le ha3 ha4)
-  have h_step : 1 + 5 * maxE + 1 + 2 * e +
-      (2 + e ^ e * (2 + 7 * e + r0 + e * (5 + 2 * r0)) + e * (1 + 2 * e) +
-        (maxD + 1) * (2 * 2 ^ maxD + 1 +
-          maxNumSkels * (5 + 2 * e + 9 * 2 ^ maxD + e ^ e * (4 + 5 * maxD)))) ≤
-      2 ^ (2 ^ (m0 + 10)) := by
-    have hc_1 : 1 + 5 * maxE + 1 + 2 * e ≤ 2 ^ (2 ^ (m0 + 3)) := by
-      have s1 : 1 + 5 * maxE ≤ 2 ^ (2 ^ (m0 + 2)) :=
-        pow_two_pow_add_le (pow_two_pow_mono h_one (by omega)) (pow_two_pow_mul_le h_5 hmaxE_le)
-      have s2 : 1 + 2 * e ≤ 2 ^ (2 ^ (m0 + 2)) :=
-        pow_two_pow_add_le (pow_two_pow_mono h_one (by omega)) (pow_two_pow_mul_le h2_le he_le')
-      exact (by omega : 1 + 5 * maxE + 1 + 2 * e ≤ (1 + 5 * maxE) + (1 + 2 * e)).trans
-        (pow_two_pow_add_le s1 s2)
-    have hc_pa : 2 + e ^ e * (2 + 7 * e + r0 + e * (5 + 2 * r0)) + e * (1 + 2 * e) ≤
-        2 ^ (2 ^ (m0 + 7)) := by
-      have p1 : 5 + 2 * r0 ≤ 2 ^ (2 ^ (m0 + 2)) :=
-        pow_two_pow_add_le (pow_two_pow_mono h_5 (by omega)) (pow_two_pow_mul_le h2_le hr0_le)
-      have p2 : e * (5 + 2 * r0) ≤ 2 ^ (2 ^ (m0 + 3)) :=
-        pow_two_pow_mul_le (pow_two_pow_mono he_le' (by omega)) p1
-      have p3 : 2 + 7 * e + r0 ≤ 2 ^ (2 ^ (m0 + 3)) :=
-        pow_two_pow_add_le (pow_two_pow_add_le (pow_two_pow_mono h2_le (by omega))
-          (pow_two_pow_mul_le h_7 he_le')) (pow_two_pow_mono hr0_le (by omega))
-      have p4 : 2 + 7 * e + r0 + e * (5 + 2 * r0) ≤ 2 ^ (2 ^ (m0 + 4)) :=
-        pow_two_pow_add_le p3 p2
-      have p5 : 2 + e ^ e * (2 + 7 * e + r0 + e * (5 + 2 * r0)) ≤ 2 ^ (2 ^ (m0 + 6)) :=
-        pow_two_pow_add_le (pow_two_pow_mono h2_le (by omega))
-          (pow_two_pow_mul_le (pow_two_pow_mono hee_le (by omega)) p4)
-      have p6 : e * (1 + 2 * e) ≤ 2 ^ (2 ^ (m0 + 6)) :=
-        pow_two_pow_mono (pow_two_pow_mul_le (pow_two_pow_mono he_le' (by omega))
-          (pow_two_pow_add_le (pow_two_pow_mono h_one (by omega))
-            (pow_two_pow_mul_le h2_le he_le'))) (by omega)
-      exact pow_two_pow_add_le p5 p6
-    have hc_try : (maxD + 1) * (2 * 2 ^ maxD + 1 +
-        maxNumSkels * (5 + 2 * e + 9 * 2 ^ maxD + e ^ e * (4 + 5 * maxD))) ≤
-        2 ^ (2 ^ (m0 + 8)) := by
-      have t1 : 4 + 5 * maxD ≤ 2 ^ (2 ^ (m0 + 2)) :=
-        pow_two_pow_add_le (pow_two_pow_mono h_4 (by omega)) (pow_two_pow_mul_le h_5 hmaxD_le)
-      have t2 : e ^ e * (4 + 5 * maxD) ≤ 2 ^ (2 ^ (m0 + 3)) :=
-        pow_two_pow_mul_le (pow_two_pow_mono hee_le (by omega)) t1
-      have t3 : 5 + 2 * e + 9 * 2 ^ maxD ≤ 2 ^ (2 ^ (m0 + 3)) :=
-        pow_two_pow_add_le (pow_two_pow_add_le (pow_two_pow_mono h_5 (by omega))
-          (pow_two_pow_mul_le h2_le he_le'))
-          (pow_two_pow_mono (pow_two_pow_mul_le h_9 h2mD_le) (by omega))
-      have t4 : 5 + 2 * e + 9 * 2 ^ maxD + e ^ e * (4 + 5 * maxD) ≤ 2 ^ (2 ^ (m0 + 4)) :=
-        pow_two_pow_add_le t3 t2
-      have t5 : maxNumSkels * (5 + 2 * e + 9 * 2 ^ maxD + e ^ e * (4 + 5 * maxD)) ≤
-          2 ^ (2 ^ (m0 + 5)) :=
-        pow_two_pow_mul_le (pow_two_pow_mono hns_le (by omega)) t4
-      have t6 : 2 * 2 ^ maxD + 1 ≤ 2 ^ (2 ^ (m0 + 5)) :=
-        pow_two_pow_mono (pow_two_pow_add_le (pow_two_pow_mul_le h2_le h2mD_le)
-          (pow_two_pow_mono h_one (by omega))) (by omega)
-      have t7 : 2 * 2 ^ maxD + 1 +
-          maxNumSkels * (5 + 2 * e + 9 * 2 ^ maxD + e ^ e * (4 + 5 * maxD)) ≤
-          2 ^ (2 ^ (m0 + 6)) := pow_two_pow_add_le t6 t5
-      have t8 : maxD + 1 ≤ 2 ^ (2 ^ (m0 + 6)) :=
-        pow_two_pow_mono (pow_two_pow_add_le hmaxD_le h_one) (by omega)
-      exact pow_two_pow_mono (pow_two_pow_mul_le t8 t7) (by omega)
-    have hc_body : 2 + e ^ e * (2 + 7 * e + r0 + e * (5 + 2 * r0)) + e * (1 + 2 * e) +
-        (maxD + 1) * (2 * 2 ^ maxD + 1 +
-          maxNumSkels * (5 + 2 * e + 9 * 2 ^ maxD + e ^ e * (4 + 5 * maxD))) ≤
-        2 ^ (2 ^ (m0 + 9)) :=
-      pow_two_pow_add_le (pow_two_pow_mono hc_pa (by omega)) (pow_two_pow_mono hc_try (by omega))
-    exact pow_two_pow_add_le (pow_two_pow_mono hc_1 (by omega)) hc_body
-  have h_triv : 9 + 5 * maxE ≤ 2 ^ (2 ^ (m0 + 10)) :=
-    pow_two_pow_mono (pow_two_pow_add_le (pow_two_pow_mono h_9 (by omega))
-      (pow_two_pow_mul_le h_5 hmaxE_le)) (by omega)
-  have h_tot_fr : numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD + r0 + 1 +
-      numMasks * 2 ^ (2 ^ (m0 + 4)) ≤ dtPrecompCost r0 := by
-    have hmul : numMasks * 2 ^ (2 ^ (m0 + 4)) ≤ 2 ^ (2 ^ (m0 + 5)) :=
-      pow_two_pow_mul_le (pow_two_pow_mono hnm_le (by omega)) le_rfl
-    have hsum : numMasks + 9 * maxE + 2 * maxD + 3 * 2 ^ maxD + r0 + 1 +
-        numMasks * 2 ^ (2 ^ (m0 + 4)) ≤ 2 ^ (2 ^ (m0 + 6)) :=
-      pow_two_pow_add_le (pow_two_pow_mono h_all (by omega)) hmul
-    exact le_dtPrecompCost_of_exp_le hr2 (by dsimp only [m0]; omega) hsum
-  have h_tot_cost : 16 + r0 * (1 + 2 * r0) + numMasks * 2 ^ (2 ^ (m0 + 10)) ≤
-      dtPrecompCost r0 := by
-    have hpre : 16 + r0 * (1 + 2 * r0) ≤ 2 ^ (2 ^ (m0 + 11)) := by
-      have hp1 : 1 + 2 * r0 ≤ 2 ^ (2 ^ (m0 + 2)) :=
-        pow_two_pow_add_le (pow_two_pow_mono h_one (by omega)) (pow_two_pow_mul_le h2_le hr0_le)
-      have hp2 : r0 * (1 + 2 * r0) ≤ 2 ^ (2 ^ (m0 + 3)) :=
-        pow_two_pow_mul_le (pow_two_pow_mono hr0_le (by omega)) hp1
-      exact pow_two_pow_mono (pow_two_pow_add_le (pow_two_pow_mono h16_le (by omega)) hp2)
-        (by omega)
-    have hmul : numMasks * 2 ^ (2 ^ (m0 + 10)) ≤ 2 ^ (2 ^ (m0 + 11)) :=
-      pow_two_pow_mul_le (pow_two_pow_mono hnm_le (by omega)) le_rfl
-    exact le_dtPrecompCost_of_exp_le hr2 (by dsimp only [m0]; omega) (pow_two_pow_add_le hpre hmul)
-  exact ⟨hfr_d, hee1, hns1, h_step, h_triv, h_all, h_tot_fr, h_tot_cost⟩
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest
 

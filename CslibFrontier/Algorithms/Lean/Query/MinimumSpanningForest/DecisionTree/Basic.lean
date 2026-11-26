@@ -102,6 +102,13 @@ theorem MSFTree.mapLeaves_eval {e : ℕ} {α β : Type} (f : α → β) (T : MSF
     simp only [MSFTree.mapLeaves, MSFTree.eval]
     split_ifs <;> assumption
 
+@[simp]
+theorem MSFTree.mapLeaves_id {e : ℕ} {α : Type} (T : MSFTree e α) :
+    T.mapLeaves id = T := by
+  induction T with
+  | leaf _ => rfl
+  | node _ _ _ _ ihl ihr => simp [MSFTree.mapLeaves, ihl, ihr]
+
 /-- Lift edge comparisons of a decision tree along an edge index map `ι : Fin e₁ → Fin e₂`. -/
 @[expose] def MSFTree.liftEmb {e₁ e₂ : ℕ} {α : Type} (ι : Fin e₁ → Fin e₂) :
     MSFTree e₁ α → MSFTree e₂ α
@@ -123,6 +130,13 @@ theorem MSFTree.liftEmb_eval {e₁ e₂ : ℕ} {α : Type} (ι : Fin e₁ → Fi
   | leaf _ => rfl
   | node a b l r ihl ihr =>
     simp only [MSFTree.liftEmb, MSFTree.eval, ← hord a b, ihl, ihr]
+
+@[simp]
+theorem MSFTree.liftEmb_id {e : ℕ} {α : Type} (T : MSFTree e α) :
+    T.liftEmb id = T := by
+  induction T with
+  | leaf _ => rfl
+  | node _ _ _ _ ihl ihr => simp [MSFTree.liftEmb, ihl, ihr]
 
 /-- Correctness of `T : MSFTree e α` computing `f : Equiv.Perm (Fin e) → α` on `P`. -/
 def MSFTree.AgreesOn {e : ℕ} {α : Type} (f : Equiv.Perm (Fin e) → α)
@@ -856,6 +870,29 @@ def MSFTree.IsComplete {e : ℕ} {α : Type} : ℕ → MSFTree e α → Prop
   | _ + 1, .leaf _ => False
   | 0, .node _ _ _ _ => False
   | d + 1, .node i j l r => i.val < j.val ∧ l.IsComplete d ∧ r.IsComplete d
+
+/-- Characterization of `MSFTree.IsComplete` at a leaf of depth `0`. -/
+@[simp] theorem MSFTree.isComplete_leaf {e : ℕ} {α : Type} {ans : α} :
+    (MSFTree.leaf ans : MSFTree e α).IsComplete 0 :=
+  trivial
+
+/-- Characterization of `MSFTree.IsComplete` at depth `0` on an internal node. -/
+@[simp] theorem MSFTree.isComplete_zero_node {e : ℕ} {α : Type} {i j : Fin e}
+    {l r : MSFTree e α} :
+    ¬ (MSFTree.node i j l r).IsComplete 0 := by
+  simp [MSFTree.IsComplete]
+
+/-- Characterization of `MSFTree.IsComplete` at positive depth on a leaf. -/
+@[simp] theorem MSFTree.isComplete_succ_leaf {e d : ℕ} {α : Type} {ans : α} :
+    ¬ (MSFTree.leaf ans : MSFTree e α).IsComplete (d + 1) := by
+  simp [MSFTree.IsComplete]
+
+/-- Characterization of `MSFTree.IsComplete` at depth `d + 1` on an internal node. -/
+@[simp] theorem MSFTree.isComplete_node {e d : ℕ} {α : Type} {i j : Fin e}
+    {l r : MSFTree e α} :
+    (MSFTree.node i j l r).IsComplete (d + 1) ↔
+      i.val < j.val ∧ l.IsComplete d ∧ r.IsComplete d :=
+  Iff.rfl
 
 theorem MSFTree.depth_of_isComplete {e : ℕ} {α : Type} :
     ∀ {d : ℕ} {T : MSFTree e α}, T.IsComplete d → T.depth = d

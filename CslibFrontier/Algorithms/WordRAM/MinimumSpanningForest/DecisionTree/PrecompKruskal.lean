@@ -21,15 +21,30 @@ import Mathlib.Tactic.Linarith
 # Bitmask Decoding, Enumeration Primitives, and In-Memory Kruskal for DT Precomputation
 
 Implements and verifies the Word-RAM subroutines supporting optimal MSF decision-tree
-precomputation ([PettieRamachandran2002], Section 4.1 and Section 5.1):
+precomputation ([PettieRamachandran2002], Section 4.1 and Section 5.1).
 
+## Main definitions
+
+* `DTPairsArgs`, `DTPowArgs`, `DTDecodeMaskArgs`, `DTKruskalProgArgs`: `word_enc_structure`
+  argument bundles for the precomputation primitives.
 * `dtFillAllPairsProg`: enumerates all `v.choose 2` unordered pairs `0 ≤ a < b < v` into
   `(arrA, arrB)`.
 * `dtFillPowProg`: fills `powArr[0..len]` with `base ^ 0 .. base ^ len`.
-* `dtDecodeMaskProg`: decodes the `maxE`-bit graph mask into edge endpoints `(edgeU, edgeV)` and
+* `dtDecodeMaskProg`: decodes a `maxE`-bit graph mask into edge endpoints `(edgeU, edgeV)` and
   pair indices `edgePair`.
-* `dtKruskalMaskProg`: executes in-memory Kruskal over a permutation in `orderArr[0..e-1]` and
-  returns the `maskOfFinset (Cslib.Multigraph.msf ends p Finset.univ)` bitmask.
+* `dtKruskalMaskProg`: executes in-memory Kruskal over `orderArr[0..e-1]` and returns the
+  `maskOfFinset (Cslib.Multigraph.msf ends p Finset.univ)` bitmask.
+
+## Main results
+
+* `dtFillAllPairsProg_spec`, `realizes_dtFillAllPairsProg`: pair enumeration specification and
+  `work = 0` Word-RAM realization.
+* `dtFillPowProg_spec`, `realizes_dtFillPowProg`: power-table specification and `work = 0`
+  Word-RAM realization.
+* `dtDecodeMaskProg_spec`, `realizes_dtDecodeMaskProg`: bitmask decoding specification and
+  `work = 0` Word-RAM realization.
+* `dtKruskalMaskProg_spec`, `realizes_dtKruskalMaskProg`: in-memory Kruskal specification against
+  `Cslib.Multigraph.msf` and `work = 0` Word-RAM realization.
 
 ## References
 
@@ -47,21 +62,6 @@ open Cslib.WordRAM
 open Cslib.WordRAM.Realization
 
 /-! ## Section 1: Public Argument Structures -/
-
-/-- Two-word loop state `(idx, acc)` shared across enumeration and Kruskal loops. -/
-structure DTIdxPair where
-  /-- Primary loop index. -/
-  idx : ℕ
-  /-- Secondary accumulator or bitmask. -/
-  acc : ℕ
-  deriving DecidableEq
-
-/-- Two-word encoding for `DTIdxPair`. -/
-word_enc_structure dtIdxPairWords : DTIdxPair where
-  idx : wordWords,
-  acc : wordWords
-
-instance : WordEncoding DTIdxPair := ⟨2, dtIdxPairWords⟩
 
 /-- Arguments for `dtFillAllPairsProg`. -/
 structure DTPairsArgs where
@@ -169,17 +169,22 @@ private theorem testBit_eq_decide_shift_and (m j : ℕ) :
 
 private theorem testBit_or_one_shiftLeft (m k b : ℕ) :
     (m ||| (1 <<< k)).testBit b = (m.testBit b || decide (b = k)) := by
-  rw [Nat.testBit_or, Nat.testBit_shiftLeft]
+  rw [Nat.testBit_or, Nat.one_shiftLeft, Nat.testBit_two_pow]
   by_cases hbk : b = k
   · subst hbk; simp
-  · have htb : (decide (k ≤ b) && Nat.testBit 1 (b - k)) = false := by
-      cases hle : decide (k ≤ b)
-      · rfl
-      · rw [decide_eq_true_eq] at hle
-        rw [Nat.testBit_eq_decide_div_mod_eq]
-        have hdiv : 1 / 2 ^ (b - k) = 0 := Nat.div_eq_of_lt (Nat.one_lt_two_pow (by omega))
-        simp [hdiv]
-    simp [htb, hbk]
+  · have hkb : k ≠ b := Ne.symm hbk
+    simp [hbk, hkb]
+
+private structure DTIdxPair where
+  idx : ℕ
+  acc : ℕ
+  deriving DecidableEq
+
+private word_enc_structure dtIdxPairWords : DTIdxPair where
+  idx : wordWords,
+  acc : wordWords
+
+private instance : WordEncoding DTIdxPair := ⟨2, dtIdxPairWords⟩
 
 private structure DTPairsInnerEnv where
   arrA : ℕ
@@ -890,12 +895,6 @@ theorem dtDecodeMaskProgSafe_iff (w : ℕ) (d : DTDecodeMaskArgs) (s : Memory.St
 private def maskPrefixPairs (r mask k : ℕ) : List (Fin r × Fin r) :=
   (((allPairs r).take k).zipIdx.filter fun p => mask.testBit p.2).map Prod.fst
 
-private theorem zipIdx_append_singleton {α : Type*} (xs : List α) (x : α) (n : ℕ) :
-    (xs ++ [x]).zipIdx n = xs.zipIdx n ++ [(x, n + xs.length)] := by
-  induction xs generalizing n with
-  | nil => simp
-  | cons y ys ih => simp [List.zipIdx_cons, ih]; omega
-
 private theorem maskPrefixPairs_succ {r mask k : ℕ} (hk : k < r.choose 2) :
     maskPrefixPairs r mask (k + 1) =
       maskPrefixPairs r mask k ++
@@ -906,8 +905,8 @@ private theorem maskPrefixPairs_succ {r mask k : ℕ} (hk : k < r.choose 2) :
   have htake : (allPairs r).take (k + 1) = (allPairs r).take k ++ [(allPairs r)[k]'hk_all] := by
     rw [List.take_add_one, List.getElem?_eq_getElem hk_all, Option.toList_some]
   dsimp only [maskPrefixPairs]
-  rw [htake, zipIdx_append_singleton, List.length_take_of_le hk_all.le, Nat.zero_add,
-    List.filter_append, List.map_append]
+  rw [htake, List.zipIdx_append, List.length_take_of_le hk_all.le, Nat.zero_add,
+    List.zipIdx_cons, List.zipIdx_nil, List.filter_append, List.map_append]
   simp only [List.filter_cons, List.filter_nil]
   split_ifs <;> simp
 

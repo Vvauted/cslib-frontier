@@ -30,7 +30,8 @@ isomorphism invariance (`optDepth_reindex`) and embedding monotonicity (`optDept
 
 ## Main results
 
-* `Cslib.Query.MinimumSpanningForest.optDepth_reindex`,
+* `Cslib.Query.MinimumSpanningForest.msf_reindex_perm`,
+  `Cslib.Query.MinimumSpanningForest.optDepth_reindex`,
   `Cslib.Query.MinimumSpanningForest.optDepth_le_of_inj`: isomorphism invariance and supergraph /
   embedding monotonicity of `optDepth`.
 * `Cslib.Query.MinimumSpanningForest.optDepthMN_eq_exact`: equivalence with the exact-`m`-edge
@@ -90,6 +91,65 @@ theorem joins_reindex {E₁ E₂ V₁ V₂ : Type*} (ends₁ : E₁ → Sym2 V�
           exact (Cslib.Multigraph.Joins.of_mem heS he).symm
     rwa [hpull u, hpull v] at hmap
 
+/-- Transport `Cslib.Multigraph.msf` along an edge/vertex embedding equivalence preserving order. -/
+theorem msf_reindex_perm {e₁ e₂ n₁ n₂ : ℕ}
+    (ends₁ : Fin e₁ → Sym2 (Fin n₁)) (ends₂ : Fin e₂ → Sym2 (Fin n₂))
+    (σ : Fin e₁ ≃ Fin e₂) (φ : Fin n₁ ↪ Fin n₂)
+    (hEnds : ∀ i : Fin e₁, Sym2.map φ (ends₁ i) = ends₂ (σ i))
+    (p₁ : Equiv.Perm (Fin e₁)) (p₂ : Equiv.Perm (Fin e₂))
+    (hp : ∀ a b : Fin e₁, (p₁ a).val < (p₁ b).val ↔ (p₂ (σ a)).val < (p₂ (σ b)).val) :
+    Cslib.Multigraph.msf ends₂ p₂ Finset.univ =
+      (Cslib.Multigraph.msf ends₁ p₁ Finset.univ).map σ.toEmbedding := by
+  have hj_iff : ∀ (i : Fin e₁) (a₁ b₁ : Fin n₁),
+      Cslib.Multigraph.Joins ends₁
+          {f | f ∈ (Finset.univ : Finset (Fin e₁)) ∧ p₁ f < p₁ i} a₁ b₁ ↔
+        Cslib.Multigraph.Joins ends₂
+          {f | f ∈ (Finset.univ : Finset (Fin e₂)) ∧ p₂ f < p₂ (σ i)} (φ a₁) (φ b₁) := by
+    intro i a₁ b₁
+    have hflt : ((Finset.univ.filter fun e => (p₁ e).val < (p₁ i).val).map
+        σ.toEmbedding : Finset (Fin e₂)) =
+        Finset.univ.filter fun f => (p₂ f).val < (p₂ (σ i)).val := by
+      ext f
+      simp only [Finset.mem_map, Finset.mem_filter, Finset.mem_univ, true_and,
+        Equiv.coe_toEmbedding]
+      exact ⟨fun ⟨e, he, hfe⟩ => hfe ▸ (hp e i).mp he,
+        fun hf => ⟨σ.symm f, (hp _ _).mpr (by simpa using hf), σ.apply_symm_apply f⟩⟩
+    have hs1 : {f | f ∈ (Finset.univ : Finset (Fin e₁)) ∧ p₁ f < p₁ i} =
+        ↑(Finset.univ.filter fun e => (p₁ e).val < (p₁ i).val) := by
+      ext e
+      simp only [Set.mem_ofPred_eq, Finset.mem_coe, Finset.mem_filter, Finset.mem_univ, true_and]
+      rfl
+    have hs2 : {f | f ∈ (Finset.univ : Finset (Fin e₂)) ∧ p₂ f < p₂ (σ i)} =
+        ↑(Finset.univ.filter fun f => (p₂ f).val < (p₂ (σ i)).val) := by
+      ext f
+      simp only [Set.mem_ofPred_eq, Finset.mem_coe, Finset.mem_filter, Finset.mem_univ, true_and]
+      rfl
+    rw [hs1, hs2, ← hflt]
+    exact joins_reindex ends₁ ends₂ σ.toEmbedding φ hEnds _ a₁ b₁
+  ext g
+  rw [Finset.mem_map]
+  constructor
+  · intro hg
+    let i := σ.symm g
+    have hgi : σ i = g := σ.apply_symm_apply g
+    refine ⟨i, ?_, hgi⟩
+    obtain ⟨a₁, b₁, hab₁⟩ : ∃ a₁ b₁, ends₁ i = s(a₁, b₁) :=
+      Sym2.ind (fun x y => ⟨x, y, rfl⟩) (ends₁ i)
+    have hab₂ : ends₂ g = s(φ a₁, φ b₁) := by rw [← hgi, ← hEnds i, hab₁]; rfl
+    rw [Cslib.Multigraph.mem_msf_iff p₂ hab₂] at hg
+    rw [Cslib.Multigraph.mem_msf_iff p₁ hab₁]
+    exact ⟨Finset.mem_univ _, fun hj => hg.2 (hgi ▸ (hj_iff i a₁ b₁).mp hj)⟩
+  · rintro ⟨i, hi, rfl⟩
+    obtain ⟨a₁, b₁, hab₁⟩ : ∃ a₁ b₁, ends₁ i = s(a₁, b₁) :=
+      Sym2.ind (fun x y => ⟨x, y, rfl⟩) (ends₁ i)
+    have hab₂ : ends₂ (σ.toEmbedding i) = s(φ a₁, φ b₁) := by
+      change ends₂ (σ i) = s(φ a₁, φ b₁)
+      rw [← hEnds i, hab₁]
+      rfl
+    rw [Cslib.Multigraph.mem_msf_iff p₁ hab₁] at hi
+    rw [Cslib.Multigraph.mem_msf_iff p₂ hab₂]
+    exact ⟨Finset.mem_univ _, fun hj => hi.2 ((hj_iff i a₁ b₁).mpr hj)⟩
+
 private theorem optDepth_reindex_le {n₁ n₂ e₁ e₂ : ℕ}
     (ends₁ : Fin e₁ → Sym2 (Fin n₁)) (ends₂ : Fin e₂ → Sym2 (Fin n₂))
     (σ : Fin e₁ ≃ Fin e₂) (heq : e₁ = e₂)
@@ -123,53 +183,8 @@ theorem optDepth_reindex {e₁ e₂ n₁ n₂ : ℕ}
       Cslib.Multigraph.msf ends₂ p Finset.univ =
         (Cslib.Multigraph.msf ends₁ c Finset.univ).map σ.toEmbedding := by
     intro p c
-    ext g
-    rw [Finset.mem_map]
-    let i := σ.symm g
-    have hperm_iff : ∀ a b : Fin e₁, c a < c b ↔ p (σ a) < p (σ b) := fun a b => by
-      change (c a).val < (c b).val ↔ (p (σ a)).val < (p (σ b)).val
-      simp [c, Fin.castOrderIso]
-    induction hi : ends₁ i using Sym2.ind with
-    | _ a₁ b₁ =>
-      have hg_ends : ends₂ g = s(φ a₁, φ b₁) := by
-        have hsi : σ i = g := σ.apply_symm_apply g
-        rw [← hsi, ← hEnds i, hi]
-        rfl
-      have hflt : ((Finset.univ.filter fun e' : Fin e₁ => c e' < c i).map
-          σ.toEmbedding : Finset (Fin e₂)) = Finset.univ.filter fun f => p f < p g := by
-        ext f
-        simp only [Finset.mem_map, Finset.mem_filter, Finset.mem_univ, true_and,
-          Equiv.coe_toEmbedding]
-        constructor
-        · rintro ⟨e', he', rfl⟩
-          exact (σ.apply_symm_apply g).symm ▸ (hperm_iff e' i).mp he'
-        · intro hf
-          refine ⟨σ.symm f, (hperm_iff (σ.symm f) i).mpr ?_, σ.apply_symm_apply f⟩
-          simpa [i] using hf
-      have hset₁ : {e' | e' ∈ (Finset.univ : Finset (Fin e₁)) ∧ c e' < c i} =
-          ((Finset.univ.filter fun e' => c e' < c i : Finset (Fin e₁)) : Set (Fin e₁)) := by
-        ext e'; simp
-      have hset₂ : {f | f ∈ (Finset.univ : Finset (Fin e₂)) ∧ p f < p g} =
-          ((Finset.univ.filter fun f => p f < p g : Finset (Fin e₂)) : Set (Fin e₂)) := by
-        ext f; simp
-      have hj_iff : Cslib.Multigraph.Joins ends₁
-          {e' | e' ∈ (Finset.univ : Finset (Fin e₁)) ∧ c e' < c i} a₁ b₁ ↔
-          Cslib.Multigraph.Joins ends₂
-            {f | f ∈ (Finset.univ : Finset (Fin e₂)) ∧ p f < p g} (φ a₁) (φ b₁) := by
-        rw [hset₁, hset₂, ← hflt]
-        exact joins_reindex ends₁ ends₂ σ.toEmbedding φ hEnds _ a₁ b₁
-      constructor
-      · intro hg
-        refine ⟨i, ?_, σ.apply_symm_apply g⟩
-        rw [Cslib.Multigraph.mem_msf_iff p hg_ends] at hg
-        rw [Cslib.Multigraph.mem_msf_iff c hi]
-        exact ⟨Finset.mem_univ _, fun hc => hg.2 (hj_iff.mp hc)⟩
-      · rintro ⟨e, he, hge⟩
-        have hei : e = i := σ.injective (hge.trans (σ.apply_symm_apply g).symm)
-        rw [hei] at he
-        rw [Cslib.Multigraph.mem_msf_iff c hi] at he
-        rw [Cslib.Multigraph.mem_msf_iff p hg_ends]
-        exact ⟨Finset.mem_univ _, fun hc => he.2 (hj_iff.mpr hc)⟩
+    refine msf_reindex_perm ends₁ ends₂ σ φ hEnds c p fun a b => ?_
+    simp [c, Fin.castOrderIso]
   have hle1 : optDepth ends₂ ≤ optDepth ends₁ :=
     optDepth_reindex_le ends₁ ends₂ σ heq hunique
   have hle2 : optDepth ends₁ ≤ optDepth ends₂ :=
