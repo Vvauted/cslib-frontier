@@ -1601,6 +1601,7 @@ public import CslibFrontier.Foundations.Combinatorics.TupleCover
 public import CslibFrontier.Foundations.Analysis.MvPolynomial.CriticalMinimumValue
 public import CslibFrontier.Computability.Circuit.Boolean.PPoly.Closure
 public import CslibFrontier.Algorithms.ExactTriangle.ParameterChoice
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Cuts.Iterate
 public import CslibFrontier.Computability.Complexity.Classes.Constructible.FunctionTime
 public import CslibFrontier.Computability.PCP.Approximation.Hastad.LinearTest
 public import CslibFrontier.Computability.PCP.TwoProverGame.LowIndividualDegree.SelfImprovementSandwich
@@ -8871,6 +8872,7 @@ public import CslibFrontier.Computability.Probabilistic.Oracle.Substitution
 public import CslibFrontier.Foundations.Combinatorics.FunctionalGraph
 public import CslibFrontier.Probability.Minimax.Dantzig
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Pruned.Control
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Cuts.Compose
 public import CslibFrontier.Algorithms.WordRAM.ExactTriangle.StreamingFixedPrime.Flat
 public import CslibFrontier.Foundations.Data.Nat.Power
 public import CslibFrontier.Foundations.Geometry.Polygonal.RadialOrder
