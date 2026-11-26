@@ -1593,6 +1593,7 @@ public import CslibFrontier.Computability.Complexity.Reduction.BoundedOracle
 public import CslibFrontier.Computability.Complexity.Classes.Time.LasVegas
 public import CslibFrontier.Crypto.Computational.Homomorphic.KeyChain.Reduction.Game
 public import CslibFrontier.Logics.Propositional.TseitinCNF
+public import CslibFrontier.Algorithms.LinearAlgebra.SparseLDLCertificate
 public import CslibFrontier.DataStructure.StateTransition.TotalCost
 public import CslibFrontier.Probability.BitString.BinarySymmetricChannel.Achievability
 public import CslibFrontier.Computability.Circuit.Frontier.Layouts.Switched.Connector
@@ -8439,6 +8440,7 @@ public import CslibFrontier.Foundations.Data.List.CommonPrefix
 public import CslibFrontier.Computability.Machines.Turing.TM2.Simulation
 public import CslibFrontier.Computability.Circuit.Frontier.TensorNetwork.FastContractionMachine
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.LogSpace.CounterProgram.Output
+public import CslibFrontier.Algorithms.LinearAlgebra.SparseLyapunovCertificate
 public import CslibFrontier.Computability.Complexity.Problems.NCL.Assembly.Basic
 public import CslibFrontier.Foundations.Data.BitString.BitVec
 public import CslibFrontier.Crypto.Protocols.MPC.BGW
