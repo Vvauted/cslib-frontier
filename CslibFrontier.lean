@@ -6848,6 +6848,7 @@ public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Bo
 public import CslibFrontier.Foundations.Combinatorics.Expander.Power
 public import CslibFrontier.Algorithms.WordRAM.ExactTriangle.RecordWitness.TimeBound
 public import CslibFrontier.Crypto.Primitives.Garbling.Conventional
+public import CslibFrontier.Logics.Propositional.PseudoBoolean.Knapsack
 public import CslibFrontier.Computability.Communication.NOF.Randomized
 public import CslibFrontier.Algorithms.WordRAM.ThreeSum.Decision.VisitorTransition
 public import CslibFrontier.Foundations.Analysis.LpNorm
@@ -10019,6 +10020,7 @@ public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Trees.Th
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Uni.SpecU2
 public import CslibFrontier.Tactic.PolyTime.Init
 public import CslibFrontier.Foundations.NumberTheory.Primality.Miller
+public import CslibFrontier.Logics.Propositional.PseudoBoolean.Chosen
 public import CslibFrontier.Logics.FirstOrder.Ordered.DomainInterpretation
 public import CslibFrontier.Computability.Circuit.Boolean.ModMajority
 public import CslibFrontier.Computability.Complexity.Problems.XORSAT

@@ -45,8 +45,9 @@ rule is added.
   with saturation and RUP, remains open in #7222.
 
 Fusion resolution under implications (§3.2) is not provided here; it is also open in #7222.
-The knapsack proofs of the paper's milestone use these combinators: its layer states
-`S^i_{w,p}` reify sums by `reify`, and its transitions are guard resolutions and RUP steps.
+The certified knapsack of `CslibFrontier.Logics.Propositional.PseudoBoolean.Knapsack` reifies its
+layer states `S^i_{w,p}` and their partial sums by `reify`; its transitions add the halves of these
+reifications and close by RUP.
 
 ## Main definitions
 
