@@ -2727,6 +2727,7 @@ public import CslibFrontier.Foundations.BooleanAnalysis.Subcube
 public import CslibFrontier.Computability.Complexity.Parameterized.CrossComposition
 public import CslibFrontier.Computability.Complexity.Classes.Immune.Construction
 public import CslibFrontier.Crypto.Protocols.UC.Reactive
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.MainTheorem
 public import CslibFrontier.Computability.RelationAlgebra.Tiling.Reduction
 public import CslibFrontier.Logics.Propositional.ClauseSet.Sparsification.CountingDeletion
 public import CslibFrontier.DataStructure.VanEmdeBoas.Impl
@@ -7056,6 +7057,7 @@ public import CslibFrontier.Computability.PCP.TwoProverGame.Naimark
 public import CslibFrontier.Crypto.Computational.Commitment.PublicOperations
 public import CslibFrontier.Foundations.NumberTheory.PrimeWindowSign
 public import CslibFrontier.Algorithms.Lean.EdgeCSP.Solver.Improve
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Flat.Rate
 public import CslibFrontier.Crypto.Computational.OneWay.Amplification
 public import CslibFrontier.Algorithms.Lean.MaxFlow.BipartiteMatching
 public import CslibFrontier.Computability.Circuit.Frontier.Compiler.Hypergraph.Gaussian.DualCert
