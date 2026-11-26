@@ -8806,6 +8806,7 @@ public import CslibFrontier.Logics.FirstOrder.Ordered.FullTuple.DomainInterpreta
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Strassen.Quadrant
 public import CslibFrontier.Computability.Distributed.OrientedCycle.LCL.Basic
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.GroupProgram.RoleSums
+public import CslibFrontier.Computability.WordRAM.Realization.PrefixFrame
 public import CslibFrontier.Foundations.Quantum.DensityMatrix.Isometry
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.LogSpace.NondeterministicQueryMachine.AlternatingNative.Resources
 public import CslibFrontier.Computability.WordRAM.Dynamic
