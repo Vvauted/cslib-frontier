@@ -4034,6 +4034,7 @@ public import CslibFrontier.Computability.LogSpaceDerandomization.GridRowMoment
 public import CslibFrontier.Logics.FirstOrder.Operator.Quantifiers
 public import CslibFrontier.Computability.Complexity.Classes.TFNP.SelfReducibility
 public import CslibFrontier.DataStructure.FusionTree.Routing
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.CSR
 public import CslibFrontier.Foundations.Combinatorics.Expander.Existence
 public import CslibFrontier.Computability.Communication.NOF.Leaf
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.BoxQuery.Prepare
@@ -10304,6 +10305,7 @@ public import CslibFrontier.Computability.Complexity.RealAlgebraic.CriticalCoord
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.BlockComputation.QueryReplayAssignments
 public import CslibFrontier.Computability.Circuit.Arithmetic.SyntacticMultilinear
 public import CslibFrontier.Tactic.SuppCases
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.IndexedEdges
 public import CslibFrontier.Crypto.Computational.Homomorphic.GSW.Serialized
 public import CslibFrontier.Computability.QueryComplexity.Connectivity
 public import CslibFrontier.Computability.Circuit.Boolean.Metric
