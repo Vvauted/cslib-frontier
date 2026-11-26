@@ -100,9 +100,9 @@ private theorem rounds_bound {d : ℕ} (hd : 1 ≤ d) {φ : CNF ℕ} {n : ℕ}
         (by norm_num)
 
 /-- For unary declared variable counts, a fixed power budget gives a native counter from
-a certified leaf counter exact on sparse, supported leaves. On valid inputs, time is bounded
-by the power-saving round factor times the sum of a polynomial and one leaf-time allowance.
-Workspace is polynomial whenever the leaf workspace allowance is polynomial. -/
+a certified leaf counter exact on sparse, supported leaves. The time bound holds on all inputs:
+a polynomial-time guard rejects invalid formulas before incurring traversal costs. Workspace is
+polynomial whenever the leaf workspace allowance is polynomial. -/
 theorem exists_computableInO_searchDeclared_powerBudget {C : Type} (encC : C ↪ List Bool)
     {k d : ℕ} (hk : 2 ≤ k) (hd : 1 ≤ d)
     {g t s : (C × ℕ) × CNF ℕ → ℕ} {R Q : C × ℕ × CNF ℕ → ℕ}
@@ -128,8 +128,7 @@ theorem exists_computableInO_searchDeclared_powerBudget {C : Type} (encC : C ↪
       (∀ x, let (_, declared, formula) := x
         count x = if validDeclaredInput k declared formula then
           formula.modelCountOn (Finset.range declared) else 0) ∧
-      ∀ x, let (_, declared, formula) := x
-        validDeclaredInput k declared formula = true →
+      ∀ x, let (_, declared, _) := x
         (T x : ℝ) ≤ 6 * 2 ^ (3 * (declared + 1 : ℝ) ^ (1 - (d : ℝ)⁻¹)) *
           (c * (((encInput x).length : ℝ) + 1) ^ e + R x) := by
   intro encInput
@@ -173,24 +172,37 @@ theorem exists_computableInO_searchDeclared_powerBudget {C : Type} (encC : C ↪
     (fun x hx i _ hi => (hleaf x hx i hi).2.1)
     (fun x hx i _ hi => (hleaf x hx i hi).2.2)
   refine ⟨_, _, _, c, e, hc, hs, ?_, ?_⟩
-  · intro x
+  · rintro ⟨context, declared, formula⟩
     exact searchDeclaredWith_eq_ite_modelCountOn_of_normalized
       (hM _) hK (hM2 _) le_rfl (htree _)
-      (fun ψ _ hw hsp hsub hlen => hcorrect _ ψ hw hsp hsub hlen) x.2.2
-  · intro x hx
-    have hr := rounds_bound hd (hvars x hx)
-    let Y : ℝ := 2 ^ (3 * (x.2.1 + 1 : ℝ) ^ (1 - (d : ℝ)⁻¹))
-    let W : ℝ := c * (((encInput x).length : ℝ) + 1) ^ e + R x
+      (fun ψ _ hw hsp hsub hlen => hcorrect _ ψ hw hsp hsub hlen) formula
+  · rintro ⟨context, declared, formula⟩
+    let x : C × ℕ × CNF ℕ := (context, declared, formula)
+    let W := c * ((encInput x).length + 1) ^ e
+    let Y : ℝ := 2 ^ (3 * (declared + 1 : ℝ) ^ (1 - (d : ℝ)⁻¹))
+    let E : ℝ := (W : ℝ) + R x
     have hY : 1 ≤ Y := Real.one_le_rpow one_le_two (by positivity)
-    have hW : 0 ≤ W := by dsimp [W]; positivity
-    push_cast
-    change c * (((encInput x).length : ℝ) + 1) ^ e +
-      ((rounds (budget d (x.1, x.2.1)) x.2.2 : ℝ) + 1) * W ≤ 6 * Y * W
-    push_cast at hr
-    have hp := mul_le_mul_of_nonneg_right hr hW
-    change ((rounds (budget d (x.1, x.2.1)) x.2.2 : ℝ) + 1) * W ≤ 5 * Y * W at hp
-    have hfirst : (c : ℝ) * (((encInput x).length : ℝ) + 1) ^ e ≤ Y * W :=
-      (le_add_of_nonneg_right (Nat.cast_nonneg (R x))).trans (le_mul_of_one_le_left hW hY)
-    linarith
+    have hE : 0 ≤ E := by dsimp [E]; positivity
+    have hfirst : (W : ℝ) ≤ Y * E :=
+      (le_add_of_nonneg_right (Nat.cast_nonneg (R x))).trans (le_mul_of_one_le_left hE hY)
+    have hE_eq : E = (c : ℝ) * (((encInput x).length : ℝ) + 1) ^ e + R x := by
+      dsimp only [E, W]
+      push_cast
+      rfl
+    change ((W + (if validDeclaredInput k declared formula then
+      (rounds (budget d (context, declared)) formula + 1) * (W + R x) else 0) : ℕ) : ℝ) ≤
+      6 * Y * _
+    rw [← hE_eq]
+    by_cases hx : validDeclaredInput k declared formula = true
+    · have hr := rounds_bound hd (hvars x hx)
+      let q := rounds (budget d (context, declared)) formula + 1
+      rw [ite_eq_left hx, Nat.cast_add W (q * (W + R x)), Nat.cast_mul q (W + R x),
+        Nat.cast_add W (R x)]
+      calc
+        _ ≤ Y * E + 5 * Y * E := add_le_add hfirst
+          (mul_le_mul hr (show (W : ℝ) + R x ≤ E from le_rfl) (by positivity) (by positivity))
+        _ = _ := by ring
+    · rw [ite_eq_right hx, Nat.add_zero]
+      exact hfirst.trans (by nlinarith [mul_nonneg (zero_le_one.trans hY) hE])
 
 end Cslib.Complexity.CountingSparsify
