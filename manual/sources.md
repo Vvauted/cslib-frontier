@@ -1240,6 +1240,15 @@ Shuchi Chawla, Jason D. Hartline, David L. Malec and Balasubramanian Sivan.
 "Multi-Parameter Mechanism Design and Sequential Posted Pricing."
 *Proceedings of the 42nd ACM Symposium on Theory of Computing (STOC 2010)*, 311–320, 2010. https://doi.org/10.1145/1806689.1806733 ; cited from https://arxiv.org/pdf/0907.2435v2 (26 pp., SHA-256 `220807f3da1b4dc409fe627719ac167130108db0ae60d4bc495e3a76e9e0838b`), inspected on 2026-11-24 for §1–§2.2 (sequential and order-oblivious posted-price mechanisms and group strategy-proofness, pp. 1–4), §5.2 Theorem 10 (p. 9), and Appendix D.2 (Theorem 24, Proof of Theorem 10 for `k = 1` single-item non-i.i.d. regular revenue `2`-approximation via `(φᵢ)⁺`, and "An example with a gap of 2", pp. 18–19).
 
+<a id="chazelle2000"></a>
+## chazelle2000
+
+Bernard Chazelle.
+"The Soft Heap: An Approximate Priority Queue with Optimal Error Rate."
+*Journal of the ACM* 47(6), 1012–1027, 2000 (bibliography key `Chazelle2000`). https://doi.org/10.1145/355541.355554 ; cited from https://www.cs.princeton.edu/~chazelle/pubs/sheap.pdf (NECI Research Tech Report 99-097, July 1999, 16 pp., labeled *Journal of the ACM*, 47(6), 2000, pp. 1012–1027, SHA-256 `469ee469a956b193e35f83015bf85d00507ec4fac839aae4902bcc6cb564fc29`), inspected on 2026-11-26 UTC for Section 1, preprint p. 2, Theorem 1.1 (`0 < ε ≤ 1 / 2`, `O(1)` amortized per operation except `O(log(1 / ε))` for `insert`, at most `ε n` corrupted items at any given time), Sections 3–4, preprint pp. 4–12 (`next`/`child` binary-tree queue encoding, `fix_minlist`, `sift(v)` with parity/gap branching, and `dismantle`), Section 5.1, preprint pp. 12–13 (`r = 2 + 2 ⌈log(1 / ε)⌉`, Lemmas 5.1–5.2 bounding corrupted items by `n / 2 ^ (r - 3)`), and Section 5.2, preprint pp. 14–15 (amortized running time).
+Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) for a single-heap Word-RAM soft-heap step toward [#8624](https://github.com/cslib-community/cslib-frontier/issues/8624) (`insert`, `extractMin`, and `collectCorrupted`, without `meld` or arbitrary-handle `delete`) parameterized by arbitrary rank threshold `r : ℕ` and `rankThresholdForEps ε` (`0 < ε : ℚ`).
+The dismantling-free binary-tree representation, `defill` (`targetSize r k = 2 ^ ((k - r + 1) / 2)`), `12 / 2 ^ r` `sizeCap` recurrence (`shInv_corrupted_le`), `rankThresholdForEps ε` for arbitrary `0 < ε : ℚ` (extending Theorem 1.1's `0 < ε ≤ 1 / 2`), and `+(r : ℚ)` baseline credit in `itemPhi` are that module's self-contained Word-RAM adaptation rather than locators claimed from `Chazelle2000`.
+
 <a id="chendeng06"></a>
 ## chendeng06
 
@@ -4514,6 +4523,14 @@ Gary L. Peterson.
 *ACM Transactions on Programming Languages and Systems* 4(4), 758–762, 1982. https://doi.org/10.1145/69622.357194 . The library's key is `Peterson1982`.
 Bibliographic metadata checked via DOI and search summaries on 2026-11-22 UTC; the journal PDF was not directly inspected, so internal theorem and page locators are not claimed.
 [RingElection/Peterson.lean](../CslibFrontier/Computability/Distributed/RingElection/Peterson.lean) formalizes all-initially-active basic two-hop unidirectional FIFO ring election steps toward [#7200](https://github.com/cslib-community/cslib-frontier/issues/7200) (with all `n` nodes starting active in `twoHopAllActiveInit`, rather than spontaneous wakeup or the `1.44 n log n` Fibonacci-threshold refinement): strict-local-peak active-subring halving `2 * active_{k + 1} ≤ active_k` (`twoHopAllActive_phase_halving`), one-step FIFO confluence (`twoHopStep_comm`), unique-maximum termination (`twoHopAllActive_elects_leader`), and the `2 * n * Nat.log 2 n + n` asynchronous message bound (`twoHopAllActive_messages_le`).
+
+<a id="pettieramachandran2002"></a>
+## pettieramachandran2002
+
+Seth Pettie and Vijaya Ramachandran.
+"An Optimal Minimum Spanning Tree Algorithm."
+*Journal of the ACM* 49(1), 16–34, 2002 (bibliography key `PettieRamachandran2002`). https://doi.org/10.1145/505241.505243 ; cited from https://web.eecs.umich.edu/~pettie/papers/jacm-optmsf.pdf (19 pp., printed pp. 16–34, SHA-256 `7dbcbf34a3470d607aaaa982063f105d1f02aee0e85bc43e21c80e316d24d6d5`), inspected on 2026-11-25 UTC for Section 2.4, p. 19, Lemma 2.2 (for `0 < ε < 1 / 2`, `O(1)` amortized complexity per soft-heap operation except `O(log(1 / ε))` for `insert`, with at most `ε n` corrupted items at any given time) and Section 3.2, pp. 21–22, Figure 1 and Lemma 3.3 (including the remark after Lemma 3.3 on p. 22 noting that `Partition` never employs `meld`).
+Cited by [SoftHeap.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap.lean), [Params.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Params.lean), and [Standard.lean](../CslibFrontier/DataStructure/PriorityQueue/WordRAM/SoftHeap/Standard.lean) toward [#8624](https://github.com/cslib-community/cslib-frontier/issues/8624) as a single-heap Word-RAM soft-heap batch step (`insert`, `extractMin`, `collectCorrupted`, without `meld` or arbitrary-handle `delete`) via `exists_singleSoftHeap_batch_standard_program` and `exists_singleSoftHeap_batch_standard_program_eps` (certifying per-step corruption bounds and `ckey` monotonicity in `SHBatchTrace`, with `rankThresholdForEps ε` extending Lemma 2.2's `0 < ε < 1 / 2` to all `0 < ε : ℚ`), rather than the paper's full MSF algorithm.
 
 <a id="pighizzini2009"></a>
 ## pighizzini2009
