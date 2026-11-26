@@ -12,13 +12,14 @@ import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
 import CslibFrontier.Tactic.UpdateSimp
 import CslibFrontier.Tactic.ValidProg
+import Mathlib.Order.Fin.Basic
 
 /-!
 # Undirected Compressed Sparse Row (CSR) Graph Construction on the Word RAM
 
 Constructs an undirected CSR adjacency representation (`UndirCSR`, `HoldsUndirCSR`) from a stride-4
 `IndexedEdge` array in `O(m + n)` Word-RAM operations via `buildUndirCSR`, reusing
-`Memory.allocBlock`, `Memory.allocBlockDirty`, `ArrayOps.prefixSumProg`, `Memory.copy`,
+`Memory.allocBlock`, `Memory.allocBlockDirty`, `prefixSumProg`, `Memory.copy`,
 `Memory.FramedTriple`, and `LoopFrame.iterate_potential_spec`.
 
 ## Main definitions
@@ -84,21 +85,11 @@ structure HoldsUndirCSR {n : ℕ} (offBase adjBase : ℕ) (es : List (IndexedEdg
 theorem HoldsUndirCSR.offset_le_end {n : ℕ} {offBase adjBase : ℕ} {es : List (IndexedEdge n)}
     {mem : ℕ → ℕ} (h : HoldsUndirCSR offBase adjBase es mem) (k : ℕ) (hk : k ≤ n) :
     mem (offBase + k) ≤ 2 * es.length := by
-  have hmono : ∀ t : ℕ, k + t ≤ n → mem (offBase + k) ≤ mem (offBase + (k + t)) := by
-    intro t
-    induction t generalizing k with
-    | zero => intro _; exact le_rfl
-    | succ t ih =>
-      intro hkt
-      have h1 := h.off_mono ⟨k, by omega⟩
-      dsimp only at h1
-      rw [Nat.add_assoc] at h1
-      have h2 := ih (k + 1) (by omega)
-      rw [show offBase + (k + 1 + t) = offBase + (k + (t + 1)) by omega] at h2
-      omega
-  have hle := hmono (n - k) (by omega)
-  rw [show k + (n - k) = n by omega, h.off_end] at hle
-  exact hle
+  have hmono : Monotone (fun i : Fin (n + 1) => mem (offBase + i.val)) :=
+    Fin.monotone_iff_le_succ.mpr fun i => by
+      simpa only [Fin.val_castSucc, Fin.val_succ, Nat.add_assoc] using h.off_mono i
+  exact (hmono (show (⟨k, by omega⟩ : Fin (n + 1)) ≤ ⟨n, Nat.lt_succ_self n⟩ from hk)).trans
+    h.off_end.le
 
 /-- Framing lemma for `HoldsUndirCSR`. -/
 theorem HoldsUndirCSR.congr {n : ℕ} {offBase adjBase : ℕ} {es : List (IndexedEdge n)}
@@ -176,18 +167,10 @@ private theorem edgeDegPrefix_succ {n : ℕ} (es : List (IndexedEdge n)) {k : �
   split_ifs <;> omega
 
 private theorem edgeDegPrefix_mono {n : ℕ} (es : List (IndexedEdge n)) {k₁ k₂ : ℕ}
-    (hk : k₁ ≤ k₂) (hk₂ : k₂ ≤ es.length) (u : Fin n) :
-    edgeDegPrefix es k₁ u ≤ edgeDegPrefix es k₂ u := by
-  have hd : ∀ t : ℕ, k₁ + t ≤ es.length → edgeDegPrefix es k₁ u ≤ edgeDegPrefix es (k₁ + t) u := by
-    intro t
-    induction t with
-    | zero => intro _; exact le_rfl
-    | succ t ih =>
-      intro ht
-      rw [← Nat.add_assoc, edgeDegPrefix_succ es (by omega) u]
-      have := ih (by omega)
-      omega
-  simpa only [Nat.add_sub_cancel' hk] using hd (k₂ - k₁) (by omega)
+    (hk : k₁ ≤ k₂) (_hk₂ : k₂ ≤ es.length) (u : Fin n) :
+    edgeDegPrefix es k₁ u ≤ edgeDegPrefix es k₂ u :=
+  Nat.add_le_add (List.take_sublist_take_left hk).countP_le
+    (List.take_sublist_take_left hk).countP_le
 
 private theorem sum_edgeDegPrefix {n : ℕ} (es : List (IndexedEdge n)) (k : ℕ) (hk : k ≤ es.length) :
     ∑ u : Fin n, edgeDegPrefix es k u = 2 * k := by
@@ -429,28 +412,6 @@ private theorem realizes_csrScatterStep : Realizes .exact
     (fun _ _ => 0) :=
   realizes_csrScatterStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
 
-private theorem off_mono_le {n : ℕ} (off : Fin (n + 1) → ℕ)
-    (hmono : ∀ u : Fin n, off u.castSucc ≤ off u.succ)
-    (a b : Fin (n + 1)) (hab : a.val ≤ b.val) : off a ≤ off b := by
-  have hd : ∀ t : ℕ, ∀ x : Fin (n + 1), x.val + t ≤ n →
-      ∃ hlt : x.val + t < n + 1, off x ≤ off ⟨x.val + t, hlt⟩ := by
-    intro t
-    induction t with
-    | zero => intro x hx; exact ⟨x.isLt, le_rfl⟩
-    | succ t ih =>
-      intro x hx
-      obtain ⟨hlt, hle⟩ := ih x (by omega)
-      refine ⟨by omega, le_trans hle ?_⟩
-      let u : Fin n := ⟨x.val + t, by omega⟩
-      have hu1 : (⟨x.val + t, hlt⟩ : Fin (n + 1)) = u.castSucc := Fin.ext rfl
-      have hu2 : (⟨x.val + (t + 1), by omega⟩ : Fin (n + 1)) = u.succ :=
-        Fin.ext (by dsimp only [Fin.succ, u]; omega)
-      rw [hu1, hu2]
-      exact hmono u
-  obtain ⟨hlt, hle⟩ := hd (b.val - a.val) a (by omega)
-  have hbe : (⟨a.val + (b.val - a.val), hlt⟩ : Fin (n + 1)) = b := Fin.ext (by dsimp only; omega)
-  rwa [hbe] at hle
-
 private theorem csrScatterOne_mem_slice {n adj cur : ℕ}
     (mem : ℕ → ℕ) (off : Fin (n + 1) → ℕ) (hmono : ∀ u : Fin n, off u.castSucc ≤ off u.succ)
     (lenOf : Fin n → ℕ) (x₀ : Fin n) (nb eIdx : ℕ)
@@ -472,11 +433,13 @@ private theorem csrScatterOne_mem_slice {n adj cur : ℕ}
     (mem' (adj + 2 * (off x₀.castSucc + lenOf x₀)) = nb ∧
      mem' (adj + 2 * (off x₀.castSucc + lenOf x₀) + 1) = eIdx) ∧
     (∀ a, ¬(cur ≤ a ∧ a < cur + n) → ¬(adj ≤ a ∧ a < adj + 2 * off ⟨n, Nat.lt_succ_self n⟩) →
-      mem' a = mem a) := by
+      mem' a = mem a) ∧
+    pos < off ⟨n, Nat.lt_succ_self n⟩ := by
   intro pos mem'
+  have hmono' : Monotone off := Fin.monotone_iff_le_succ.mpr hmono
   have hpos_eq : pos = off x₀.castSucc + lenOf x₀ := hcur x₀
   have hx₀_hi : off x₀.succ ≤ off ⟨n, Nat.lt_succ_self n⟩ :=
-    off_mono_le off hmono x₀.succ ⟨n, Nat.lt_succ_self n⟩ (by simp only [Fin.succ]; omega)
+    hmono' (show x₀.succ.val ≤ n by rw [Fin.val_succ]; omega)
   have hpos_lt_end : pos + 1 ≤ off ⟨n, Nat.lt_succ_self n⟩ := by omega
   have hcur_gt : ∀ y : Fin n, ∀ q, q < 2 * off ⟨n, Nat.lt_succ_self n⟩ →
       adj + q ≠ cur + y.val := fun y q hq => by omega
@@ -485,15 +448,14 @@ private theorem csrScatterOne_mem_slice {n adj cur : ℕ}
     have := u.isLt; have := x₀.isLt
     rcases lt_or_gt_of_ne (Fin.val_ne_of_ne hu) with hlt | hlt
     · have h1 : off u.succ ≤ off x₀.castSucc :=
-        off_mono_le off hmono u.succ x₀.castSucc
-          (by simp only [Fin.val_succ, Fin.val_castSucc]; omega)
+        hmono' (show u.succ.val ≤ x₀.castSucc.val by rw [Fin.val_succ, Fin.val_castSucc]; omega)
       have h2 := hsep u
       omega
     · have h1 : off x₀.succ ≤ off u.castSucc :=
-        off_mono_le off hmono x₀.succ u.castSucc
-          (by simp only [Fin.val_succ, Fin.val_castSucc]; omega)
+        hmono' (show x₀.succ.val ≤ u.castSucc.val by rw [Fin.val_succ, Fin.val_castSucc]; omega)
       omega
-  refine ⟨fun u => ?_, fun u hu j hj => ?_, fun j hj => ?_, ⟨?_, ?_⟩, fun a hc ha => ?_⟩
+  refine ⟨fun u => ?_, fun u hu j hj => ?_, fun j hj => ?_, ⟨?_, ?_⟩, fun a hc ha => ?_,
+    by omega⟩
   · dsimp only [mem']
     have hu1 : adj + 2 * pos + 1 ≠ cur + u.val := by
       have := hcur_gt u (2 * pos + 1) (by omega); omega
@@ -507,8 +469,8 @@ private theorem csrScatterOne_mem_slice {n adj cur : ℕ}
       simp only [hux, ↓reduceIte]
       exact hcur u
   · have hne := hdisj_other u hu j hj
-    have hu_hi := off_mono_le off hmono u.succ ⟨n, Nat.lt_succ_self n⟩
-      (by simp only [Fin.val_succ]; omega)
+    have hu_hi : off u.succ ≤ off ⟨n, Nat.lt_succ_self n⟩ :=
+      hmono' (show u.succ.val ≤ n by rw [Fin.val_succ]; omega)
     have hsep_u := hsep u
     have hcur1 := hcur_gt x₀ (2 * (off u.castSucc + j)) (by omega)
     have hcur2 := hcur_gt x₀ (2 * (off u.castSucc + j) + 1) (by omega)
@@ -602,14 +564,10 @@ private theorem csrScatter_framed {w n edgeBase adj cur fEnd : ℕ}
       rw [hoffVal_n]; omega
     have hsc₁ := csrScatterOne_mem_slice t.mem offFn hoffFn_mono len₁ eu ev.val k
       hadj_cur hcur_k hle₁ hsep₁
-    rcases hsc₁ with ⟨hcur₁, hother₁, hsame₁, hnew₁, hmod_sc₁⟩
+    rcases hsc₁ with ⟨hcur₁, hother₁, hsame₁, hnew₁, hmod_sc₁, hpos₁_lt'⟩
     let pos₁ := t.mem (cur + eu.val)
     have hpos₁_eq : pos₁ = offFn eu.castSucc + len₁ eu := hcur_k eu
-    have hpos₁_lt : pos₁ < 2 * m := by
-      have := hsep₁ eu
-      have hm := off_mono_le offFn hoffFn_mono eu.succ ⟨n, Nat.lt_succ_self n⟩
-        (by simp only [Fin.succ]; omega)
-      omega
+    have hpos₁_lt : pos₁ < 2 * m := hoffVal_n ▸ hpos₁_lt'
     have hpos₁1_fit : Fits w (pos₁ + 1) := hfit_2m.of_le (by omega)
     have hfv_fit : Fits w ev.val := hfit_n1.of_le (by have := ev.isLt; omega)
     have hfu_fit : Fits w eu.val := hfit_n1.of_le (by have := eu.isLt; omega)
@@ -639,14 +597,10 @@ private theorem csrScatter_framed {w n edgeBase adj cur fEnd : ℕ}
       · simp only [hee, Ne.symm hee, ↓reduceIte] at hs hm hd ⊢; omega
     have hsc₂ := csrScatterOne_mem_slice tMid.mem offFn hoffFn_mono len₂ ev eu.val k
       hadj_cur hcur₁ hle₂ hsep₂
-    rcases hsc₂ with ⟨hcur₂, hother₂, hsame₂, hnew₂, hmod_sc₂⟩
+    rcases hsc₂ with ⟨hcur₂, hother₂, hsame₂, hnew₂, hmod_sc₂, hpos₂_lt'⟩
     let pos₂ := tMid.mem (cur + ev.val)
     have hpos₂_eq : pos₂ = offFn ev.castSucc + len₂ ev := hcur₁ ev
-    have hpos₂_lt : pos₂ < 2 * m := by
-      have := hsep₂ ev
-      have hm := off_mono_le offFn hoffFn_mono ev.succ ⟨n, Nat.lt_succ_self n⟩
-        (by simp only [Fin.succ]; omega)
-      omega
+    have hpos₂_lt : pos₂ < 2 * m := hoffVal_n ▸ hpos₂_lt'
     have hpos₂1_fit : Fits w (pos₂ + 1) := hfit_2m.of_le (by omega)
     have hadj₁_lt : adj + 2 * pos₁ + 1 < t.frontier := by
       dsimp only [m] at hpos₁_lt; rw [htfr]; omega
@@ -1165,13 +1119,10 @@ private theorem buildUndirCSR_word_spec {w n edgeBase : ℕ} {es : List (Indexed
           hm₁'.mem_eq_of_not_mem (by dsimp only [s₀, off, m] at *; omega)
             (by simp only [S_all, Set.mem_Ico]; dsimp only [fEnd, cur, adj, off, m] at *; omega)
       )).mono (by omega) fun _ _ h => h
-  exact Memory.Triple.mono (Memory.FramedTriple.allocBlock_bind hfit_off hft_cnt_cont)
+  exact ((Memory.FramedTriple.allocBlock_bind hfit_off hft_cnt_cont).frame_empty_of_ge_frontier
+    (S := S_all) fun _ ha => (Set.mem_Ico.mp ha).1).mono
     (by omega : 6 * m + (2 * (n + 1) + (10 * m + 2 * n + 1 + 1)) + (n + 1 + 1) ≤
-      16 * m + 5 * n + 6)
-    fun _ _ ⟨hm, hq⟩ => ⟨⟨hm.1, fun a ha _ =>
-      hm.2 a ha (by
-        simp only [S_all, Set.mem_Ico, not_and, not_lt]
-        dsimp only [fEnd, cur, adj, off, m]; omega)⟩, hq⟩
+      16 * m + 5 * n + 6) fun _ _ h => h
 
 /-- Uniform `Realizes .exact` certificate for `buildUndirCSR` with `work = 0`. -/
 theorem realizes_buildUndirCSR :

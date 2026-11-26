@@ -8,7 +8,7 @@ module
 -- upstream: candidate
 
 public import CslibFrontier.Algorithms.WordRAM.Kruskal
-public import CslibFrontier.Computability.WordRAM.Realization.ArrayOps
+public import CslibFrontier.Computability.WordRAM.Realization.RecordOps
 import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
 import CslibFrontier.Tactic.UpdateSimp
@@ -17,17 +17,18 @@ import CslibFrontier.Tactic.ValidProg
 /-!
 # Indexed Edge Layouts, Initialization, and Emission on the Word RAM
 
-Defines `IndexedEdge`, memory layout predicates (`HoldsIndexedEdges`, `HoldsRawEdges`), shared
+Defines `IndexedEdge` (`IndexedEdge.toWeighted`), the stride-4 memory layout predicate
+`HoldsIndexedEdges` (paired with `Kruskal.HoldsEdges` for stride-3 raw edge arrays), shared
 argument bundles (`GraphSlice`, `SelectedEdgesArgs`), and linear-time edge initialization and
 materialization routines (`initIndexedEdges`, `emitMSFEdges`, `emitIndexedEdgesFromIdxs`) built on
 `Memory.FramedTriple`, `Memory.allocBlockDirty`, `LoopFrame`, and `word_enc_structure`.
 
 ## Main definitions
 
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.IndexedEdge`: weighted edge on `Fin n` tagged
-  with its original input edge identifier `id`.
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.HoldsIndexedEdges`, `HoldsRawEdges`: word-RAM
-  memory layout predicates for stride-4 indexed and stride-3 raw edge arrays.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.IndexedEdge`, `IndexedEdge.toWeighted`:
+  weighted edge on `Fin n` tagged with its original input edge identifier `id`.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.HoldsIndexedEdges`: word-RAM memory layout
+  predicate for stride-4 indexed edge arrays.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.GraphSlice`, `SelectedEdgesArgs`: faithful
   three-word argument structures encoded via `word_enc_structure`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.initIndexedEdges`: initializes a stride-4
@@ -39,7 +40,6 @@ materialization routines (`initIndexedEdges`, `emitMSFEdges`, `emitIndexedEdgesF
 
 ## Main results
 
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.holdsRawEdges_init`
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_initIndexedEdges`,
   `initIndexedEdges_spec`
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_emitMSFEdges`,
@@ -89,62 +89,6 @@ theorem HoldsIndexedEdges.congr {n : ℕ} {base : ℕ} {es : List (IndexedEdge n
   rcases h i hi with ⟨hu, hv, hw, hid⟩
   exact ⟨(heq _ (by omega) (by omega)).trans hu, (heq _ (by omega) (by omega)).trans hv,
     (heq _ (by omega) (by omega)).trans hw, (heq _ (by omega) (by omega)).trans hid⟩
-
-/-- Memory `mem` stores `es` in stride-3 `(u, v, weight)` layout starting at `base`. -/
-abbrev HoldsRawEdges {n : ℕ} (base : ℕ) (es : List (WeightedEdge n ℕ)) (mem : ℕ → ℕ) : Prop :=
-  ∀ i (hi : i < es.length),
-    mem (base + 3 * i) = es[i].u.val ∧
-    mem (base + 3 * i + 1) = es[i].v.val ∧
-    mem (base + 3 * i + 2) = es[i].weight
-
-/-- Framing lemma for `HoldsRawEdges`. -/
-theorem HoldsRawEdges.congr {n : ℕ} {base : ℕ} {es : List (WeightedEdge n ℕ)}
-    {m₁ m₂ : ℕ → ℕ}
-    (heq : ∀ a, base ≤ a → a < base + 3 * es.length → m₂ a = m₁ a)
-    (h : HoldsRawEdges base es m₁) : HoldsRawEdges base es m₂ := fun i hi => by
-  rcases h i hi with ⟨hu, hv, hw⟩
-  exact ⟨(heq _ (by omega) (by omega)).trans hu, (heq _ (by omega) (by omega)).trans hv,
-    (heq _ (by omega) (by omega)).trans hw⟩
-
-private theorem getElem_encodeEdges {n : ℕ} (es : List (WeightedEdge n ℕ)) (i : ℕ)
-    (hi : i < es.length) :
-    (Kruskal.encodeEdges es)[3 * i]'(by simp; omega) = es[i].u.val ∧
-    (Kruskal.encodeEdges es)[3 * i + 1]'(by simp; omega) = es[i].v.val ∧
-    (Kruskal.encodeEdges es)[3 * i + 2]'(by simp; omega) = es[i].weight := by
-  induction es generalizing i with
-  | nil => simp at hi
-  | cons e rest ih =>
-    cases i with
-    | zero => simp [Kruskal.encodeEdges_cons]
-    | succ k =>
-      have hk : k < rest.length := by simp only [List.length_cons] at hi; omega
-      obtain ⟨hu, hv, hw⟩ := ih k hk
-      refine ⟨?_, ?_, ?_⟩
-      · simpa only [Kruskal.encodeEdges_cons, show 3 * (k + 1) = (3 * k) + 3 by omega,
-          List.getElem_cons_succ] using hu
-      · simpa only [Kruskal.encodeEdges_cons, show 3 * (k + 1) + 1 = (3 * k + 1) + 3 by omega,
-          List.getElem_cons_succ] using hv
-      · simpa only [Kruskal.encodeEdges_cons, show 3 * (k + 1) + 2 = (3 * k + 2) + 3 by omega,
-          List.getElem_cons_succ] using hw
-
-/-- `Memory.State.init (Kruskal.encode es)` holds `es` in stride-3 layout starting at
-address `3`. -/
-theorem holdsRawEdges_init {n : ℕ} (es : List (WeightedEdge n ℕ)) :
-    HoldsRawEdges 3 es (Memory.State.init (Kruskal.encode es)).mem := by
-  intro i hi
-  have hg := getElem_encodeEdges es i hi
-  have hcell : ∀ j (hj : j < 3), (Memory.State.init (Kruskal.encode es)).mem (3 + 3 * i + j) =
-      (Kruskal.encodeEdges es)[3 * i + j]'(by simp only [length_encodeEdges]; omega) := by
-    intro j hj
-    rw [show 3 + 3 * i + j = (3 * i + j + 2) + 1 by omega]
-    change (Data.init (r := 0) (Kruskal.encode es)).mem ((3 * i + j + 2) + 1) = _
-    rw [Data.init_mem_succ, Kruskal.encode, List.getD_cons_succ, List.getD_cons_succ]
-    have hlt : 3 * i + j < (Kruskal.encodeEdges es).length := by
-      rw [length_encodeEdges]; omega
-    rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hlt]
-    rfl
-  exact ⟨(hcell 0 (by decide)).trans hg.1, (hcell 1 (by decide)).trans hg.2.1,
-    (hcell 2 (by decide)).trans hg.2.2⟩
 
 /-- Reference to a stride-4 `IndexedEdge` array of `numEdges` edges on `Fin numVertices`
 vertices stored at `edgeBase`. -/
@@ -350,11 +294,10 @@ private theorem initIndexedEdges_word_spec {w inBase count : ℕ} {s : Memory.St
           s''.mem (outBase + 4 * i + 3) = i) :=
     framedTriple_iff_realization.mpr ⟨hv_it, by simpa using hm_it, hmod_it,
       Memory.FramedTriple.pure ⟨rfl, hfr_it, hwf_it, hvals⟩⟩
-  exact Memory.Triple.mono
-    (Memory.FramedTriple.allocBlockDirty_bind hfit (Memory.FramedTriple.bind_same ft_iter))
-    (by omega : 7 * count + 0 + 1 ≤ 8 * count + 1)
-    fun _ _ ⟨hm, hq⟩ => ⟨⟨hm.1, fun a ha _ =>
-      hm.2 a ha (by simp only [S, Set.mem_Ico, not_and, not_lt]; omega)⟩, hq⟩
+  exact ((Memory.FramedTriple.allocBlockDirty_bind hfit
+    (Memory.FramedTriple.bind_same ft_iter)).frame_empty_of_ge_frontier (S := S)
+    fun _ ha => (Set.mem_Ico.mp ha).1).mono
+    (by omega : 7 * count + 0 + 1 ≤ 8 * count + 1) fun _ _ h => h
 
 /-- Uniform `Realizes .exact` certificate for `initIndexedEdges` with `work = 0`. -/
 theorem realizes_initIndexedEdges :
@@ -388,7 +331,7 @@ stride-4 `IndexedEdge` array at `outBase = s.frontier` tagged with edge identifi
 memory operations. -/
 theorem initIndexedEdges_spec {w n inBase : ℕ} {es : List (WeightedEdge n ℕ)} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
-    (hin : HoldsRawEdges inBase es s.mem)
+    (hin : HoldsEdges inBase es s.mem)
     (hin_lt : inBase + 3 * es.length ≤ s.frontier)
     (hfit : Fits w (s.frontier + 4 * es.length)) :
     Memory.FramedTriple w s (initIndexedEdges inBase es.length) (8 * es.length + 1) ∅
@@ -670,10 +613,9 @@ private theorem emitMSFEdges_word_spec {w : ℕ} {d : SelectedEdgesArgs} {s : Me
       (by simp only [S₀, Set.mem_Ico]; omega)
       ((Memory.FramedTriple.bind_same hiter_ft).frame_mono (S' := S₀) fun x hx => by
         simp only [S, S₀, Set.mem_Ico] at hx ⊢; omega)
-  exact Memory.Triple.mono (Memory.FramedTriple.allocBlockDirty_bind hfit hft_wr)
-    (by omega : 7 * d.count + 0 + 1 + 1 ≤ 8 * d.count + 4)
-    fun _ _ ⟨hm, hq⟩ => ⟨⟨hm.1, fun a ha _ =>
-      hm.2 a ha (by simp only [S₀, Set.mem_Ico, not_and, not_lt]; omega)⟩, hq⟩
+  exact ((Memory.FramedTriple.allocBlockDirty_bind hfit hft_wr).frame_empty_of_ge_frontier (S := S₀)
+    fun _ ha => (Set.mem_Ico.mp ha).1).mono
+    (by omega : 7 * d.count + 0 + 1 + 1 ≤ 8 * d.count + 4) fun _ _ h => h
 
 /-- Uniform `Realizes .exact` certificate for `emitMSFEdges` with `work = 0`. -/
 theorem realizes_emitMSFEdges :
@@ -713,7 +655,7 @@ length-prefixed `Kruskal.encodeEdges` array at `outBase = s.frontier` leaving al
 theorem emitMSFEdges_spec {w n : ℕ} {d : SelectedEdgesArgs}
     {es : List (WeightedEdge n ℕ)} {selIds : List (Fin es.length)} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
-    (hin : HoldsRawEdges d.srcBase es s.mem)
+    (hin : HoldsEdges d.srcBase es s.mem)
     (hin_lt : d.srcBase + 3 * es.length ≤ s.frontier)
     (hsel : ∀ j (hj : j < selIds.length), s.mem (d.selBase + j) = selIds[j].val)
     (hsel_lt : d.selBase + d.count ≤ s.frontier)
@@ -733,42 +675,28 @@ theorem emitMSFEdges_spec {w n : ℕ} {d : SelectedEdgesArgs}
     omega
   refine (emitMSFEdges_word_spec h16 hwf hsel_lt hfit hsrc_lt).2.mono le_rfl
     fun outBase s' ⟨hout, hfr, hwf', hhdr, hvals⟩ => ⟨hout, hfr, hwf', ?_⟩
-  unfold outputList
-  rw [hhdr, hout, hcnt]
   let outEs := selIds.map fun i => es[i.val]
-  change (List.range (3 * selIds.length)).map (fun i => s'.mem (s.frontier + 1 + i)) =
-    Kruskal.encodeEdges outEs
-  apply List.ext_getElem
-  · simp [outEs]
-  · intro idx hi₁ hi₂
-    simp only [List.length_map, List.length_range] at hi₁
-    simp only [List.getElem_map, List.getElem_range]
-    let q := idx / 3
-    let r := idx % 3
-    have hq : q < selIds.length := by omega
-    have hsel_q : s.mem (d.selBase + q) = selIds[q].val := hsel q hq
-    have hidx_lt : selIds[q].val < es.length := selIds[q].isLt
-    obtain ⟨hu, hv, hw⟩ := hin selIds[q].val hidx_lt
-    have hg := getElem_encodeEdges outEs q (by simpa [outEs] using hq)
-    have hq_elt : outEs[q]'(by simpa [outEs] using hq) = es[selIds[q].val] := by simp [outEs]
-    rw [hq_elt] at hg
-    have hv_q : ∀ rem < 3, s'.mem (s.frontier + 1 + 3 * q + rem) =
-        s.mem (d.srcBase + 3 * selIds[q].val + rem) := fun rem hrem => by
-      have hv' := hvals q (hcnt ▸ hq) rem hrem
-      rwa [hout, hsel_q] at hv'
-    rcases (by omega : r = 0 ∨ r = 1 ∨ r = 2) with hr | hr | hr
-    · have h0 := (hv_q 0 (by decide)).trans hu
-      have hidx_eq : s.frontier + 1 + idx = s.frontier + 1 + 3 * q + 0 := by omega
-      have he_eq : idx = 3 * q := by omega
-      rw [hidx_eq, h0]; simp_rw [he_eq]; exact hg.1.symm
-    · have h1 := (hv_q 1 (by decide)).trans hv
-      have hidx_eq : s.frontier + 1 + idx = s.frontier + 1 + 3 * q + 1 := by omega
-      have he_eq : idx = 3 * q + 1 := by omega
-      rw [hidx_eq, h1]; simp_rw [he_eq]; exact hg.2.1.symm
-    · have h2 := (hv_q 2 (by decide)).trans hw
-      have hidx_eq : s.frontier + 1 + idx = s.frontier + 1 + 3 * q + 2 := by omega
-      have he_eq : idx = 3 * q + 2 := by omega
-      rw [hidx_eq, h2]; simp_rw [he_eq]; exact hg.2.2.symm
+  have hholds : HoldsEdges (s.frontier + 1) outEs s'.mem := by
+    intro j hj
+    have hj' : j < selIds.length := by simpa [outEs] using hj
+    have hsel_j : s.mem (d.selBase + j) = selIds[j].val := hsel j hj'
+    obtain ⟨hu, hv, hw⟩ := hin selIds[j].val selIds[j].isLt
+    have hv0 : s'.mem (s.frontier + 1 + 3 * j) = es[selIds[j].val].u.val := by
+      have h := hvals j (hcnt ▸ hj') 0 (by decide)
+      rw [hout, hsel_j] at h
+      simpa using h.trans hu
+    have hv1 : s'.mem (s.frontier + 1 + 3 * j + 1) = es[selIds[j].val].v.val := by
+      have h := hvals j (hcnt ▸ hj') 1 (by decide)
+      rw [hout, hsel_j] at h
+      simpa using h.trans hv
+    have hv2 : s'.mem (s.frontier + 1 + 3 * j + 2) = es[selIds[j].val].weight := by
+      have h := hvals j (hcnt ▸ hj') 2 (by decide)
+      rw [hout, hsel_j] at h
+      simpa using h.trans hw
+    simpa [outEs] using ⟨hv0, hv1, hv2⟩
+  rw [hout] at hhdr ⊢
+  exact outputList_eq_iff.mpr
+    ⟨by rw [hhdr, hcnt, length_encodeEdges]; simp, holdsList_of_holdsEdges hholds⟩
 
 /-- Materialize `d.count` selected stride-4 `IndexedEdge` records (`d : SelectedEdgesArgs`)
 from `d.srcBase` and indices at `d.selBase` into a fresh stride-4 `IndexedEdge` array, preserving
@@ -821,11 +749,10 @@ private theorem emitIndexedEdgesFromIdxs_word_spec {w : ℕ} {d : SelectedEdgesA
     hft_it.mono le_rfl fun _ _ ⟨hfr', hwt', hvals⟩ =>
       Memory.FramedTriple.pure ⟨rfl, hfr', hwt', fun j hj q hq => by
         simpa [emitDstOff, emitStride, cond] using hvals j hj q hq⟩
-  exact Memory.Triple.mono
-    (Memory.FramedTriple.allocBlockDirty_bind hfit (Memory.FramedTriple.bind_same hiter_ft))
-    (by omega : 9 * d.count + 0 + 1 ≤ 9 * d.count + 1)
-    fun _ _ ⟨hm, hq⟩ => ⟨⟨hm.1, fun a ha _ =>
-      hm.2 a ha (by simp only [S, Set.mem_Ico, not_and, not_lt]; omega)⟩, hq⟩
+  exact ((Memory.FramedTriple.allocBlockDirty_bind hfit
+    (Memory.FramedTriple.bind_same hiter_ft)).frame_empty_of_ge_frontier (S := S)
+    fun _ ha => (Set.mem_Ico.mp ha).1).mono
+    (by omega : 9 * d.count + 0 + 1 ≤ 9 * d.count + 1) fun _ _ h => h
 
 /-- Uniform `Realizes .exact` certificate for `emitIndexedEdgesFromIdxs` with `work = 0`. -/
 theorem realizes_emitIndexedEdgesFromIdxs :
