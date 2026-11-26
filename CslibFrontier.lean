@@ -3928,6 +3928,7 @@ public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.L
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Probabilistic.ExplicitBlockNetwork.TablePolyTime
 public import CslibFrontier.Algorithms.WordRAM.OddCycleTransversal.Cost
 public import CslibFrontier.Privacy.DifferentialPrivacy.RandomizedResponse
+public import CslibFrontier.Computability.Circuit.Boolean.CycleMinorMeasures
 public import CslibFrontier.Foundations.Combinatorics.FunctionalGraph.ForestNavigation
 public import CslibFrontier.Crypto.Computational.MLDSA.PublicPairSigning
 public import CslibFrontier.Algorithms.MatrixMultiplication.Schonhage.ThinProduct
