@@ -7443,6 +7443,7 @@ public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Wa
 public import CslibFrontier.Logics.Propositional.CSP.Planar.Embedding.Disjoint
 public import CslibFrontier.Algorithms.WordRAM.HopcroftKarp.DFS
 public import CslibFrontier.Computability.GenericRAM.Native
+public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Flat.BalancedProducts
 public import CslibFrontier.Foundations.BooleanAnalysis.MeanWeight
 public import CslibFrontier.DataStructure.Paging.RandomizedLowerBound
 public import CslibFrontier.DataStructure.FusionTree.WordRAM.Query.Node
