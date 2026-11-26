@@ -5258,6 +5258,7 @@ public import CslibFrontier.Computability.Complexity.Classes.Hierarchy.Nondeterm
 public import CslibFrontier.Computability.Complexity.Classes.Promise.Randomized
 public import CslibFrontier.Computability.Circuit.Fusion.Cyclic.Compiler
 public import CslibFrontier.Crypto.Computational.OneTimeSignature.ContainmentFree
+public import CslibFrontier.Algorithms.LinearAlgebra.ImpulseCertificate
 public import CslibFrontier.Crypto.Protocols.MPC.Yao.PlainDDHOT.Games
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Callable
 public import CslibFrontier.Computability.Complexity.Classes.ValiantVazirani.Collapse
@@ -8999,6 +9000,7 @@ public import CslibFrontier.Crypto.Protocols.FRI.Soundness.SymbolEncoding
 public import CslibFrontier.Foundations.LinearAlgebra.Tensor.Round
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Wanted.ScatterWrite
 public import CslibFrontier.Foundations.Probability.Gaussian.Borell
+public import CslibFrontier.Foundations.Analysis.ODE.ImpulseBounds
 public import CslibFrontier.Languages.Probabilistic.Oracle.Tabulate
 public import CslibFrontier.DataStructure.FenwickTree.Basic
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.BlockComputation.GateReplyCorrect
