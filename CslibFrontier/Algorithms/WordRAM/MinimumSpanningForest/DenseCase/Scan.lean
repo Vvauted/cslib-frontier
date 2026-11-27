@@ -19,10 +19,11 @@ import Mathlib.Tactic.Ring
 /-!
 # Bounded-Heap DJP Tree Growth and Sparse Heap Reset (`ftRunTree`)
 
-Implements and verifies bounded-heap DJP tree growth (`ftRunTree`), integrating CSR vertex scans
-(`DenseCase/ScanOps`), thresholded min-edge extraction, sparse `O(touchedLen + 1)` Fibonacci heap
-reset via `FibonacciHeap.Native.Reset.resetProg`, supervertex assignment, and amortized vertex
-potential accounting.
+Implements and verifies bounded-heap DJP tree growth (`ftRunTree`) for a single phase of
+`[FredmanTarjan1987]` (§3) / `[PettieRamachandran2002]` (§3.4 `DenseCase`) toward `#8624`,
+integrating CSR vertex scans (`DenseCase/ScanOps`), thresholded min-edge extraction, sparse
+`O(touchedLen + 1)` Fibonacci heap reset via `FibonacciHeap.Native.Reset.resetProg`, supervertex
+assignment, and amortized vertex potential accounting.
 
 ## Main definitions
 

@@ -21,7 +21,9 @@ import Mathlib.Tactic.Ring
 # Bounded-Heap DJP Scan Operations, Threshold Computation, and Extraction Primitives
 
 Implements the pure-register heap-threshold routine `computeThreshProg`, the CSR adjacency scan
-subroutine `ftScanVertex`, and the cut/invariant building blocks used by `DenseCase/Scan`.
+subroutine `ftScanVertex`, and the cut/invariant building blocks used by `DenseCase/Scan` for a
+single bounded-heap contraction phase of `[FredmanTarjan1987]` (§3) / `[PettieRamachandran2002]`
+(§3.4 `DenseCase`) toward `#8624`.
 
 ## Main definitions
 
@@ -80,24 +82,6 @@ def computeThreshProg (n mRef : ℕ) : Memory.Prog ℕ :=
 /-- Native safety domain for `computeThreshProg`. -/
 def computeThreshProgSafe (w : ℕ) (d : ℕ × ℕ) (_ : Memory.State) : Prop :=
   Fits w (2 * d.2 + 1) ∧ Fits w (2 * d.1) ∧ 1 ≤ d.1
-
-private theorem computeThresh_iter_safe {w n mRef : ℕ} {s : Memory.State}
-    (h : computeThreshProgSafe w (n, mRef) s) :
-    let sh := (2 * mRef) / n
-    let steps := if n < sh then n else sh
-    iterationSafe threshStep threshStepSafe w n steps 1 s := by
-  rcases h with ⟨_, h2n, hn1⟩
-  let sh := (2 * mRef) / n
-  let steps := if n < sh then n else sh
-  refine iterationSafe_of_stepInv threshStep threshStepSafe w n
-    (fun _ k t => k ≤ n ∧ t = s) ?_ ⟨hn1, rfl⟩
-  intro _ k t ⟨hk, ht⟩
-  refine ⟨⟨h2n, hk, hn1⟩, ?_⟩
-  dsimp only [threshStep]
-  rw [prog_clientResult_ite, prog_clientState_ite]
-  split_ifs <;> simp only [StateTransitionSpec.clientResult_pure]
-  · exact ⟨le_rfl, ht⟩
-  · exact ⟨by omega, ht⟩
 
 private theorem computeThresh_realize_iterSafe {w : ℕ} {d : ℕ × ℕ} {steps : ℕ} {s : Memory.State}
     (h : computeThreshProgSafe w d s) :

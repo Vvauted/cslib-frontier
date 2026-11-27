@@ -17,8 +17,9 @@ import Mathlib.Algebra.BigOperators.Fin
 # Fredman–Tarjan Bounded-Heap Phase Layout, Workspace Invariants, and Cut/Shrinkage Lemmas
 
 Defines the word-encoded records, static workspace layout, DJP cut/phase invariants, amortized
-vertex potentials, and graph-level cut/shrinkage lemmas reused across `DenseCase/ScanOps`,
-`DenseCase/Scan`, and `DenseCase/Phase`.
+vertex potentials, and graph-level cut/shrinkage lemmas for a single bounded-heap contraction phase
+of `[FredmanTarjan1987]` (§3) / `[PettieRamachandran2002]` (§3.4 `DenseCase`) toward `#8624`,
+reused across `DenseCase/ScanOps`, `DenseCase/Scan`, and `DenseCase/Phase`.
 
 ## Main definitions
 
@@ -33,10 +34,9 @@ vertex potentials, and graph-level cut/shrinkage lemmas reused across `DenseCase
 
 * `MinimumSpanningForest.DenseCase.exists_extend_isMinSpanningForest_cutStep`:
   extending an MSF witness across a valid cut step.
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.nonisolated_le_two_mul_edges`
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.exists_cut_witness_of_nonisolated`
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.surviving_vertices_mul_thresh_le`
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.phasePot_zero_le`
+* `MinimumSpanningForest.DenseCase.exists_cut_witness_of_nonisolated`
+* `MinimumSpanningForest.DenseCase.surviving_vertices_mul_thresh_le`
+* `MinimumSpanningForest.DenseCase.phasePot_zero_le`
 -/
 
 public section
@@ -161,7 +161,7 @@ word_enc_structure encFTPhaseArgs : FTPhaseArgs where
 
 instance : WordEncoding FTPhaseArgs := ⟨8, encFTPhaseArgs⟩
 
-/-- Output bundle returned by `ftPhaseBody` and `ftPhaseProg`. -/
+/-- Output bundle returned by `ftPhaseProg`. -/
 structure FTPhaseOut where
   /-- Number of supervertices (components) produced by the phase. -/
   nComp : ℕ
@@ -206,24 +206,11 @@ theorem framed_preserved {w n K base : ℕ} {hn : Fits w n} {hK : Fits w K} {s s
 
 /-! ## List, Edge-Partition, and MSF Cut-Step Lemmas -/
 
-private theorem nodup_subperm_of_subset {α : Type*} {xs ys : List α}
-    (hnd : xs.Nodup) (hsub : ∀ x ∈ xs, x ∈ ys) : xs.Subperm ys := by
-  classical
-  induction xs generalizing ys with
-  | nil => exact List.nil_subperm
-  | cons x xs ih =>
-    rw [List.nodup_cons] at hnd
-    have hx_ys : x ∈ ys := hsub x List.mem_cons_self
-    have hrec := ih hnd.2 fun y hy =>
-      (List.mem_erase_of_ne (by rintro rfl; exact hnd.1 hy)).mpr
-        (hsub y (List.mem_cons_of_mem x hy))
-    exact List.cons_subperm_iff_subperm_erase.mpr ⟨hx_ys, hrec⟩
-
 /-- Any duplicate-free list of indices into `es` yields a subpermutation of `es`. -/
 theorem selIdxs_subperm_es {n : ℕ} {es : List (IndexedEdge n)} {selIdxs : List (Fin es.length)}
     (hnd : selIdxs.Nodup) : (selIdxs.map fun i => es[i.val]).Subperm es := by
   have h1 : selIdxs.Subperm (List.finRange es.length) :=
-    nodup_subperm_of_subset hnd fun x _ => List.mem_finRange x
+    hnd.subperm fun x _ => List.mem_finRange x
   have h2 := List.subperm_map (fun i : Fin es.length => es[i.val]) h1
   rwa [List.map_getElem_finRange] at h2
 
@@ -234,45 +221,8 @@ theorem edgePartition_append_single_rel {n : ℕ} (L : List (WeightedEdge n ℕ)
       (edgePartition L).rel a b = true ∨
       ((edgePartition L).rel a e.u = true ∧ (edgePartition L).rel e.v b = true) ∨
       ((edgePartition L).rel a e.v = true ∧ (edgePartition L).rel e.u b = true) := by
-  simp only [rel_edgePartition_iff_eqvGen]
-  constructor
-  · intro h
-    induction h with
-    | refl x => exact .inl (.refl x)
-    | symm _ _ _ ih =>
-      rcases ih with h1 | ⟨h1, h2⟩ | ⟨h1, h2⟩
-      · exact .inl (.symm _ _ h1)
-      · exact .inr (.inr ⟨.symm _ _ h2, .symm _ _ h1⟩)
-      · exact .inr (.inl ⟨.symm _ _ h2, .symm _ _ h1⟩)
-    | trans _ _ _ _ _ ih1 ih2 =>
-      rcases ih1 with h1 | ⟨h1a, h1b⟩ | ⟨h1a, h1b⟩ <;>
-        rcases ih2 with h2 | ⟨h2a, h2b⟩ | ⟨h2a, h2b⟩
-      · exact .inl (.trans _ _ _ h1 h2)
-      · exact .inr (.inl ⟨.trans _ _ _ h1 h2a, h2b⟩)
-      · exact .inr (.inr ⟨.trans _ _ _ h1 h2a, h2b⟩)
-      · exact .inr (.inl ⟨h1a, .trans _ _ _ h1b h2⟩)
-      · exact .inr (.inl ⟨h1a, h2b⟩)
-      · exact .inl (.trans _ _ _ h1a h2b)
-      · exact .inr (.inr ⟨h1a, .trans _ _ _ h1b h2⟩)
-      · exact .inl (.trans _ _ _ h1a h2b)
-      · exact .inr (.inr ⟨h1a, h2b⟩)
-    | rel _ _ hxy =>
-      obtain ⟨f, hf, rfl, rfl⟩ := hxy
-      rw [List.mem_append, List.mem_singleton] at hf
-      rcases hf with hfL | rfl
-      · exact .inl (.rel _ _ ⟨f, hfL, rfl, rfl⟩)
-      · exact .inr (.inl ⟨.refl _, .refl _⟩)
-  · intro h
-    have sub_L : ∀ u v : Fin n,
-        Relation.EqvGen (fun x y => ∃ f ∈ L, x = f.u ∧ y = f.v) u v →
-        Relation.EqvGen (fun x y => ∃ f ∈ L ++ [e], x = f.u ∧ y = f.v) u v :=
-      fun _ _ huv => huv.mono fun _ _ ⟨f, hf, h1, h2⟩ => ⟨f, List.mem_append_left _ hf, h1, h2⟩
-    have he_rel : Relation.EqvGen (fun x y => ∃ f ∈ L ++ [e], x = f.u ∧ y = f.v) e.u e.v :=
-      .rel _ _ ⟨e, List.mem_append_right _ (List.mem_singleton.mpr rfl), rfl, rfl⟩
-    rcases h with h1 | ⟨h1, h2⟩ | ⟨h1, h2⟩
-    · exact sub_L _ _ h1
-    · exact .trans _ _ _ (sub_L _ _ h1) (.trans _ _ _ he_rel (sub_L _ _ h2))
-    · exact .trans _ _ _ (sub_L _ _ h1) (.trans _ _ _ (.symm _ _ he_rel) (sub_L _ _ h2))
+  simp only [edgePartition, edgePartitionFrom_append, edgePartitionFrom_cons,
+    edgePartitionFrom_nil, DisjointSet.Partition.rel_merge_eq_true]
 
 /-- Cut-step extension for Fredman–Tarjan MSF construction: adding a lightest crossing edge out
 of a current tree component `A` preserves subpermutation, acyclicity, and MSF extendability. -/
@@ -380,28 +330,6 @@ private theorem holdsUndirCSR_sum_deg {n offBase adjBase : ℕ} {es : List (Inde
   have h1 := hgen n le_rfl
   rw [hcsr.off_zero, hcsr.off_end, Nat.sub_zero] at h1
   exact h1
-
-/-- If every vertex in `Fin n` is incident to at least one edge of `es`,
-then `n ≤ 2 * es.length`. -/
-theorem nonisolated_le_two_mul_edges {n : ℕ} {es : List (IndexedEdge n)}
-    (hnoniso : ∀ y : Fin n, ∃ e ∈ es, e.u = y ∨ e.v = y) : n ≤ 2 * es.length := by
-  classical
-  have hchoose : ∀ y : Fin n, ∃ p : Fin es.length × Bool,
-      (if p.2 then es[p.1.val].u else es[p.1.val].v) = y := by
-    intro y
-    obtain ⟨e, he, hinc⟩ := hnoniso y
-    obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp he
-    rcases hinc with rfl | rfl
-    · exact ⟨(⟨i, hi⟩, true), rfl⟩
-    · exact ⟨(⟨i, hi⟩, false), rfl⟩
-  choose f hf using hchoose
-  have hinj : Function.Injective f := fun a b hab => by
-    have ha := hf a
-    have hb := hf b
-    rw [hab] at ha
-    exact ha.symm.trans hb
-  have hcard := Fintype.card_le_of_injective f hinj
-  simpa only [Fintype.card_fin, Fintype.card_prod, Fintype.card_bool, mul_comm] using hcard
 
 /-- Extracts a large-neighborhood cut witness for any surviving non-isolated supervertex `lift y`
 using loop-freeness of `esDedup` and the Fredman–Tarjan degree alternative `hdeg`. -/
@@ -668,8 +596,6 @@ structure FTStatic (w n K mRef selLen0 : ℕ) (ctx : FTCtx)
   hcsr : HoldsUndirCSR ctx.offBase ctx.adjBase es s.mem
   /-- All edge weights are bounded by `K`. -/
   hKes : ∀ e ∈ es, e.weight ≤ K
-  /-- Heap size threshold is at least `1`. -/
-  threshPos : 1 ≤ ctx.thresh
   /-- Heap size threshold does not exceed `2 ^ ((2 * mRef) / n)`. -/
   threshLe : ctx.thresh ≤ 2 ^ ((2 * mRef) / n)
 
@@ -714,7 +640,6 @@ theorem FTStatic.of_step {w n K mRef selLen0 : ℕ} {ctx : FTCtx}
     hcsr := hs.hcsr.congr (fun a h1 h2 => hmem_ro a (.inr (.inl ⟨h1, h2⟩)))
       (fun a h1 h2 => hmem_ro a (.inr (.inr ⟨h1, h2⟩)))
     hKes := hs.hKes
-    threshPos := hs.threshPos
     threshLe := hs.threshLe }
 
 /-- Transports `FTStatic` across a step modifying only `footprint n ctx.fhBase`,

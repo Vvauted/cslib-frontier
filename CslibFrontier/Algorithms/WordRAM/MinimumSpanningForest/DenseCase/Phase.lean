@@ -19,8 +19,23 @@ import Mathlib.Tactic.Ring
 /-!
 # Fredman–Tarjan Bounded-Heap Phase Driver and Phase-Rank Decrease
 
-Implements and verifies one Fredman–Tarjan 1987 bounded-heap contraction phase atop
-`DenseCase/Scan`, including the `Nat.iterClogBeta` phase-rank decrease theorem.
+Implements and verifies a single bounded-heap contraction phase step (`ftPhaseProg`) and its
+`Nat.iterClogBeta` phase-rank decrease (`ftPhase_rank_lt_of_shrink`) atop `DenseCase/Scan`,
+formalizing the inner phase of `[FredmanTarjan1987]` (Section 3, "Minimum Spanning Trees",
+pp. 605–607) as structured for `[PettieRamachandran2002]` (Section 3.4, `DenseCase`) toward
+issue `#8624`.
+
+## Source Mapping and Single-Phase Scope
+
+* **Single-phase scope (`#8624`)**: `ftPhaseProg` implements one bounded-heap contraction phase
+  from a caller-supplied `HoldsIndexedEdges` and `HoldsUndirCSR` layout; inter-phase contraction,
+  deduplication, isolated-vertex compaction, and the full multi-phase `O(m β(m, n))` `DenseCase`
+  driver compose with `GraphOps.{Components, Dedup}` in follow-up modules under `#8624`.
+* **Parameters, model, and multigraphs**: `mRef` supplies the outer reference edge count with
+  word-safe clamped heap-size threshold `min n (2 ^ ((2 * mRef) / n))` (`memoryCost` bounded by
+  `234 * es.length + 156 * n + 184 * mRef + 7` and uniform `Program .standard` register work at
+  most `(2 * mRef) / n + 2`), and `es : List (IndexedEdge n)` admits disconnected multigraphs
+  with self-loops, parallel edges, and duplicate `ℕ` weights.
 
 ## Main definitions
 
@@ -39,6 +54,14 @@ Implements and verifies one Fredman–Tarjan 1987 bounded-heap contraction phase
   framing, and `memoryCost ≤ 234 * es.length + 156 * n + 184 * mRef + 7`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.ftPhase_rank_lt_of_shrink`: strict
   phase-rank drop across surviving non-isolated supervertices.
+
+## References
+
+* `[FredmanTarjan1987]`: Michael L. Fredman and Robert Endre Tarjan, "Fibonacci Heaps and Their Uses
+  in Improved Network Optimization Algorithms", *JACM* 34(3), 1987, Section 3 ("Minimum Spanning
+  Trees"), pp. 605–607.
+* `[PettieRamachandran2002]`: Seth Pettie and Vijaya Ramachandran, "An Optimal Minimum Spanning
+  Tree Algorithm", *JACM* 49(1), 2002, Section 3.4 (`DenseCase`).
 -/
 
 public section
@@ -179,8 +202,8 @@ private theorem realizes_ftPhaseBody : Realizes .exact
 
 /-! ## Public Phase Program and Realization -/
 
-/-- Allocates heap and scratch space, computes `K_p`, and executes `ftPhaseBody` for `args`,
-returning `FTPhaseOut` (`nComp`, `compBase`, `selLen'`). -/
+/-- Allocates heap and scratch space, computes `K_p`, and runs the bounded-heap contraction
+phase for `args`, returning `FTPhaseOut` (`nComp`, `compBase`, `selLen'`). -/
 def ftPhaseProg (args : FTPhaseArgs) : Memory.Prog FTPhaseOut := do
   let fhBase ← allocProg args.n
   let auxBase ← Memory.alloc (5 * args.n)
@@ -744,13 +767,11 @@ graph `es`, producing `FTPhaseOut` (`nComp`, `compBase`, `selLen'`) with `1 ≤ 
 selected edges extending to a minimum spanning forest of `es`, supervertex map `comp`, and
 Fredman–Tarjan degree/closed-component witness, in memory cost
 `≤ 234 * es.length + 156 * n + 184 * mRef + 7`. -/
-theorem ftPhaseProg_spec {w n K mRef : ℕ} {es : List (IndexedEdge n)}
+theorem ftPhaseProg_spec {w n mRef : ℕ} {es : List (IndexedEdge n)}
     {edgeBase offBase adjBase selBufBase selLen0 : ℕ} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
     (hn1 : 1 ≤ n)
-    (hK_es : ∀ e ∈ es, e.weight ≤ K) (hK : Fits w K)
-    (hfit_2m : Fits w (2 * es.length + 1)) (hfit_mRef : Fits w (2 * mRef + 1))
-    (hfit_sel : Fits w (selLen0 + n + 1))
+    (hfit_mRef : Fits w (2 * mRef + 1))
     (hfit_fr : Fits w (s.frontier + (14 * n + 5)))
     (hoff_fr : offBase + n + 1 ≤ s.frontier)
     (hadj_fr : adjBase + 4 * es.length ≤ s.frontier)
@@ -797,6 +818,39 @@ theorem ftPhaseProg_spec {w n K mRef : ℕ} {es : List (IndexedEdge n)}
           min n (2 ^ ((2 * mRef) / n)) + 1 ≤ Z.card ∧
           ∀ z ∈ Z, z ∉ A ∧ ∃ e ∈ es, (e.u ∈ A ∧ e.v = z) ∨ (e.v ∈ A ∧ e.u = z))) ∧
     memoryCost prog s ≤ 234 * es.length + 156 * n + 184 * mRef + 7 := by
+  let K : ℕ := (es.map IndexedEdge.weight).foldr max 0
+  have hK_es : ∀ e ∈ es, e.weight ≤ K := by
+    intro e he
+    suffices h : ∀ l : List ℕ, ∀ w ∈ l, w ≤ l.foldr max 0 from
+      h (es.map IndexedEdge.weight) e.weight (List.mem_map.mpr ⟨e, he, rfl⟩)
+    intro l x hx
+    induction l with
+    | nil => simp at hx
+    | cons a t ih =>
+      simp only [List.foldr_cons, List.mem_cons] at hx ⊢
+      rcases hx with rfl | hx
+      · exact le_max_left _ _
+      · exact (ih hx).trans (le_max_right _ _)
+  have hK : Fits w K := by
+    suffices h : ∀ l : List ℕ, (∀ x ∈ l, Fits w x) → Fits w (l.foldr max 0) by
+      refine h (es.map IndexedEdge.weight) fun x hx => ?_
+      obtain ⟨e, he, rfl⟩ := List.mem_map.mp hx
+      obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp he
+      rw [← (hin i hi).2.2.1]
+      exact hwf.mem_fits _
+    intro l hl
+    induction l with
+    | nil => exact h16.of_le (by simp)
+    | cons a t ih =>
+      simp only [List.foldr_cons, Nat.max_def]
+      split_ifs with hle
+      · exact ih fun y hy => hl y (List.mem_cons_of_mem _ hy)
+      · exact hl a List.mem_cons_self
+  have hfit_2m : Fits w (2 * es.length + 1) := by
+    by_cases hm0 : es.length = 0
+    · rw [hm0]; exact h16.of_le (by omega)
+    · exact hwf.frontier_fits.of_le (by omega)
+  have hfit_sel : Fits w (selLen0 + n + 1) := hfit_fr.of_le (by omega)
   have hn : Fits w n := hfit_fr.of_le (by omega)
   have hfh := allocProg_spec hwf hn hK (hfit_fr.of_le (by omega))
   dsimp only at hfh
@@ -824,7 +878,7 @@ theorem ftPhaseProg_spec {w n K mRef : ℕ} {es : List (IndexedEdge n)}
   dsimp only at hct
   set thresh := (Memory.spec 0).clientResult s₂ (computeThreshProg n mRef)
   set s₃ := (Memory.spec 0).clientState s₂ (computeThreshProg n mRef)
-  rcases hct with ⟨hsafe_ct, hv₃, hs3_eq, hthresh_eq, hthresh_pos, hthresh_le_n, hc_ct⟩
+  rcases hct with ⟨hsafe_ct, hv₃, hs3_eq, hthresh_eq, _, hthresh_le_n, hc_ct⟩
   let ctx : FTCtx := ⟨n, es.length, edgeBase, offBase, adjBase, fhBase, s₁.frontier,
     selBufBase, thresh⟩
   have hs_ctx : FTStatic w n K mRef selLen0 ctx es s₂ :=
@@ -865,7 +919,6 @@ theorem ftPhaseProg_spec {w n K mRef : ℕ} {es : List (IndexedEdge n)}
           dsimp only [ctx] at ha1 ha2
           exact (hmod₂ a (by rw [hfr₁]; omega)).trans (hmod₁ a (by omega)))
       hKes := hK_es
-      threshPos := hthresh_pos
       threshLe := by dsimp only [ctx]; rw [hthresh_eq]; exact min_le_right _ _ }
   have hbody := ftPhaseBody_spec hs_ctx hwf₂ hn1 hinv₂ (habs₂.trans hemp₁) (hpot₂.trans hpot₁)
   dsimp only at hbody

@@ -9,6 +9,8 @@ module
 
 public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.Phase
 public import CslibFrontier.Computability.WordRAM.Realization.Program.Standard
+import CslibFrontier.Tactic.Fits
+import CslibFrontier.Tactic.Realize
 import Mathlib.Tactic.FinCases
 
 /-!
@@ -17,13 +19,16 @@ import Mathlib.Tactic.FinCases
 Exercises:
 1. `computeThreshProg`: boundary (`n = 1, mRef = 0`), clamped (`n = 3, mRef = 10`), and unclamped
    (`n = 10, mRef = 5`) pure-register threshold evaluations with `memoryCost = 0`.
-2. `ftPhaseProg` (`ftPhaseProg_spec`): 1-vertex empty graph and 3-vertex weighted triangle
-   multigraph with explicit `HoldsIndexedEdges` and `HoldsUndirCSR` layouts.
+2. `ftPhaseProg` (`ftPhaseProg_spec`): 1-vertex empty graph and 3-vertex weighted simple triangle
+   with explicit `HoldsIndexedEdges` and `HoldsUndirCSR` layouts, plus width-blind
+   `Program .standard` lowering via `realizes_ftPhaseProg`.
 3. `ftRunTree` (`ftRunTree_spec`): 2-vertex single-edge tree growth, sparse Fibonacci heap reset,
    `FTPhaseInv` advancement, and amortized potential accounting.
 4. `ftPhaseRank` and `ftPhase_rank_lt_of_shrink`: concrete 10-vertex bipartite contraction proving
    strict phase-rank decrease, plus `nCur = 0` boundary.
-5. Width-blind `Program .standard` lowering via `realizes_ftPhaseProg`.
+5. `csrAndPhaseProg`: `buildUndirCSR >>= ftPhaseProg` `realize` composition over a multigraph with
+   a self-loop, parallel edges (`decreaseKey` and skip paths), duplicate weights, isolated vertex,
+   and bounded-heap overflow (`ctx.thresh = 1 < sz`).
 -/
 
 public section
@@ -89,10 +94,9 @@ private theorem oneVert_spec_facts :
   have hcsr : HoldsUndirCSR (n := 1) 8 10 [] s.mem := by
     refine ⟨rfl, fun u => by fin_cases u; decide, by decide, fun u => ?_⟩
     fin_cases u; decide
-  have hsp := ftPhaseProg_spec (w := 16) (n := 1) (K := 0) (mRef := 2) (es := [])
+  have hsp := ftPhaseProg_spec (w := 16) (n := 1) (mRef := 2) (es := [])
     (edgeBase := 10) (offBase := 8) (adjBase := 10) (selBufBase := 10) (selLen0 := 0) (s := s)
-    (by decide) hwf (by decide) (fun _ h => by simp at h) (by decide)
-    (by decide) (by decide) (by decide) (by decide)
+    (by decide) hwf (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide)
     (.inr (by decide)) (.inr (by decide)) (.inr (by decide)) hin hcsr
   dsimp only at hsp
@@ -165,7 +169,7 @@ theorem exists_standard_ftPhaseProg_oneVertex_halts :
 
 /-! ## 3. Concrete 3-vertex weighted triangle phase test -/
 
-/-- Three-vertex weighted triangle `[(0, 1, 2, 10), (1, 2, 3, 11), (0, 2, 5, 12)]`. -/
+/-- Three-vertex weighted simple triangle `[(0, 1, 2, 10), (1, 2, 3, 11), (0, 2, 5, 12)]`. -/
 @[expose] def triEs : List (IndexedEdge 3) :=
   [⟨0, 1, 2, 10⟩, ⟨1, 2, 3, 11⟩, ⟨0, 2, 5, 12⟩]
 
@@ -180,8 +184,8 @@ theorem exists_standard_ftPhaseProg_oneVertex_halts :
     1, 0, 2, 2,  0, 0, 2, 1,  0, 2, 1, 1,
     0, 0, 0 ]
 
-/-- `ftPhaseProg` produces an acyclic, MSF-extending contraction on the 3-vertex triangle within
-cost `≤ 234 * 3 + 156 * 3 + 184 * 3 + 7`. -/
+/-- `ftPhaseProg` produces an acyclic, MSF-extending contraction on the 3-vertex simple triangle
+within cost `≤ 234 * 3 + 156 * 3 + 184 * 3 + 7`. -/
 theorem ftPhaseProg_triangle_spec :
     let s := Memory.State.init triWords
     let args : FTPhaseArgs := ⟨3, 3, 3, 1, 13, 17, 29, 0⟩
@@ -211,13 +215,9 @@ theorem ftPhaseProg_triangle_spec :
   have hcsr : HoldsUndirCSR 13 17 triEs s.mem := by
     refine ⟨rfl, fun u => by fin_cases u <;> decide, by decide, fun u => ?_⟩
     fin_cases u <;> decide
-  have hsp := ftPhaseProg_spec (w := 16) (n := 3) (K := 5) (mRef := 3) (es := triEs)
+  have hsp := ftPhaseProg_spec (w := 16) (n := 3) (mRef := 3) (es := triEs)
     (edgeBase := 1) (offBase := 13) (adjBase := 17) (selBufBase := 29) (selLen0 := 0) (s := s)
-    (by decide) hwf (by decide)
-    (fun e he => by
-      simp only [triEs, List.mem_cons, List.not_mem_nil, or_false] at he
-      rcases he with rfl | rfl | rfl <;> decide)
-    (by decide) (by decide) (by decide) (by decide) (by decide)
+    (by decide) hwf (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide)
     (.inr (by decide)) (.inr (by decide)) (.inr (by decide)) hin hcsr
   dsimp only at hsp
@@ -343,7 +343,6 @@ theorem ftRunTree_twoVertex_spec :
       hin := hin0
       hcsr := hcsr0
       hKes := fun e he => by simp only [twoVertEs, List.mem_singleton] at he; subst he; decide
-      threshPos := by decide
       threshLe := by decide }
   have hvis0 : visitedSet 36 2 0 s0.mem = ∅ := by
     ext v; simp only [mem_visitedSet, Finset.notMem_empty, iff_false]; omega
@@ -428,5 +427,174 @@ theorem ftPhaseRank_shrink_and_zero :
     Function.injective_id (by simp only [esDedup]; rfl)
     (fun y => ⟨⟨0, 1, 1, 0⟩, by simp [esDedup], by fin_cases y <;> simp⟩)).2
   exact ⟨hzero, hlt⟩
+
+/-! ## 6. Multigraph and bounded-heap overflow pipeline test (`buildUndirCSR >>= ftPhaseProg`) -/
+
+/-- Four-vertex, six-edge multigraph with self-loop `(0, 0, 1)`, parallel edges `(0, 1, 6)`,
+`(0, 1, 2)`, `(0, 1, 9)`, equal-weight cross edge `(0, 2, 2)`, triangle edge `(2, 1, 4)`,
+and isolated vertex `3`. With `mRef = 1`, `thresh = min 4 (2 ^ (2 / 4)) = 1`, triggering
+bounded-heap overflow (`ctx.thresh < sz`) during `ftPhaseProg`. -/
+@[expose] def multiOverflowEs : List (IndexedEdge 4) :=
+  [⟨0, 0, 1, 10⟩, ⟨0, 1, 6, 11⟩, ⟨0, 1, 2, 12⟩, ⟨0, 1, 9, 13⟩, ⟨0, 2, 2, 14⟩, ⟨2, 1, 4, 15⟩]
+
+/-- Memory table for `multiOverflowEs` under `Memory.State.init` (`frontier = 29`):
+* `[1..25)`: stride-4 `IndexedEdge` entries at `edgeBase = 1`,
+* `[25..29)`: reserved `selBufBase = 25` (`4` words). -/
+@[expose] def multiOverflowWords : List ℕ :=
+  [ 0, 0, 1, 10,  0, 1, 6, 11,  0, 1, 2, 12,  0, 1, 9, 13,  0, 2, 2, 14,  2, 1, 4, 15,
+    0, 0, 0, 0 ]
+
+private structure CSRPhaseArgs where
+  g : GraphSlice
+  mRef : ℕ
+  selBufBase : ℕ
+  selLen : ℕ
+
+private word_enc_structure encCSRPhaseArgs : CSRPhaseArgs where
+  g : (WordEncoding.encode (α := GraphSlice)),
+  mRef : wordWords,
+  selBufBase : wordWords,
+  selLen : wordWords
+
+private instance : WordEncoding CSRPhaseArgs := ⟨6, encCSRPhaseArgs⟩
+
+private def csrAndPhaseProg (d : CSRPhaseArgs) : Memory.Prog FTPhaseOut := do
+  let csr ← buildUndirCSR d.g
+  ftPhaseProg ⟨d.g.numVertices, d.g.numEdges, d.mRef, d.g.edgeBase,
+    csr.offBase, csr.adjBase, d.selBufBase, d.selLen⟩
+
+private def csrAndPhaseProgSafe (w : ℕ) (d : CSRPhaseArgs) (s : Memory.State) : Prop :=
+  let g := d.g
+  let s₁ := (Memory.spec 0).clientState s (buildUndirCSR g)
+  let csr := (Memory.spec 0).clientResult s (buildUndirCSR g)
+  Fits w 16 ∧ g.edgeBase + 4 * g.numEdges ≤ s.frontier ∧
+    Fits w (s.frontier + (2 * g.numVertices + 4 * g.numEdges + 1)) ∧
+    (∀ j < g.numEdges,
+      s.mem (g.edgeBase + 4 * j) < g.numVertices ∧
+      s.mem (g.edgeBase + 4 * j + 1) < g.numVertices) ∧
+    ftPhaseProgSafe w ⟨g.numVertices, g.numEdges, d.mRef, g.edgeBase,
+      csr.offBase, csr.adjBase, d.selBufBase, d.selLen⟩ s₁
+
+private theorem realizes_csrAndPhaseProg : Realizes .exact
+    csrAndPhaseProg WordEncoding.encode WordEncoding.encode csrAndPhaseProgSafe
+    (fun d _ => (2 * d.mRef) / d.g.numVertices + 2) := by
+  unfold csrAndPhaseProg
+  realize [realizes_buildUndirCSR, realizes_ftPhaseProg]
+  all_goals
+    rcases h with ⟨h16, h1, h2, h3, h4⟩
+    first | exact h16 | exact h1 | exact h2 | exact h3 | exact h4
+
+/-- Composing `buildUndirCSR` and `ftPhaseProg` on `multiOverflowEs` (`mRef = 1`, `thresh = 1`)
+verifies `Realizes .exact`, multigraph self-loop/parallel-edge handling, bounded-heap overflow
+split (`2 ≤ res.nComp ≤ 4`), and MSF-extendable contraction. -/
+private theorem ftPhaseProg_multigraph_overflow_spec :
+    let s := Memory.State.init multiOverflowWords
+    let args : CSRPhaseArgs := ⟨⟨4, 6, 1⟩, 1, 25, 0⟩
+    let prog := csrAndPhaseProg args
+    let res := (Memory.spec 0).clientResult s prog
+    let s' := (Memory.spec 0).clientState s prog
+    csrAndPhaseProgSafe 16 args s ∧
+    (Memory.spec 16).ValidHistory s ((Memory.spec 16).clientHistory s prog) ∧
+    s'.frontier = 123 ∧
+    2 ≤ res.nComp ∧ res.nComp ≤ 4 ∧
+    (∃ (selEs : List (IndexedEdge 4)),
+      selEs.Subperm multiOverflowEs ∧
+      res.selLen = selEs.length ∧
+      selEs.length + res.nComp = 4 ∧
+      IsAcyclic (selEs.map IndexedEdge.toWeighted) ∧
+      ∃ F_ext : List (WeightedEdge 4 ℕ),
+        IsMinSpanningForest (multiOverflowEs.map IndexedEdge.toWeighted)
+          (selEs.map IndexedEdge.toWeighted ++ F_ext)) ∧
+    memoryCost prog s ≤ 2841 := by
+  let s := Memory.State.init multiOverflowWords
+  have hwf : Memory.WellFormed 16 s := Memory.wellFormed_init (by decide) (by decide)
+  have hin : HoldsIndexedEdges 1 multiOverflowEs s.mem := fun i hi => by
+    simp only [multiOverflowEs, List.length_cons, List.length_nil] at hi
+    rcases (by omega : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 ∨ i = 4 ∨ i = 5) with
+      rfl | rfl | rfl | rfl | rfl | rfl <;> exact ⟨rfl, rfl, rfl, rfl⟩
+  have hcsr_ft := buildUndirCSR_spec (w := 16) (n := 4) (edgeBase := 1) (es := multiOverflowEs)
+    (s := s) (by decide) hwf hin (by decide) (by decide)
+  have hmlen : multiOverflowEs.length = 6 := rfl
+  rw [hmlen] at hcsr_ft
+  obtain ⟨hv₁, hc₁, hmod₁, hoff₁, hadj₁, hfr₁, hwf₁, hcsr₁⟩ :=
+    framedTriple_iff_realization.mp hcsr_ft
+  set csr := (Memory.spec 0).clientResult s (buildUndirCSR ⟨4, 6, 1⟩)
+  set s₁ := (Memory.spec 0).clientState s (buildUndirCSR ⟨4, 6, 1⟩)
+  have hfr₁' : s₁.frontier = 62 := by
+    rw [hfr₁]; decide
+  have hin₁ : HoldsIndexedEdges 1 multiOverflowEs s₁.mem :=
+    hin.congr fun a _ ha => hmod₁.mem_eq_of_not_mem (by omega) (Set.notMem_empty a)
+  have hph_ft := ftPhaseProg_spec (w := 16) (n := 4) (mRef := 1) (es := multiOverflowEs)
+    (edgeBase := 1) (offBase := csr.offBase) (adjBase := csr.adjBase)
+    (selBufBase := 25) (selLen0 := 0) (s := s₁)
+    (by decide) hwf₁ (by decide) (by decide) (by rw [hfr₁']; decide)
+    (by rw [hoff₁, hfr₁']; decide) (by rw [hadj₁, hfr₁']; decide)
+    (by rw [hfr₁']; decide) (by rw [hfr₁']; decide)
+    (.inr (by decide)) (.inl (by rw [hoff₁]; decide)) (.inl (by rw [hadj₁]; decide))
+    hin₁ hcsr₁
+  dsimp only at hph_ft
+  rw [hmlen] at hph_ft
+  rcases hph_ft with ⟨hsafe₂, hv₂, hfr₂, _, _, _, hnc1, hnc_le,
+    ⟨selEs, compFn, hsub, hselLen, hcard, _, hac, hext, _, _, hcomp_rel, _⟩, hc₂⟩
+  let args : CSRPhaseArgs := ⟨⟨4, 6, 1⟩, 1, 25, 0⟩
+  have hprog_eq : csrAndPhaseProg args =
+      (buildUndirCSR ⟨4, 6, 1⟩ >>= fun csrR =>
+        ftPhaseProg ⟨4, 6, 1, 1, csrR.offBase, csrR.adjBase, 25, 0⟩) := rfl
+  have hst_all : (Memory.spec 0).clientState s (csrAndPhaseProg args) =
+      (Memory.spec 0).clientState s₁
+        (ftPhaseProg ⟨4, 6, 1, 1, csr.offBase, csr.adjBase, 25, 0⟩) := by
+    rw [hprog_eq, StateTransitionSpec.clientState_bind]
+  have hres_all : (Memory.spec 0).clientResult s (csrAndPhaseProg args) =
+      (Memory.spec 0).clientResult s₁
+        (ftPhaseProg ⟨4, 6, 1, 1, csr.offBase, csr.adjBase, 25, 0⟩) := by
+    rw [hprog_eq, StateTransitionSpec.clientResult_bind]
+  have hv_all : (Memory.spec 16).ValidHistory s
+      ((Memory.spec 16).clientHistory s (csrAndPhaseProg args)) := by
+    rw [hprog_eq]; exact validHistory_bind_step hv₁ hv₂
+  have hsafe_all : csrAndPhaseProgSafe 16 args s := by
+    refine ⟨by decide, by decide, by decide, fun j hj => ?_, hsafe₂⟩
+    have hj' : j < multiOverflowEs.length := by simpa [args, hmlen] using hj
+    obtain ⟨hu, hv, _, _⟩ := hin j hj'
+    rw [hu, hv]; exact ⟨(multiOverflowEs[j]'hj').u.isLt, (multiOverflowEs[j]'hj').v.isLt⟩
+  have hnot3 : ∀ e ∈ selEs, e.u ≠ (3 : Fin 4) ∧ e.v ≠ (3 : Fin 4) := fun e he => by
+    have hm := hsub.subset he
+    simp only [multiOverflowEs, List.mem_cons, List.not_mem_nil, or_false] at hm
+    rcases hm with rfl | rfl | rfl | rfl | rfl | rfl <;> exact ⟨by decide, by decide⟩
+  have hne_03 : (edgePartition (selEs.map IndexedEdge.toWeighted)).rel 0 3 = false := by
+    by_contra hrel
+    have htrue : (edgePartition (selEs.map IndexedEdge.toWeighted)).rel 0 3 = true := by
+      cases hh : (edgePartition (selEs.map IndexedEdge.toWeighted)).rel 0 3 <;> simp_all
+    rw [rel_edgePartition_iff_eqvGen] at htrue
+    have hfix : ∀ a b : Fin 4,
+        Relation.EqvGen (fun x y => ∃ f ∈ selEs.map IndexedEdge.toWeighted, x = f.u ∧ y = f.v)
+          a b → (a = 3 ↔ b = 3) := fun a b hab => by
+      induction hab with
+      | refl _ => exact Iff.rfl
+      | symm _ _ _ ih => exact ih.symm
+      | trans _ _ _ _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+      | rel _ _ hf =>
+        obtain ⟨f, hf_mem, rfl, rfl⟩ := hf
+        obtain ⟨e, he, rfl⟩ := List.mem_map.mp hf_mem
+        obtain ⟨hu, hv⟩ := hnot3 e he
+        exact ⟨fun h => absurd h hu, fun h => absurd h hv⟩
+    exact absurd ((hfix 0 3 htrue).mpr rfl) (by decide)
+  have hcomp_ne : compFn 0 ≠ compFn 3 := fun heq => by
+    have ht := (hcomp_rel 0 3).mp heq
+    rw [hne_03] at ht; contradiction
+  have hnc2 : 2 ≤ ((Memory.spec 0).clientResult s (csrAndPhaseProg args)).nComp := by
+    rw [hres_all]
+    have h0lt := (compFn 0).isLt
+    have h3lt := (compFn 3).isLt
+    have hval : (compFn 0).val ≠ (compFn 3).val := fun hv => hcomp_ne (Fin.ext hv)
+    omega
+  have hcost_all : memoryCost (csrAndPhaseProg args) s ≤ 2841 := by
+    rw [hprog_eq, memoryCost_bind']
+    change memoryCost (buildUndirCSR ⟨4, 6, 1⟩) s +
+      memoryCost (ftPhaseProg ⟨4, 6, 1, 1, csr.offBase, csr.adjBase, 25, 0⟩) s₁ ≤ 2841
+    omega
+  refine ⟨hsafe_all, hv_all, by rw [hst_all, hfr₂, hfr₁'], hnc2,
+    by rw [hres_all]; exact hnc_le, ⟨selEs, hsub, ?_, ?_, hac, hext⟩, hcost_all⟩
+  · rw [hres_all]; simpa only [Nat.zero_add] using hselLen
+  · rw [hres_all]; exact hcard
 
 end CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.DenseCasePhase
