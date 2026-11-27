@@ -1116,26 +1116,16 @@ theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge 
       (∀ x y : Fin n, conglomFn x = conglomFn y ↔
         (edgePartition (rounds.flatMap fun r => r.tree.treeEdges)).rel x y = true) ∧
       (∀ x : Fin n, ∃ r ∈ rounds, x ∈ r.verts) ∧
+      PartitionRoundMeta maxsize res.compMetaBase res.liftMetaBase rounds s'.mem ∧
       (∀ i : Fin rounds.length,
         let r := rounds[i.val]'i.isLt
-        let v_i := s'.mem (res.compMetaBase + 3 * i.val)
-        let m_i := s'.mem (res.compMetaBase + 3 * i.val + 1)
         let cEdgeBase := s'.mem (res.compMetaBase + 3 * i.val + 2)
         let cLiftBase := s'.mem (res.liftMetaBase + i.val)
-        v_i = r.numVerts ∧ m_i = r.compLocal.length ∧
         cEdgeBase + 4 * r.compLocal.length ≤ s'.frontier ∧
         cLiftBase + r.numVerts ≤ s'.frontier ∧
         (s.frontier ≤ cEdgeBase ∧ s.frontier ≤ cLiftBase) ∧
-        HoldsIndexedEdges cEdgeBase r.compLocal s'.mem ∧
-        (∀ k : Fin r.numVerts, s'.mem (cLiftBase + k.val) = (r.lift k).val) ∧
-        r.verts.card = r.numVerts ∧ 1 ≤ r.numVerts ∧ r.numVerts ≤ maxsize ∧
-        (1 ≤ r.compLocal.length → r.numVerts ≤ 2 * r.compLocal.length) ∧
-        Function.Injective r.lift ∧
-        IsSimple (edgeEnds (r.compLocal.map IndexedEdge.toWeighted)) ∧
-        (∀ e ∈ r.compGlobal, e.u ∈ r.verts ∧ e.v ∈ r.verts) ∧
-        r.tree.treeEdges.Subperm (r.compGlobal.map IndexedEdge.toWeighted) ∧
-        (r.verts ∩ (Finset.univ.filter fun j : Fin rounds.length =>
-          j.val < i.val).biUnion (fun j => (rounds[j.val]'j.isLt).verts)).card ≤ 1) ∧
+        r.verts.card = r.numVerts ∧ 1 ≤ r.numVerts ∧
+        r.tree.treeEdges.Subperm (r.compGlobal.map IndexedEdge.toWeighted)) ∧
       (∀ i : Fin rounds.length,
         maxsize ≤ (rounds[i.val]'i.isLt).verts.card ∨
         (∃ j : Fin rounds.length, j.val < i.val ∧
@@ -1180,8 +1170,11 @@ theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge 
       rfl, rfl, List.nil_subperm, by simp [hes_nil], rfl,
       fun _ hi => by simp at hi, fun _ hi => by simp at hi,
       fun u => Fin.elim0 u, fun y => Fin.elim0 y, fun x => Fin.elim0 x, fun x => Fin.elim0 x,
-      fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i,
-      fun i => Fin.elim0 i, fun i => Fin.elim0 i⟩
+      ⟨fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i,
+        fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i,
+        fun i => Fin.elim0 i, fun i => Fin.elim0 i⟩,
+      fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i,
+      fun i => Fin.elim0 i⟩
   · have hn_pos : 1 ≤ n := Nat.pos_of_ne_zero hn0
     let m := es.length
     have hsetup := partSetup_spec h16 hwf hn_pos hmax_pos hin hin_lt hfit
@@ -1378,26 +1371,16 @@ theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge 
         (∀ x y : Fin n, conglomFn x = conglomFn y ↔
           (edgePartition (rounds.flatMap fun r => r.tree.treeEdges)).rel x y = true) ∧
         (∀ x : Fin n, ∃ r ∈ rounds, x ∈ r.verts) ∧
+        PartitionRoundMeta L.maxsize outRes.compMetaBase outRes.liftMetaBase rounds s₄.mem ∧
         (∀ i : Fin rounds.length,
           let r := rounds[i.val]'i.isLt
-          let v_i := s₄.mem (outRes.compMetaBase + 3 * i.val)
-          let m_i := s₄.mem (outRes.compMetaBase + 3 * i.val + 1)
           let cEdgeBase := s₄.mem (outRes.compMetaBase + 3 * i.val + 2)
           let cLiftBase := s₄.mem (outRes.liftMetaBase + i.val)
-          v_i = r.numVerts ∧ m_i = r.compLocal.length ∧
           cEdgeBase + 4 * r.compLocal.length ≤ s₄.frontier ∧
           cLiftBase + r.numVerts ≤ s₄.frontier ∧
           (s.frontier ≤ cEdgeBase ∧ s.frontier ≤ cLiftBase) ∧
-          HoldsIndexedEdges cEdgeBase r.compLocal s₄.mem ∧
-          (∀ k : Fin r.numVerts, s₄.mem (cLiftBase + k.val) = (r.lift k).val) ∧
-          r.verts.card = r.numVerts ∧ 1 ≤ r.numVerts ∧ r.numVerts ≤ L.maxsize ∧
-          (1 ≤ r.compLocal.length → r.numVerts ≤ 2 * r.compLocal.length) ∧
-          Function.Injective r.lift ∧
-          IsSimple (edgeEnds (r.compLocal.map IndexedEdge.toWeighted)) ∧
-          (∀ e ∈ r.compGlobal, e.u ∈ r.verts ∧ e.v ∈ r.verts) ∧
-          r.tree.treeEdges.Subperm (r.compGlobal.map IndexedEdge.toWeighted) ∧
-          (r.verts ∩ (Finset.univ.filter fun j : Fin rounds.length =>
-            j.val < i.val).biUnion (fun j => (rounds[j.val]'j.isLt).verts)).card ≤ 1) ∧
+          r.verts.card = r.numVerts ∧ 1 ≤ r.numVerts ∧
+          r.tree.treeEdges.Subperm (r.compGlobal.map IndexedEdge.toWeighted)) ∧
         (∀ i : Fin rounds.length,
           L.maxsize ≤ (rounds[i.val]'i.isLt).verts.card ∨
           (∃ j : Fin rounds.length, j.val < i.val ∧
@@ -1442,12 +1425,36 @@ theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge 
         fun u => hconglom_mem u, hconglom_surj,
         fun x y => by rw [← W.htree_w]; exact hconglom_rel x y,
         fun x => (W.hdead_iff x).mp (W.hdead_cov x.val x.isLt),
-        fun i => ?_, fun i => ?_, fun i e he => ?_, W.hstop_prev,
+        ?_, fun i => ?_, fun i => ?_, fun i e he => ?_, W.hstop_prev,
         fun i j hij e he => (W.huncorr_tree i j hij e he).2⟩
+      · have hmeta_s2 : PartitionRoundMeta L.maxsize outRes.compMetaBase outRes.liftMetaBase
+            W.rounds s₂.mem := by
+          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> intro i <;>
+            obtain ⟨hm0, hm1, _, _, hce, hcl, _, _, hp2, hp3, hinj, hsp, hgv, _, hbi⟩ :=
+              W.hmeta i.val i.isLt <;>
+            first | exact hm0 | exact hm1 | exact hce | exact hcl | exact hp2 | exact hp3 |
+              exact hinj | exact hsp | exact hgv | exact hbi
+        refine hmeta_s2.congr (bound := L.bufBase + 14 * n + 10 * L.es.length)
+          (fun a ha => (hs4_agree_buf a (by omega)).trans (hs3_agree_pre a ha)) ?_ ?_
+          fun i => ?_
+        · dsimp only [outRes]
+          have := W.hrounds_len; have := W.hnc_dead; have := hdead_le_n; omega
+        · dsimp only [outRes]
+          have := W.hrounds_len; have := W.hnc_dead; have := hdead_le_n; omega
+        · have hi := i.isLt
+          obtain ⟨_, _, hm2, hm3, _⟩ := W.hmeta i.val hi
+          have hce_sum := list_take_sum_add_le (fun q => q.compLocal.length) W.rounds i.val hi
+          rw [← W.hcEdgeLen] at hce_sum
+          have hfc := Finset.card_le_univ
+            (Finset.univ.filter fun j : Fin L.es.length => W.edgeState0 j.val ≠ 0)
+          rw [Fintype.card_fin] at hfc; have := W.hclaim_card
+          have hcl_sum := list_take_sum_add_le PartitionRoundWitness.numVerts W.rounds i.val hi
+          rw [← W.hcLiftLen] at hcl_sum; have := W.hcl_dead
+          dsimp only [outRes]
+          rw [hm2, hm3]
+          exact ⟨by omega, by omega⟩
       · have hi : i.val < W.rounds.length := i.isLt
-        have hmt := W.hmeta i.val hi
-        rcases hmt with ⟨hm0, hm1, hm2, hm3, hce, hcl, hvc, hp1, hp2, hp3,
-          hinj, hsp, hgv, hts, hbi⟩
+        obtain ⟨_, _, hm2, hm3, _, _, hvc, hp1, _, _, _, _, _, hts, _⟩ := W.hmeta i.val hi
         have hce_sum : ((W.rounds.take i.val).map fun q => q.compLocal.length).sum +
             (W.rounds[i.val]'hi).compLocal.length ≤ L.es.length := by
           have h1 := list_take_sum_add_le (fun q => q.compLocal.length) W.rounds i.val hi
@@ -1464,25 +1471,16 @@ theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge 
         have hmem_s42 : ∀ addr < L.bufBase + 14 * n, s₄.mem addr = s₂.mem addr := fun addr ha =>
           (hs4_agree_buf addr (by omega)).trans (hs3_agree_pre addr (by omega))
         have hi_n : i.val < n := by have := W.hrounds_len; omega
-        have ha_c0 := hmem_s42 (L.bufBase + 6 * n + 3 * i.val) (by omega)
-        have ha_c1 := hmem_s42 (L.bufBase + 6 * n + 3 * i.val + 1) (by omega)
         have ha_c2 := hmem_s42 (L.bufBase + 6 * n + 3 * i.val + 2) (by omega)
         have ha_cl := hmem_s42 (L.bufBase + 9 * n + i.val) (by omega)
         dsimp only [outRes]
-        rw [ha_c0, ha_c1, ha_c2, ha_cl]
+        rw [ha_c2, ha_cl]
         have hs_le_buf : s.frontier ≤ L.bufBase := by
           have := L.hoff_ge; have := L.hoff_adj; have := L.hadj_it
           have := L.hit_nd; have := L.hnd_buf; omega
-        refine ⟨hm0, hm1,
-          by rw [hm2, hs4_fr, hs3_fr, W.hfr]; omega,
+        exact ⟨by rw [hm2, hs4_fr, hs3_fr, W.hfr]; omega,
           by rw [hm3, hs4_fr, hs3_fr, W.hfr]; omega,
-          ⟨by rw [hm2]; omega, by rw [hm3]; omega⟩,
-          ?_, fun k => ?_, hvc, hp1, hp2, hp3, hinj, hsp, hgv, hts, hbi⟩
-        · refine hce.congr fun x hx1 hx2 =>
-            (hs4_agree_buf x (by omega)).trans (hs3_agree_pre x (by omega))
-        · have hk := k.isLt; rw [hm3]
-          exact ((hs4_agree_buf _ (by omega)).trans (hs3_agree_pre _ (by omega))).trans
-            (hm3 ▸ hcl k)
+          ⟨by rw [hm2]; omega, by rw [hm3]; omega⟩, hvc, hp1, hts⟩
       · rcases W.hstop i with h1 | h2 | ⟨h3a, h3b⟩
         · exact .inl h1
         · exact .inr (.inl h2)

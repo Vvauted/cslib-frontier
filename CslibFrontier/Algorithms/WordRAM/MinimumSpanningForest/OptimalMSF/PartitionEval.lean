@@ -46,12 +46,15 @@ Section 5 (pp. 23–24) and Section 5.1 (pp. 25–27, Theorem 5.8 p. 27) of
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.SolveHRemArgs`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.encSolveHRemArgs`: argument bundle and encoding
   for `pr02SolveHRemProg`.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.SolveHRemResult`,
+  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.encSolveHRemResult`: result bundle and encoding
+  for `pr02SolveHRemProg`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.pr02EvalDTLoop`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.pr02EvalDTLoopSafe`: partition-round decision-tree
   evaluation loop and its safety domain.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.pr02SolveHRemProg`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.pr02SolveHRemProgSafe`: remainder-graph MSF
-  subroutine returning a stride-4 `Block` and its safety domain.
+  subroutine returning a `SolveHRemResult` and its safety domain.
 
 ## Main results
 
@@ -129,6 +132,23 @@ word_enc_structure encSolveHRemArgs : SolveHRemArgs where
 
 /-- Registered `WordEncoding` instance for `SolveHRemArgs`. -/
 instance : WordEncoding SolveHRemArgs := ⟨4, encSolveHRemArgs⟩
+
+/-- Output of `pr02SolveHRemProg`: base address and edge count of the lifted stride-4 `H_lift`
+edge array. -/
+structure SolveHRemResult where
+  /-- Base address of the freshly allocated stride-4 lifted `H_lift` edge array. -/
+  edgeBase : ℕ
+  /-- Number of edges in `H_lift`. -/
+  numEdges : ℕ
+  deriving DecidableEq
+
+/-- Faithful 2-word encoding of `SolveHRemResult` as `[edgeBase, numEdges]`. -/
+word_enc_structure encSolveHRemResult : SolveHRemResult where
+  edgeBase : wordWords,
+  numEdges : wordWords
+
+/-- Registered `WordEncoding` instance for `SolveHRemResult`. -/
+instance : WordEncoding SolveHRemResult := ⟨2, encSolveHRemResult⟩
 
 /-! ## Private Helper Records and Combinatorial Lemmas -/
 
@@ -644,23 +664,11 @@ theorem pr02EvalDTLoop_spec {w r0 tableFrontier n m' : ℕ}
     (hmeta_fc : compMetaBase + 3 * rounds.length ≤ fcBase)
     (hlift_fc : liftMetaBase + rounds.length ≤ fcBase)
     (hfc_s : fcBase + 4 * n ≤ s.frontier)
-    (hrounds_meta : ∀ i : Fin rounds.length,
+    (hrounds_meta : PartitionRoundMeta r0 compMetaBase liftMetaBase rounds s.mem)
+    (hrounds_fc : ∀ i : Fin rounds.length,
       let r := rounds[i.val]'i.isLt
-      let cEdgeBase := s.mem (compMetaBase + 3 * i.val + 2)
-      let cLiftBase := s.mem (liftMetaBase + i.val)
-      s.mem (compMetaBase + 3 * i.val) = r.numVerts ∧
-      s.mem (compMetaBase + 3 * i.val + 1) = r.compLocal.length ∧
-      cEdgeBase + 4 * r.compLocal.length ≤ fcBase ∧
-      cLiftBase + r.numVerts ≤ fcBase ∧
-      HoldsIndexedEdges cEdgeBase r.compLocal s.mem ∧
-      (∀ k : Fin r.numVerts, s.mem (cLiftBase + k.val) = (r.lift k).val) ∧
-      r.numVerts ≤ r0 ∧
-      (1 ≤ r.compLocal.length → r.numVerts ≤ 2 * r.compLocal.length) ∧
-      Function.Injective r.lift ∧
-      IsSimple (edgeEnds (r.compLocal.map IndexedEdge.toWeighted)) ∧
-      (∀ e ∈ r.compGlobal, e.u ∈ r.verts ∧ e.v ∈ r.verts) ∧
-      (r.verts ∩ (Finset.univ.filter fun j : Fin rounds.length =>
-        j.val < i.val).biUnion (fun j => rounds[j.val].verts)).card ≤ 1)
+      s.mem (compMetaBase + 3 * i.val + 2) + 4 * r.compLocal.length ≤ fcBase ∧
+      s.mem (liftMetaBase + i.val) + r.numVerts ≤ fcBase)
     (hfit : Fits w (s.frontier + 5 * m' + m' * r0)) :
     let env : EvalDTLoopArgs := ⟨rounds.length, tableBase, compMetaBase, liftMetaBase, fcBase⟩
     pr02EvalDTLoopSafe w env s ∧
@@ -683,7 +691,7 @@ theorem pr02EvalDTLoop_spec {w r0 tableFrontier n m' : ℕ}
   have hinter : ∀ i : Fin rounds.length,
       (rounds[i.val].verts ∩ (Finset.univ.filter fun j : Fin rounds.length =>
         j.val < i.val).biUnion (fun j => rounds[j.val].verts)).card ≤ 1 :=
-    fun i => (hrounds_meta i).2.2.2.2.2.2.2.2.2.2.2
+    hrounds_meta.inter_prev_card_le_one
   have hsum_edges_le : (rounds.map fun r => r.compLocal.length).sum ≤ m' := by
     have hmap_len : ∀ L : List (PartitionRoundWitness n),
         (L.map fun r => r.compLocal.length).sum =
@@ -709,8 +717,8 @@ theorem pr02EvalDTLoop_spec {w r0 tableFrontier n m' : ℕ}
       (List.sublist_append_left _ _).subperm.trans
         ((List.sublist_append_left _ _).subperm.trans hperm.subperm)
     have hopt1 := partition_optDepth_sum_le hsimp_es' hsub_es' fun i =>
-      ⟨(hrounds_meta i).2.2.2.2.2.2.2.2.1, (hrounds_meta i).2.2.2.2.2.2.2.2.2.2.1,
-       (hrounds_meta i).2.2.2.2.2.2.2.2.2.2.2⟩
+      ⟨hrounds_meta.lift_injective i, hrounds_meta.compGlobal_verts i,
+       hrounds_meta.inter_prev_card_le_one i⟩
     exact hopt1.trans (optDepthMN_mono_m hes'_len)
   let env : EvalDTLoopArgs := ⟨rounds.length, tableBase, compMetaBase, liftMetaBase, fcBase⟩
   let S : Set ℕ := Set.Ico fcBase (fcBase + 4 * n)
@@ -753,15 +761,23 @@ theorem pr02EvalDTLoop_spec {w r0 tableFrontier n m' : ℕ}
     let r := rounds[k]'hk
     let eb := s.mem (compMetaBase + 3 * k + 2)
     let lb := s.mem (liftMetaBase + k)
-    obtain ⟨hv_eq, hm_eq, heb_fc, hlb_fc, heb_s0, hlb_s0, hr_le, hnoiso, hlift_inj, hsimp_r,
-      hverts_r, _⟩ := hrounds_meta ⟨k, hk⟩
-    change s.mem (compMetaBase + 3 * k) = r.numVerts at hv_eq
-    change s.mem (compMetaBase + 3 * k + 1) = r.compLocal.length at hm_eq
+    have hv_eq : s.mem (compMetaBase + 3 * k) = r.numVerts := hrounds_meta.numVerts_eq ⟨k, hk⟩
+    have hm_eq : s.mem (compMetaBase + 3 * k + 1) = r.compLocal.length :=
+      hrounds_meta.numEdges_eq ⟨k, hk⟩
+    obtain ⟨heb_fc, hlb_fc⟩ := hrounds_fc ⟨k, hk⟩
     change eb + 4 * r.compLocal.length ≤ fcBase at heb_fc
     change lb + r.numVerts ≤ fcBase at hlb_fc
-    change HoldsIndexedEdges eb r.compLocal s.mem at heb_s0
-    change ∀ j : Fin r.numVerts, s.mem (lb + j.val) = (r.lift j).val at hlb_s0
-    dsimp only at hr_le hnoiso hlift_inj hsimp_r hverts_r
+    have heb_s0 : HoldsIndexedEdges eb r.compLocal s.mem := hrounds_meta.holdsEdges ⟨k, hk⟩
+    have hlb_s0 : ∀ j : Fin r.numVerts, s.mem (lb + j.val) = (r.lift j).val :=
+      hrounds_meta.lift_eq ⟨k, hk⟩
+    have hr_le : r.numVerts ≤ r0 := hrounds_meta.numVerts_le ⟨k, hk⟩
+    have hnoiso : 1 ≤ r.compLocal.length → r.numVerts ≤ 2 * r.compLocal.length :=
+      hrounds_meta.numVerts_le_two_mul ⟨k, hk⟩
+    have hlift_inj : Function.Injective r.lift := hrounds_meta.lift_injective ⟨k, hk⟩
+    have hsimp_r : IsSimple (edgeEnds (r.compLocal.map IndexedEdge.toWeighted)) :=
+      hrounds_meta.isSimple ⟨k, hk⟩
+    have hverts_r : ∀ e ∈ r.compGlobal, e.u ∈ r.verts ∧ e.v ∈ r.verts :=
+      hrounds_meta.compGlobal_verts ⟨k, hk⟩
     have htab_t : HoldsDTTable r0 tableBase t.mem :=
       htab.congr htib (fun a ha => hframe a (ha.trans_le htf_fc))
     have htib_t : DTTableInBounds r0 tableBase tableFrontier t.mem :=
@@ -972,7 +988,7 @@ private theorem realizes_pr02SolveHRemPrep : Realizes .exact
     | exact hfit2
     | exact hb2
 
-private def pr02SolveHRemNonEmpty (d : SolveHRemArgs) : Memory.Prog Block := do
+private def pr02SolveHRemNonEmpty (d : SolveHRemArgs) : Memory.Prog SolveHRemResult := do
   let compRes ← pr02SolveHRemPrep d
   let denseRes ← denseCaseProg ⟨compRes.numVertices, d.hRemLen, compRes.edgeBase⟩
   let liftBase ← liftHRemProg ⟨d.hRemBase, denseRes.edgeBase, denseRes.numEdges⟩
@@ -1013,8 +1029,8 @@ private theorem realizes_pr02SolveHRemNonEmpty : Realizes .exact
 
 /-- Contract remaining uncorrupted edges `H_rem` along the conglomerate map `conglomBase`, solve
 the resulting dense contracted graph with `denseCaseProg`, and lift the selected original `H_rem`
-edges into a freshly allocated stride-4 `Block` (whose `.length` field holds the edge count). -/
-def pr02SolveHRemProg (a : SolveHRemArgs) : Memory.Prog Block :=
+edges into a freshly allocated stride-4 edge array returned as a `SolveHRemResult`. -/
+def pr02SolveHRemProg (a : SolveHRemArgs) : Memory.Prog SolveHRemResult :=
   if a.hRemLen = 0 then pure ⟨a.hRemBase, 0⟩ else pr02SolveHRemNonEmpty a
 
 /-- Safety domain for `pr02SolveHRemProg`. -/
@@ -1032,8 +1048,8 @@ theorem realizes_pr02SolveHRemProg : Realizes .exact
 
 /-- Framed specification for `pr02SolveHRemProg`: contracts `H_rem` onto conglomerate vertices,
 computes a contracted MSF via `denseCaseProg`, and emits the lifted `H_lift ⊆ H_rem` into a fresh
-stride-4 `Block` in at most `3659 * H_rem.length + 17801 * n' + 16` memory operations while
-preserving all cells below `s.frontier` (`Modifies ∅`). -/
+stride-4 edge array (`SolveHRemResult`) in at most `3659 * H_rem.length + 17801 * n' + 16` memory
+operations while preserving all cells below `s.frontier` (`Modifies ∅`). -/
 theorem pr02SolveHRemProg_spec {w n' nConglom n₀ r0 hRemBase conglomBase : ℕ}
     {rounds : List (PartitionRoundWitness n')} {H_rem : List (IndexedEdge n')}
     {conglomFn : Fin n' → Fin nConglom} {s : Memory.State}
@@ -1060,15 +1076,15 @@ theorem pr02SolveHRemProg_spec {w n' nConglom n₀ r0 hRemBase conglomBase : ℕ
     pr02SolveHRemProgSafe w d s ∧
     Memory.FramedTriple w s (pr02SolveHRemProg d)
       (3659 * H_rem.length + 17801 * n' + 16) ∅ fun res s' =>
-        res.base + 4 * res.length ≤ s'.frontier ∧
-        res.length * r0 ≤ n' ∧
-        res.length ≤ H_rem.length ∧
+        res.edgeBase + 4 * res.numEdges ≤ s'.frontier ∧
+        res.numEdges * r0 ≤ n' ∧
+        res.numEdges ≤ H_rem.length ∧
         s.frontier ≤ s'.frontier ∧
         s'.frontier ≤ s.frontier + 341 * H_rem.length + 1529 * n' + 3 ∧
         Memory.WellFormed w s' ∧
         ∃ H_lift : List (IndexedEdge n'),
-          H_lift.length = res.length ∧
-          HoldsIndexedEdges res.base H_lift s'.mem ∧
+          H_lift.length = res.numEdges ∧
+          HoldsIndexedEdges res.edgeBase H_lift s'.mem ∧
           H_lift.Subperm H_rem ∧
           IsMinSpanningForest
             (contractEdgeList conglomFn (H_rem.map IndexedEdge.toWeighted))
@@ -1235,14 +1251,12 @@ theorem pr02SolveHRemProg_spec {w n' nConglom n₀ r0 hRemBase conglomBase : ℕ
       have h76 := Nat.mul_le_mul_left 76 hiter_a
       rw [hs3_fr, hs2_fr, hs1_fr, Nat.mul_assoc] at hs4_fr
       omega
+    have hmod14 : Memory.Modifies ∅ s s₄ :=
+      ((hmod1.trans hmod2).trans hmod3).trans hmod4
     have hs3_le_s4 : s₃.frontier ≤ s₄.frontier := hmod4.1
     have hrem_holds_s4 : HoldsIndexedEdges hRemBase H_rem s₄.mem :=
-      hrem_holds.congr fun a ha _ =>
-        (hmod4.mem_eq_of_not_mem (by rw [hs3_fr, hs2_fr, hs1_fr]; omega)
-          (Set.notMem_empty _)).trans
-          ((hmod3.mem_eq_of_not_mem (by rw [hs2_fr, hs1_fr]; omega) (Set.notMem_empty _)).trans
-            ((hmod2.mem_eq_of_not_mem (by rw [hs1_fr]; omega) (Set.notMem_empty _)).trans
-              (hmod1.mem_eq_of_not_mem (by omega) (Set.notMem_empty _))))
+      hrem_holds.congr fun a _ ha =>
+        hmod14.mem_eq_of_not_mem (ha.trans_le hrem_lt) (Set.notMem_empty _)
     have h5 := liftHRemProg_spec (w := w) (n := n') (nA := cr.numVertices)
       (hRemBase := hRemBase) (msfBase := dr.edgeBase) (H_rem := H_rem) (H_msf := msf_a)
       (s := s₄) h16 hwf4 hrem_holds_s4 (by rw [hs3_fr, hs2_fr, hs1_fr] at hs3_le_s4; omega)
@@ -1408,15 +1422,7 @@ theorem pr02SolveHRemProg_spec {w n' nConglom n₀ r0 hRemBase conglomBase : ℕ
     have hmul_dr2 : dr.numEdges * r0 ≤ n' := by
       rw [← hmsfa_len]
       exact (Nat.mul_le_mul_right r0 hmsfa_card).trans hna_mul
-    have hmod_ne : Memory.Modifies ∅ s s₅ := by
-      have hs3_ge_s : s.frontier ≤ s₃.frontier := by rw [hs3_fr, hs2_fr, hs1_fr]; omega
-      refine ⟨hs3_ge_s.trans (hs3_le_s4.trans hmod5.1), fun a ha _ => ?_⟩
-      exact (hmod5.mem_eq_of_not_mem (ha.trans_le (hs3_ge_s.trans hs3_le_s4))
-        (Set.notMem_empty _)).trans
-        ((hmod4.mem_eq_of_not_mem (ha.trans_le hs3_ge_s) (Set.notMem_empty _)).trans
-          ((hmod3.mem_eq_of_not_mem (by rw [hs2_fr, hs1_fr]; omega) (Set.notMem_empty _)).trans
-            ((hmod2.mem_eq_of_not_mem (by rw [hs1_fr]; omega) (Set.notMem_empty _)).trans
-              (hmod1.mem_eq_of_not_mem ha (Set.notMem_empty _)))))
+    have hmod_ne : Memory.Modifies ∅ s s₅ := hmod14.trans hmod5
     refine ⟨⟨h16, fun h => absurd h (by dsimp only [d]; omega), fun _ => hsafe_ne⟩,
       framedTriple_iff_realization.mpr ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩⟩
     · rw [hprog_ne]; exact hvh_ne

@@ -17,7 +17,8 @@ import Mathlib.Tactic.IntervalCases
 # Client Tests for `OptimalMSF.PartitionEval`
 
 Exercises `pr02EvalDTLoop`, `pr02EvalDTLoop_spec`, `realizes_pr02EvalDTLoop`, `pr02SolveHRemProg`,
-`pr02SolveHRemProg_spec`, `realizes_pr02SolveHRemProg`, `EvalDTLoopArgs`, and `SolveHRemArgs` on
+`pr02SolveHRemProg_spec`, `realizes_pr02SolveHRemProg`, `EvalDTLoopArgs`, `SolveHRemArgs`, and
+`SolveHRemResult` on
 empty and non-empty `r0 = 2` runs and composite `Program .standard` lowering.
 -/
 -- This test module intentionally exports no declarations.
@@ -178,41 +179,58 @@ private theorem rounds4_eval_cert {tBase : ℕ} {s : Memory.State} (hwf : Memory
     tBase (tBase + 21) (tBase + 27) (tBase + 29) s (by decide) hwf es4_isSimple
     (List.Perm.refl _) (by decide) (by decide) htab hbnd (by omega)
     (by rw [hrl]; omega) (by rw [hrl]) (by omega)
+    { numVerts_eq := fun i => by
+        fin_cases i
+        · exact hget 21 (by decide)
+        · exact hget 24 (by decide)
+      numEdges_eq := fun i => by
+        fin_cases i
+        · exact hget 22 (by decide)
+        · exact hget 25 (by decide)
+      holdsEdges := fun i => by
+        fin_cases i
+        · change HoldsIndexedEdges (s.mem (tBase + 23)) r4_0.compLocal s.mem
+          rw [hget 23 (by decide)]; exact hed0
+        · change HoldsIndexedEdges (s.mem (tBase + 26)) r4_1.compLocal s.mem
+          rw [hget 26 (by decide)]; exact hed1
+      lift_eq := fun i k => by
+        fin_cases i
+        · change s.mem (s.mem (tBase + 27) + k.val) = (r4_0.lift k).val
+          rw [hget 27 (by decide)]
+          fin_cases k <;> [exact hget 17 (by decide); exact hget 18 (by decide)]
+        · change s.mem (s.mem (tBase + 28) + k.val) = (r4_1.lift k).val
+          rw [hget 28 (by decide)]
+          fin_cases k <;> [exact hget 19 (by decide); exact hget 20 (by decide)]
+      numVerts_le := fun i => by fin_cases i <;> decide
+      numVerts_le_two_mul := fun i _ => by fin_cases i <;> decide
+      lift_injective := fun i a b h => by
+        fin_cases i <;> fin_cases a <;> fin_cases b <;> cases h <;> rfl
+      isSimple := fun i =>
+        (isSimple_iff _).mpr ⟨fun k => by
+            fin_cases i <;> [dsimp only [rounds4, r4_0]; dsimp only [rounds4, r4_1]] <;>
+              fin_cases k <;> decide,
+          fun a b _ => by fin_cases i <;> fin_cases a <;> fin_cases b <;> rfl⟩
+      compGlobal_verts := fun i e he => by
+        fin_cases i
+        · change e ∈ r4_0.compGlobal at he
+          simp only [r4_0, PartitionRoundWitness.compGlobal, List.map_cons,
+            List.map_nil, List.mem_singleton] at he
+          subst he; decide
+        · change e ∈ r4_1.compGlobal at he
+          simp only [r4_1, PartitionRoundWitness.compGlobal, List.map_cons,
+            List.map_nil, List.mem_singleton] at he
+          subst he; decide
+      inter_prev_card_le_one := rounds4_inter }
     (fun i => by
       fin_cases i
-      · dsimp only
-        simp only [rounds4, List.getElem_cons_zero, Nat.mul_zero, Nat.add_zero, Nat.add_assoc]
-        rw [show s.mem (tBase + 21) = 2 from hget 21 (by decide),
-          show s.mem (tBase + 22) = 1 from hget 22 (by decide),
-          show s.mem (tBase + 23) = tBase + 9 from hget 23 (by decide),
+      · change s.mem (tBase + 23) + 4 * 1 ≤ tBase + 29 ∧ s.mem (tBase + 27) + 2 ≤ tBase + 29
+        rw [show s.mem (tBase + 23) = tBase + 9 from hget 23 (by decide),
           show s.mem (tBase + 27) = tBase + 17 from hget 27 (by decide)]
-        refine ⟨rfl, rfl, by change tBase + 9 + 4 * 1 ≤ tBase + 29; omega,
-          by change tBase + 17 + 2 ≤ tBase + 29; omega, hed0,
-          fun k => by fin_cases k <;> simp only [Nat.add_zero, Nat.add_assoc] <;>
-            first | exact hget 17 (by decide) | exact hget 18 (by decide),
-          by decide, fun _ => by decide,
-          fun a b h => by fin_cases a <;> fin_cases b <;> cases h <;> rfl,
-          (isSimple_iff _).mpr ⟨fun k => by dsimp only [r4_0]; fin_cases k; decide,
-            fun a b _ => by fin_cases a; fin_cases b; rfl⟩,
-          fun e (he : e ∈ ([⟨0, 1, 5, 10⟩] : List (IndexedEdge 4))) => by
-            rw [List.mem_singleton] at he; subst he; decide, rounds4_inter ⟨0, by decide⟩⟩
-      · dsimp only
-        simp only [rounds4, List.getElem_cons_succ, List.getElem_cons_zero, Nat.mul_one,
-          Nat.add_assoc]
-        rw [show s.mem (tBase + 24) = 2 from hget 24 (by decide),
-          show s.mem (tBase + 25) = 1 from hget 25 (by decide),
-          show s.mem (tBase + 26) = tBase + 13 from hget 26 (by decide),
+        omega
+      · change s.mem (tBase + 26) + 4 * 1 ≤ tBase + 29 ∧ s.mem (tBase + 28) + 2 ≤ tBase + 29
+        rw [show s.mem (tBase + 26) = tBase + 13 from hget 26 (by decide),
           show s.mem (tBase + 28) = tBase + 19 from hget 28 (by decide)]
-        refine ⟨rfl, rfl, by change tBase + 13 + 4 * 1 ≤ tBase + 29; omega,
-          by change tBase + 19 + 2 ≤ tBase + 29; omega, hed1,
-          fun k => by fin_cases k <;> simp only [Nat.add_zero, Nat.add_assoc] <;>
-            first | exact hget 19 (by decide) | exact hget 20 (by decide),
-          by decide, fun _ => by decide,
-          fun a b h => by fin_cases a <;> fin_cases b <;> cases h <;> rfl,
-          (isSimple_iff _).mpr ⟨fun k => by dsimp only [r4_1]; fin_cases k; decide,
-            fun a b _ => by fin_cases a; fin_cases b; rfl⟩,
-          fun e (he : e ∈ ([⟨2, 3, 3, 20⟩] : List (IndexedEdge 4))) => by
-            rw [List.mem_singleton] at he; subst he; decide, rounds4_inter ⟨1, by decide⟩⟩)
+        omega)
     (hfit.of_le (by omega))
   refine ⟨hspec.1, hspec.2.frame_mono (fun _ hx => by simp only [Set.mem_Ico] at hx ⊢; omega)
     |>.mono le_rfl fun fcLen s' ⟨_, hs_s', hs'_fr, hwf', F_comps, hlen, hflat, hholds, hmsf⟩ => ?_⟩
@@ -239,7 +257,9 @@ example :
   have hspec := @pr02EvalDTLoop_spec 16 2 10 2 0 [] [] [] 1 10 10 10 s (by decide) hwf
     ((isSimple_iff _).mpr ⟨fun j => Fin.elim0 j, fun a => Fin.elim0 a⟩) (List.Perm.refl _)
     (by decide) (by decide) htab hbnd (by decide) (by decide) (by decide) (by decide)
-    (fun i => Fin.elim0 i) (by decide)
+    ⟨fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i,
+      fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i, fun i => Fin.elim0 i,
+      fun i => Fin.elim0 i, fun i => Fin.elim0 i⟩ (fun i => Fin.elim0 i) (by decide)
   obtain ⟨_, _, hmod, _, _, hfr, _, F_comps, hlen, hflat, _, _⟩ :=
     framedTriple_iff_realization.mp hspec.2
   obtain rfl : F_comps = [] := List.eq_nil_of_length_eq_zero hlen
@@ -272,8 +292,8 @@ example :
     let d : SolveHRemArgs := ⟨2, 5, 0, 1⟩
     let res := (Memory.spec 0).clientResult s (pr02SolveHRemProg d)
     let s' := (Memory.spec 0).clientState s (pr02SolveHRemProg d)
-    pr02SolveHRemProgSafe 16 d s ∧ res.length = 0 ∧ res.base ≤ s'.frontier ∧ 5 ≤ s'.frontier ∧
-    s'.frontier ≤ 6124 ∧ ∀ a < 5, s'.mem a = s.mem a := by
+    pr02SolveHRemProgSafe 16 d s ∧ res.numEdges = 0 ∧ res.edgeBase ≤ s'.frontier ∧
+    5 ≤ s'.frontier ∧ s'.frontier ≤ 6124 ∧ ∀ a < 5, s'.mem a = s.mem a := by
   intro s d res s'
   have hwf : Memory.WellFormed 16 s := Memory.wellFormed_init (by decide) (by decide)
   have hspec := @pr02SolveHRemProg_spec 16 4 2 4 2 5 1 rounds4 [] conglomFn4 s (by decide) hwf
@@ -284,7 +304,8 @@ example :
     at hspec
   obtain ⟨_, _, hmod, hbase, _, hlen, hfr_ge, hfr_le, _⟩ := framedTriple_iff_realization.mp hspec.2
   have hnil : ([] : List (IndexedEdge 4)).length = 0 := rfl; have hs_fr : s.frontier = 5 := rfl
-  change res.base + 4 * res.length ≤ s'.frontier at hbase; change s.frontier ≤ s'.frontier at hfr_ge
+  change res.edgeBase + 4 * res.numEdges ≤ s'.frontier at hbase
+  change s.frontier ≤ s'.frontier at hfr_ge
   change s'.frontier ≤ s.frontier + 341 * [].length + 1529 * 4 + 3 at hfr_le
   rw [hs_fr] at hfr_ge hfr_le; rw [hnil] at hfr_le
   exact ⟨hspec.1, Nat.eq_zero_of_le_zero (by rw [hnil] at hlen; exact hlen), by omega, hfr_ge,
@@ -338,14 +359,14 @@ private theorem rounds4_hrem_cert {hRemBase conglomBase : ℕ} {s : Memory.State
     (hfit : Fits 16 (s.frontier + 341 * 3 + 1529 * 4 + 3)) :
     pr02SolveHRemProgSafe 16 ⟨2, hRemBase, 3, conglomBase⟩ s ∧
     ∃ C, Memory.FramedTriple 16 s (pr02SolveHRemProg ⟨2, hRemBase, 3, conglomBase⟩) C ∅
-      fun blk s' => blk.base + 4 ≤ s'.frontier ∧ blk.length = 1 ∧
-        HoldsIndexedEdges blk.base ([⟨1, 3, 4, 102⟩] : List (IndexedEdge 4)) s'.mem := by
+      fun res s' => res.edgeBase + 4 ≤ s'.frontier ∧ res.numEdges = 1 ∧
+        HoldsIndexedEdges res.edgeBase ([⟨1, 3, 4, 102⟩] : List (IndexedEdge 4)) s'.mem := by
   have hspec := @pr02SolveHRemProg_spec 16 4 2 4 2 hRemBase conglomBase rounds4 hRem4 conglomFn4 s
     (by decide) hwf (le_refl 4) (by decide) (by decide) hrem hrem_fr hcong hcong_fr
     rounds4_cov rounds4_conglom_rel rounds4_stop hfit
   change pr02SolveHRemProgSafe 16 ⟨2, hRemBase, 3, conglomBase⟩ s ∧
     Memory.FramedTriple 16 s (pr02SolveHRemProg ⟨2, hRemBase, 3, conglomBase⟩) _ ∅ _ at hspec
-  refine ⟨hspec.1, _, hspec.2.mono le_rfl fun blk s' ⟨hbase, _, _, _, _, _, H_lift, hlen, hholds,
+  refine ⟨hspec.1, _, hspec.2.mono le_rfl fun res s' ⟨hbase, _, _, _, _, _, H_lift, hlen, hholds,
       hsub, hmsf⟩ => ?_⟩
   have huniq := hLift4_unique hsub hmsf; subst huniq
   exact ⟨by simpa [← hlen] using hbase, hlen.symm, by simpa using hholds⟩
@@ -355,8 +376,8 @@ example :
     let d : SolveHRemArgs := ⟨2, 5, 3, 1⟩
     let res := (Memory.spec 0).clientResult s (pr02SolveHRemProg d)
     let s' := (Memory.spec 0).clientState s (pr02SolveHRemProg d)
-    pr02SolveHRemProgSafe 16 d s ∧ res.length = 1 ∧ res.base + 4 ≤ s'.frontier ∧
-    readIndexedEdges res.base 1 s'.mem = [(1, 3, 4, 102)] ∧ ∀ a < 17, s'.mem a = s.mem a := by
+    pr02SolveHRemProgSafe 16 d s ∧ res.numEdges = 1 ∧ res.edgeBase + 4 ≤ s'.frontier ∧
+    readIndexedEdges res.edgeBase 1 s'.mem = [(1, 3, 4, 102)] ∧ ∀ a < 17, s'.mem a = s.mem a := by
   intro s d res s'
   have hwf : Memory.WellFormed 16 s := Memory.wellFormed_init (by decide) (by decide)
   obtain ⟨hsafe, _, hft⟩ := rounds4_hrem_cert (hRemBase := 5) (conglomBase := 1) hwf
@@ -372,15 +393,15 @@ example :
 /-! ## 4. Composite `realize [...]` Pipeline and `Program .standard` Lowering -/
 
 private def partEvalPipelineProg (p : EvalDTLoopArgs × SolveHRemArgs) : Memory.Prog ℕ := do
-  let fcLen ← pr02EvalDTLoop p.1; let remBlk ← pr02SolveHRemProg p.2; pure (fcLen + remBlk.length)
+  let fcLen ← pr02EvalDTLoop p.1; let remRes ← pr02SolveHRemProg p.2; pure (fcLen + remRes.numEdges)
 
 private theorem realizes_partEvalPipelineProg : Realizes .exact
     partEvalPipelineProg WordEncoding.encode (WordEncoding.encode (α := ℕ))
     (fun w p s => Fits w 16 ∧ pr02EvalDTLoopSafe w p.1 s ∧
       let s1 := (Memory.spec 0).clientState s (pr02EvalDTLoop p.1)
       let fcLen := (Memory.spec 0).clientResult s (pr02EvalDTLoop p.1)
-      let blk := (Memory.spec 0).clientResult s1 (pr02SolveHRemProg p.2)
-      pr02SolveHRemProgSafe w p.2 s1 ∧ Fits w (fcLen + blk.length))
+      let remRes := (Memory.spec 0).clientResult s1 (pr02SolveHRemProg p.2)
+      pr02SolveHRemProgSafe w p.2 s1 ∧ Fits w (fcLen + remRes.numEdges))
     (fun _ _ => 0) := by
   unfold partEvalPipelineProg; realize [realizes_pr02EvalDTLoop, realizes_pr02SolveHRemProg]
   all_goals obtain ⟨h16, h1, h2, hsum⟩ := h; first | exact h1 | exact h2 | exact hsum
@@ -423,23 +444,23 @@ example :
     (Fits.of_le (by decide : Fits 16 7255) (by rw [hs0_fr] at hs1_fr; omega))
   change pr02SolveHRemProgSafe 16 stdRem4 s1 at hsafe2
   change Memory.FramedTriple 16 s1 (pr02SolveHRemProg stdRem4) _ ∅ _ at hft2
-  obtain ⟨hvh2, _, _, _, hblk_len, _⟩ := framedTriple_iff_realization.mp hft2
+  obtain ⟨hvh2, _, _, _, hrem_len, _⟩ := framedTriple_iff_realization.mp hft2
   have hv_all : (Memory.spec 16).ValidHistory s0
       ((Memory.spec 16).clientHistory s0 (partEvalPipelineProg (stdEnv4, stdRem4))) := by
     dsimp only [partEvalPipelineProg]; rw [validHistory_bind']; refine ⟨hvh1, ?_⟩
     change (Memory.spec 16).ValidHistory s1
-      ((Memory.spec 16).clientHistory s1 (pr02SolveHRemProg stdRem4 >>= fun blk =>
-        pure ((Memory.spec 0).clientResult s0 (pr02EvalDTLoop stdEnv4) + blk.length)))
+      ((Memory.spec 16).clientHistory s1 (pr02SolveHRemProg stdRem4 >>= fun remRes =>
+        pure ((Memory.spec 0).clientResult s0 (pr02EvalDTLoop stdEnv4) + remRes.numEdges)))
     rw [validHistory_bind']; exact ⟨hvh2, trivial⟩
   have hres_all :
       (Memory.spec 16).clientResult s0 (partEvalPipelineProg (stdEnv4, stdRem4)) = 3 := by
     rw [clientResult_width 16]; dsimp only [partEvalPipelineProg]
     rw [StateTransitionSpec.clientResult_bind, StateTransitionSpec.clientResult_bind,
-      StateTransitionSpec.clientResult_pure, hfc_eq]; simpa [s1] using congrArg (2 + ·) hblk_len
+      StateTransitionSpec.clientResult_pure, hfc_eq]; simpa [s1] using congrArg (2 + ·) hrem_len
   have hpre : Fits 16 16 ∧ pr02EvalDTLoopSafe 16 stdEnv4 s0 ∧ pr02SolveHRemProgSafe 16 stdRem4 s1 ∧
       Fits 16 ((Memory.spec 0).clientResult s0 (pr02EvalDTLoop stdEnv4) +
-        ((Memory.spec 0).clientResult s1 (pr02SolveHRemProg stdRem4)).length) :=
-    ⟨by decide, hsafe1, hsafe2, by rw [hfc_eq, hblk_len]; decide⟩
+        ((Memory.spec 0).clientResult s1 (pr02SolveHRemProg stdRem4)).numEdges) :=
+    ⟨by decide, hsafe1, hsafe2, by rw [hfc_eq, hrem_len]; decide⟩
   obtain ⟨y, n, hruns, hhalt, hmem_eq, _, hsteps⟩ := hrun 16 (stdEnv4, stdRem4) stdWords4 hlayout
     (by decide) (by decide) (by decide) hpre hv_all
   exact ⟨r, C, pc, stripRand prog, not_readsWidth_stripRand hnw, isRandFree_stripRand prog,
