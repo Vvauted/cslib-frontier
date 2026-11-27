@@ -7325,6 +7325,7 @@ public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.L
 public import CslibFrontier.Computability.Circuit.Boolean.WeightedThreshold.PendingBias
 public import CslibFrontier.Algorithms.WordRAM.ThreeSum.ChanHe.Preprocessing
 public import CslibFrontier.Foundations.Data.Fin.Append
+public import CslibFrontier.Computability.Complexity.RealAlgebraic.ControlledRelativeCoefficient
 public import CslibFrontier.Computability.Complexity.Problems.TwoSAT.Membership
 public import CslibFrontier.Computability.Complexity.Classes.NP.GuessVerify
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.InSpace.StoredCount
