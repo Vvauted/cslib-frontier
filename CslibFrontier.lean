@@ -6566,6 +6566,7 @@ public import CslibFrontier.Foundations.Analysis.Calculus.FDeriv.Partial
 public import CslibFrontier.Computability.Complexity.Classes.DP
 public import CslibFrontier.DataStructure.Dictionary.WordRAM.ResizableSuccinct
 public import CslibFrontier.Foundations.Combinatorics.SimpleGraph.WeisfeilerLeman
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSF.BoruvkaStages
 public import CslibFrontier.Foundations.Data.Code.Plotkin.Asymptotic
 public import CslibFrontier.DataStructure.FusionTree.WordRAM.Node.Neighbors
 public import CslibFrontier.Foundations.LinearAlgebra.Matrix.Hyperplane
