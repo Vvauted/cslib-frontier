@@ -3624,6 +3624,7 @@ public import CslibFrontier.Computability.Circuit.Parallel
 public import CslibFrontier.Probability.BitString.BinarySymmetricChannel
 public import CslibFrontier.Computability.Circuit.Boolean.Iteration.CounterChart.Time
 public import CslibFrontier.MachineLearning.PACLearning.DualVCDimension
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.PrecompSearch
 public import CslibFrontier.Logics.FirstOrder.Ordered.Tuple
 public import CslibFrontier.Probability.SmallBias.Powering
 public import CslibFrontier.Foundations.Probability.Gaussian.Hermite
@@ -4222,6 +4223,7 @@ public import CslibFrontier.Computability.Complexity.Problems.SAT.ExactOne.Geome
 public import CslibFrontier.Computability.Complexity.Problems.CSP.RotationSystem.VariableCyclePartition
 public import CslibFrontier.GameTheory.Mechanism.BudgetedAuction.Basic
 public import CslibFrontier.Probability.KWiseIndependent.TugOfWarProduct
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.PrecompEval
 public import CslibFrontier.Computability.PolyTime.CSP.Edge.Solver.Ancestry
 public import CslibFrontier.Languages.Probabilistic.Oracle.RunLogAgree
 public import CslibFrontier.Foundations.BooleanAnalysis.FriedgutJunta
