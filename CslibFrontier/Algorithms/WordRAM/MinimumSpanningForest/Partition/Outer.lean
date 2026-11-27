@@ -228,16 +228,9 @@ private theorem partOuterStep_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memo
   by_cases hd0 : W.dead0 t = 0
   · have hcsr := outerInv_csr W hcsr₀
     have hin := outerInv_edges W hin₀
-    have hnc_lt : a.numComps < n := by
-      have ht_not : (⟨t, ht⟩ : Fin n) ∉ deadSet := by simp [deadSet, Finset.mem_filter, hd0]
-      have hss : deadSet ⊂ Finset.univ := Finset.ssubset_univ_iff.mpr fun heq =>
-        ht_not (heq ▸ Finset.mem_univ _)
-      have hlt := Finset.card_lt_card hss
-      rw [Finset.card_univ, Fintype.card_fin] at hlt
-      dsimp only [deadSet] at hlt; have := W.hnc_dead; omega
     have hrun := partRunRound_spec L s W.dead0 W.inCur0 W.edgeState0 a.numComps a.cEdgeLen
       a.cLiftLen a.mcLen a.tLen ⟨t, ht⟩ a.sh W.hfr W.hhib W.hhnb W.hhrt W.hhnc W.hsh
-      hcsr hin W.hdead_mem W.hincur_mem W.hincur_le hd0 W.hedge_mem hsimp_g hnc_lt
+      hcsr hin W.hdead_mem W.hincur_mem W.hincur_le hd0 W.hedge_mem hsimp_g
       W.hnc_dead W.htLen_dead W.hcl_dead W.hclaim_card W.hcap_rem
     dsimp only at hrun
     have ha_eta : (⟨t, a.numComps, a.cEdgeLen, a.cLiftLen, a.mcLen, a.tLen, a.sh⟩ :
@@ -485,7 +478,7 @@ private theorem partOuterStep_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memo
         hmc_bound := by have := W.hmc_bound; omega
         hmc_mem := by
           simp only [List.flatMap_append, List.flatMap_cons, List.flatMap_nil, List.append_nil]
-          refine partHoldsIndexedEdges_append ?_ (by rw [hmc_len_all]; exact hcr_mem)
+          refine holdsIndexedEdges_append ?_ (by rw [hmc_len_all]; exact hcr_mem)
           refine W.hmc_mem.congr fun x hx1 hx2 => h_s'_agree x ?_
           rw [hmc_len_all] at hx2; exact .inr (.inr (.inr (.inr (.inr ⟨hx1, hx2⟩))))
         htLen := by simp only [List.length_append, ← W.htLen, htl_eq]
@@ -494,7 +487,7 @@ private theorem partOuterStep_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memo
           simp only [List.map_append, List.flatMap_append, List.flatMap_cons, List.flatMap_nil,
             List.append_nil, W.htree_w, htr_w]
         htree_mem := by
-          refine partHoldsIndexedEdges_append ?_ (by rw [← W.htLen]; exact htr_mem)
+          refine holdsIndexedEdges_append ?_ (by rw [← W.htLen]; exact htr_mem)
           refine W.htree_mem.congr fun x hx1 hx2 => h_s'_agree x ?_
           rw [← W.htLen] at hx2; exact .inr (.inr (.inr (.inl ⟨hx1, hx2⟩)))
         hcap_rem := hdeadSet1 ▸ hcap_rem'
@@ -998,7 +991,7 @@ private theorem partRunRemLoop_spec {w n : ℕ} (L : PartLayout w n) (edgeState 
         have hhold' : HoldsIndexedEdges (L.bufBase + 14 * n + 10 * m)
             ((remIdx ++ [kFin]).map fun eIdx => L.es[eIdx.val]'eIdx.isLt) s'.mem := by
           rw [List.map_append, List.map_singleton]
-          refine partHoldsIndexedEdges_append ?_ ?_
+          refine holdsIndexedEdges_append ?_ ?_
           · refine hhold.congr fun x hx1 hx2 => ?_
             rw [List.length_map, hlen] at hx2; exact hmod_cp x (by omega)
           · intro i hi
@@ -1073,9 +1066,13 @@ private theorem partRunRemLoop_spec {w n : ℕ} (L : PartLayout w n) (edgeState 
   exact ⟨by rw [partRunRemLoopSafe_def]; exact ⟨L.h16, hsafe⟩, hvh, h1, h2, hfr, hwf, hmod, hcost,
     remIdx, hnd, hlen, fun eIdx => by simpa [eIdx.isLt] using hiff eIdx, hhold⟩
 
-/-- Full specification of `partitionProg`: proves native safety (`partitionProgSafe`),
-`ValidHistory`, `Memory.WellFormed`, frame preservation below `s.frontier`, linear `O(m + n)`
-memory cost (`≤ 6000 * (m + n)`), `|M_C| ≤ m / 8`, `H_rem.Subperm es`, edge partition
+/-- Full specification of `partitionProg` (step toward Theorem 5.8 of [PettieRamachandran2002]
+#8624), specializing [PettieRamachandran2002] §3.2 (Fig. 2, p. 21) `Partition(G, t, ε)` with
+target component size `t = maxsize` and fixed `ε = 1 / 16` (`partRankThreshold = 8`, yielding
+at most `m / 8 = 2 * ε * m` corrupted edges), plus materialization of remaining edges and
+conglomerate labels via `connectedComponentsProg`. Proves native safety (`partitionProgSafe`),
+`ValidHistory`, `Memory.WellFormed`, frame preservation below `s.frontier`, `O(m + n)` cost
+(`≤ 6000 * (m + n)`), `|M_C| ≤ m / 8`, `H_rem.Subperm es`, edge partition
 `((rounds.flatMap compGlobal) ++ H_rem ++ (rounds.flatMap corrEdges)).Perm es`, conglomerate
 labeling matching the DJP tree forest, and per-round structural invariants. -/
 theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge n)}

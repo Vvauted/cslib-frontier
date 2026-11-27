@@ -42,13 +42,9 @@ post-DJP round emission (`partRoundFinish`, `partRunRound`), the outer vertex sc
 
 ## Main results
 
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_partWriteLocalEdge`,
-  `realizes_partMaybeEmitLocal`, `realizes_partEmitEdgeStep`, `realizes_partEmitVertStep`,
-  `realizes_partEmitCorrStep`, `realizes_partMarkDeadStep`, `realizes_partWriteRoundMeta`,
-  `realizes_partEmitComp`, `realizes_partEmitCorrLoop`, `realizes_partMarkDeadLoop`,
-  `realizes_partRoundFinish`, `realizes_partRunRound`, `realizes_partOuterStep`,
-  `realizes_partEmitRemStep`, `realizes_partRunOuterLoop`, `realizes_partRunRemLoop`,
-  `realizes_partitionProg`: uniform `Realizes .exact` certificates with `work = 0`.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_partRoundFinish`,
+  `realizes_partRunRound`, `realizes_partitionProg`: uniform `Realizes .exact` certificates
+  with `work = 0`.
 
 ## References
 
@@ -419,7 +415,7 @@ private theorem realizes_partWriteLocalEdge_history : Realizes .exact
     | fits
 
 /-- `partWriteLocalEdge` is uniformly realized with `work = 0`. -/
-theorem realizes_partWriteLocalEdge : Realizes .exact
+private theorem realizes_partWriteLocalEdge : Realizes .exact
     partWriteLocalEdge WordEncoding.encode WordEncoding.encode
     partWriteLocalEdgeSafe (fun _ _ => 0) :=
   realizes_partWriteLocalEdge_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -487,7 +483,7 @@ private theorem realizes_partMaybeEmitLocal_history : Realizes .exact
   all_goals fits
 
 /-- `partMaybeEmitLocal` is uniformly realized with `work = 0`. -/
-theorem realizes_partMaybeEmitLocal : Realizes .exact
+private theorem realizes_partMaybeEmitLocal : Realizes .exact
     partMaybeEmitLocal WordEncoding.encode WordEncoding.encode
     partMaybeEmitLocalSafe (fun _ _ => 0) :=
   realizes_partMaybeEmitLocal_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -553,7 +549,7 @@ private theorem realizes_partEmitEdgeStep_history : Realizes .exact
   all_goals fits
 
 /-- `partEmitEdgeStep` is uniformly realized with `work = 0`. -/
-theorem realizes_partEmitEdgeStep : Realizes .exact
+private theorem realizes_partEmitEdgeStep : Realizes .exact
     partEmitEdgeStep (appendWords WordEncoding.encode WordEncoding.encode) WordEncoding.encode
     partEmitEdgeStepSafe (fun _ _ => 0) :=
   realizes_partEmitEdgeStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -623,7 +619,7 @@ private theorem realizes_partEmitVertStep_history : Realizes .exact
     | fits
 
 /-- `partEmitVertStep` is uniformly realized with `work = 0`. -/
-theorem realizes_partEmitVertStep : Realizes .exact
+private theorem realizes_partEmitVertStep : Realizes .exact
     partEmitVertStep (appendWords WordEncoding.encode WordEncoding.encode) WordEncoding.encode
     partEmitVertStepSafe (fun _ _ => 0) :=
   realizes_partEmitVertStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -699,7 +695,7 @@ private theorem realizes_partEmitCorrStep_history : Realizes .exact
   all_goals fits
 
 /-- `partEmitCorrStep` is uniformly realized with `work = 0`. -/
-theorem realizes_partEmitCorrStep : Realizes .exact
+private theorem realizes_partEmitCorrStep : Realizes .exact
     partEmitCorrStep (appendWords WordEncoding.encode WordEncoding.encode) WordEncoding.encode
     partEmitCorrStepSafe (fun _ _ => 0) :=
   realizes_partEmitCorrStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -769,7 +765,7 @@ private theorem realizes_partMarkDeadStep_history : Realizes .exact
   all_goals fits
 
 /-- `partMarkDeadStep` is uniformly realized with `work = 0`. -/
-theorem realizes_partMarkDeadStep : Realizes .exact
+private theorem realizes_partMarkDeadStep : Realizes .exact
     partMarkDeadStep (appendWords WordEncoding.encode WordEncoding.encode) WordEncoding.encode
     partMarkDeadStepSafe (fun _ _ => 0) :=
   realizes_partMarkDeadStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -807,7 +803,7 @@ def partWriteRoundMetaSafe (w : ℕ) (d : PartWriteRoundMetaArgs) (s : Memory.St
     d.bufBase + 9 * d.n + d.numComps < s.frontier
 
 /-- `partWriteRoundMeta` is uniformly realized with `work = 0`. -/
-theorem realizes_partWriteRoundMeta : Realizes .exact
+private theorem realizes_partWriteRoundMeta : Realizes .exact
     partWriteRoundMeta WordEncoding.encode WordEncoding.encode
     partWriteRoundMetaSafe (fun _ _ => 0) := by
   unfold partWriteRoundMeta
@@ -850,7 +846,7 @@ def partEmitCompSafe (w : ℕ) (d : PartEmitCompArgs) (s : Memory.State) : Prop 
       (if d.hitPrev = 0 then d.size else d.size - 1) ⟨0, d.cEdgeLen⟩ s
 
 /-- `partEmitComp` is uniformly realized with `work = 0`. -/
-theorem realizes_partEmitComp : Realizes .exact
+private theorem realizes_partEmitComp : Realizes .exact
     partEmitComp WordEncoding.encode WordEncoding.encode
     partEmitCompSafe (fun _ _ => 0) := by
   unfold partEmitComp
@@ -891,7 +887,7 @@ def partEmitCorrLoopSafe (w : ℕ) (d : PartEmitCorrLoopArgs) (s : Memory.State)
     iterationSafe partEmitCorrStep partEmitCorrStepSafe w d.env d.numCorr ⟨0, d.mcLen⟩ s
 
 /-- `partEmitCorrLoop` is uniformly realized with `work = 0`. -/
-theorem realizes_partEmitCorrLoop : Realizes .exact
+private theorem realizes_partEmitCorrLoop : Realizes .exact
     partEmitCorrLoop WordEncoding.encode WordEncoding.encode
     partEmitCorrLoopSafe (fun _ _ => 0) := by
   unfold partEmitCorrLoop
@@ -922,7 +918,7 @@ def partMarkDeadLoopSafe (w : ℕ) (d : PartMarkDeadLoopArgs) (s : Memory.State)
     iterationSafe partMarkDeadStep partMarkDeadStepSafe w d.env d.size ⟨0, d.cLiftLen⟩ s
 
 /-- `partMarkDeadLoop` is uniformly realized with `work = 0`. -/
-theorem realizes_partMarkDeadLoop : Realizes .exact
+private theorem realizes_partMarkDeadLoop : Realizes .exact
     partMarkDeadLoop WordEncoding.encode WordEncoding.encode
     partMarkDeadLoopSafe (fun _ _ => 0) := by
   unfold partMarkDeadLoop
@@ -1170,7 +1166,7 @@ private theorem realizes_partOuterStep_history : Realizes .exact
   fits
 
 /-- `partOuterStep` is uniformly realized with `work = 0`. -/
-theorem realizes_partOuterStep : Realizes .exact
+private theorem realizes_partOuterStep : Realizes .exact
     partOuterStep (appendWords WordEncoding.encode WordEncoding.encode) WordEncoding.encode
     partOuterStepSafe (fun _ _ => 0) :=
   realizes_partOuterStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -1231,7 +1227,7 @@ private theorem realizes_partEmitRemStep_history : Realizes .exact
   all_goals fits
 
 /-- `partEmitRemStep` is uniformly realized with `work = 0`. -/
-theorem realizes_partEmitRemStep : Realizes .exact
+private theorem realizes_partEmitRemStep : Realizes .exact
     partEmitRemStep (appendWords WordEncoding.encode WordEncoding.encode) WordEncoding.encode
     partEmitRemStepSafe (fun _ _ => 0) :=
   realizes_partEmitRemStep_history.consequence_valid fun _ _ _ _ _ hv h => ⟨h, hv⟩
@@ -1269,7 +1265,7 @@ def partRunOuterLoopSafe (w : ℕ) (d : PartSetupResult) (s : Memory.State) : Pr
     iterationSafe partOuterStep partOuterStepSafe w d.env d.env.n ⟨0, 0, 0, 0, 0, 0, d.sh⟩ s
 
 /-- `partRunOuterLoop` is uniformly realized with `work = 0`. -/
-theorem realizes_partRunOuterLoop : Realizes .exact
+private theorem realizes_partRunOuterLoop : Realizes .exact
     partRunOuterLoop WordEncoding.encode WordEncoding.encode
     partRunOuterLoopSafe (fun _ _ => 0) := by
   unfold partRunOuterLoop
@@ -1300,7 +1296,7 @@ def partRunRemLoopSafe (w : ℕ) (d : PartEdgeBufEnv) (s : Memory.State) : Prop 
   Fits w 16 ∧ iterationSafe partEmitRemStep partEmitRemStepSafe w d d.m ⟨0, 0⟩ s
 
 /-- `partRunRemLoop` is uniformly realized with `work = 0`. -/
-theorem realizes_partRunRemLoop : Realizes .exact
+private theorem realizes_partRunRemLoop : Realizes .exact
     partRunRemLoop WordEncoding.encode WordEncoding.encode
     partRunRemLoopSafe (fun _ _ => 0) := by
   unfold partRunRemLoop
@@ -1320,9 +1316,11 @@ theorem partRunRemLoopSafe_def (w : ℕ) (d : PartEdgeBufEnv) (s : Memory.State)
   unfold partRunRemLoopSafe
   rfl
 
-/-- [PettieRamachandran2002] Section 3.2 `Partition(G, r, ε; M, C)` over `Memory.Prog`. Returns
-`PartitionResult` with vertex-compacted component subgraphs `C_i`, corrupted edge list `M_C`,
-remaining edge list `H_rem`, and conglomerate labels. -/
+/-- Specialization of [PettieRamachandran2002] §3.2 (Fig. 2, p. 21) `Partition(G, t, ε)` over
+`Memory.Prog` with target component size `t = d.maxsize` and fixed `ε = 1 / 16`
+(`partRankThreshold = 8`, yielding at most `m / 8 = 2 * ε * m` corrupted edges). Materializes
+compacted subgraphs `C_i`, corrupted edges `M_C`, remaining edges `H_rem`, and conglomerate
+labels via `connectedComponentsProg` into `PartitionResult`. -/
 def partitionProg (d : PartSetupArgs) : Memory.Prog PartitionResult := do
   if d.n = 0 then
     pure ⟨0, 0, 0, 0, 0, 0, 0, 0, 0⟩

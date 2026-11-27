@@ -327,7 +327,7 @@ example :
     (fun x hx => hbuf1' x (by omega))
     (fun x hx => by rw [Nat.add_assoc]; exact hbuf1' (3 + x) (by omega))
     (fun _ _ => Nat.zero_le _) rfl hedge1'
-    (by rw [hL_es]; exact isSimple_esK3) (by decide) (by simp) (by simp) (by simp) (by simp)
+    (by rw [hL_es]; exact isSimple_esK3) (by simp) (by simp) (by simp) (by simp)
     (by rw [hic0, hrem0, hm3])
   rcases hrun with ⟨_, hvh_r, _, _, _, _, _, _, _, _, _, _, _, _, _, hsh_r, hmc_diff, _,
     r, emIdx, corrIdx, treeIdx, _, _, htr_len, _, _, _,
@@ -471,7 +471,7 @@ example :
     (fun x hx => hbuf1' x (by omega))
     (fun x hx => by rw [Nat.add_assoc]; exact hbuf1' (3 + x) (by omega))
     (fun _ _ => Nat.zero_le _) rfl hedge1'
-    (by rw [hL_es]; exact isSimple_esK3) (by decide) (by simp) (by simp) (by simp) (by simp)
+    (by rw [hL_es]; exact isSimple_esK3) (by simp) (by simp) (by simp) (by simp)
     (by rw [hic0, hrem0, hm3])
   let res1 := (Memory.spec 0).clientResult s1 (partRunRound (L.toEnv, st0))
   let s2 := (Memory.spec 0).clientState s1 (partRunRound (L.toEnv, st0))
@@ -583,7 +583,7 @@ example :
       · simp [hincur0_in' ⟨x, hx⟩ hxr]
       · rw [hincur0_out' ⟨x, hx⟩ hxr]; exact Nat.zero_le 1)
     (by simp [hdead0_fn' u1, hu1_not])
-    (fun _ _ => rfl) (by rw [hL_es]; exact isSimple_esK3) (by decide)
+    (fun _ _ => rfl) (by rw [hL_es]; exact isSimple_esK3)
     (by rw [hdeadSet1, hr0_card_eq2]; decide)
     (by simpa [hm3, ← hdeadSet1] using htlen0_dead')
     (by simpa [hm3, ← hdeadSet1] using hcl0_dead')

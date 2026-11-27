@@ -23,9 +23,6 @@ dead-vertex and lift-array marking (`partMarkDeadLoop_spec`), and round metadata
 
 ## Main results
 
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.partCongrEdges_of_agree_buf`,
-  `partCongrSh_of_mod_ge`, `partHoldsIndexedEdges_append`: shared buffer-framing and list-append
-  lemmas for `Partition.OuterRound` and `Partition.Outer`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.partEmitComp_spec`: verifies CSR component-edge
   emission and active/dead edge marking via potential reduction on `remDeg`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.partRoundFinish_corr_spec`: verifies corrupted
@@ -76,38 +73,9 @@ theorem partCongrSh_of_mod_ge {w n ic nc : ℕ} (L : PartLayout w n) {h : SHHand
   hsh.congr_outside hwf' hfr' fun a ha => by_contra fun hne =>
     absurd (L.inSHPool_lt_bufBase hib hnb ha) (by have := hmod a hne; omega)
 
-private theorem mem_eq_of_modifies {α : Type} {w : ℕ} {S : Set ℕ} {s : Memory.State}
-    {p : Memory.Prog α} (hmod : Memory.Modifies S s ((Memory.spec 0).clientState s p))
-    (hvh : (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s p))
-    (hfr : ((Memory.spec 0).clientState s p).frontier = s.frontier)
-    {x : ℕ} (hxS : x ∉ S) : ((Memory.spec 0).clientState s p).mem x = s.mem x := by
-  by_cases hx : x < s.frontier
-  · exact hmod.2 x hx hxS
-  · have ha : ((Memory.spec w).clientState s p).frontier ≤ x := by
-      rw [clientState_width w, hfr]; omega
-    simpa only [clientState_width w] using Memory.mem_clientState_of_frontier_le s p hvh ha
-
-/-- Appends two contiguous stride-4 `HoldsIndexedEdges` regions. -/
-theorem partHoldsIndexedEdges_append {n : ℕ} {base : ℕ} {xs ys : List (IndexedEdge n)}
-    {mem : ℕ → ℕ} (hx : HoldsIndexedEdges base xs mem)
-    (hy : HoldsIndexedEdges (base + 4 * xs.length) ys mem) :
-    HoldsIndexedEdges base (xs ++ ys) mem := by
-  intro i hi
-  by_cases hlt : i < xs.length
-  · simpa [List.getElem_append_left hlt] using hx i hlt
-  · have hge : xs.length ≤ i := Nat.le_of_not_lt hlt
-    have hlt2 : i - xs.length < ys.length := by rw [List.length_append] at hi; omega
-    simpa [List.getElem_append_right hge,
-      show base + 4 * xs.length + 4 * (i - xs.length) = base + 4 * i by omega] using
-      hy (i - xs.length) hlt2
-
 private theorem finList_of_natList {m : ℕ} (l : List ℕ) (hlt : ∀ x ∈ l, x < m) :
-    ∃ fl : List (Fin m), fl.map Fin.val = l := by
-  induction l with
-  | nil => exact ⟨[], rfl⟩
-  | cons a rest ih =>
-    obtain ⟨fl, hfl⟩ := ih fun x hx => hlt x (List.mem_cons.mpr (.inr hx))
-    exact ⟨⟨a, hlt a (List.mem_cons.mpr (.inl rfl))⟩ :: fl, by simp [hfl]⟩
+    ∃ fl : List (Fin m), fl.map Fin.val = l :=
+  ⟨l.pmap Fin.mk hlt, by simp [List.map_pmap]⟩
 
 private theorem filter_ne_zero_card_lt {m : ℕ} (f : Fin m → ℕ) (e : Fin m) (he : f e = 0) :
     (Finset.univ.filter fun i : Fin m => f i ≠ 0).card < m := by
@@ -117,6 +85,21 @@ private theorem filter_ne_zero_card_lt {m : ℕ} (f : Fin m → ℕ) (e : Fin m)
         rw [heq]; exact Finset.mem_univ _
       exact (Finset.mem_filter.mp this).2 he
   simpa [Fintype.card_fin] using Finset.card_lt_card hlt
+
+private theorem card_filter_ne_zero_add_one {m : ℕ} (f g : Fin m → ℕ) (e : Fin m)
+    (hf0 : f e = 0) (hg_ne : g e ≠ 0) (hg_eq : ∀ i : Fin m, i ≠ e → g i = f i) :
+    (Finset.univ.filter fun i : Fin m => f i ≠ 0).card + 1 ≤
+      (Finset.univ.filter fun i : Fin m => g i ≠ 0).card := by
+  have he_not : e ∉ Finset.univ.filter fun i : Fin m => f i ≠ 0 := by simp [hf0]
+  have hsub : insert e (Finset.univ.filter fun i : Fin m => f i ≠ 0) ⊆
+      Finset.univ.filter fun i : Fin m => g i ≠ 0 := by
+    intro i hi
+    rw [Finset.mem_filter]; refine ⟨Finset.mem_univ _, ?_⟩
+    rcases Finset.mem_insert.mp hi with rfl | hi_old
+    · exact hg_ne
+    · have hne : i ≠ e := fun h => he_not (h ▸ hi_old)
+      rw [hg_eq i hne]; exact (Finset.mem_filter.mp hi_old).2
+  simpa [Finset.card_insert_of_notMem he_not] using Finset.card_le_card hsub
 
 /-! ## Local Edge Emission and CSR Component Scan -/
 
@@ -544,7 +527,7 @@ private theorem partEmitEdgeLoop_spec {w n size : ℕ} (L : PartLayout w n)
         · exact (hmod_me x fun h =>
               hx (by rcases h with rfl | h; exacts [.inl (by omega), .inr (by omega)])).trans
             (ht_mod x fun h => hx (by rcases h with h | h; exacts [.inl h, .inr (by omega)]))
-        · refine partHoldsIndexedEdges_append
+        · refine holdsIndexedEdges_append
             (hhold.congr fun x _ hx2 => hmod_me x (by rw [hlen] at hx2; omega)) ?_
           have haddr : L.bufBase + 14 * n + 2 * L.es.length + 4 * cEdgeLen0 +
               4 * (b.count - cEdgeLen0) =
@@ -573,19 +556,11 @@ private theorem partEmitEdgeLoop_spec {w n size : ℕ} (L : PartLayout w n)
           · have hne_f : (⟨i, hi⟩ : Fin L.es.length) ≠ eFin := fun h => hie (congrArg Fin.val h)
             rw [hmod_me _ (by omega), hest i hi]
             simp only [List.mem_append, List.mem_singleton, hne_f, or_false]
-        · have he_not_f : eFin ∉ Finset.univ.filter (fun i : Fin L.es.length =>
-              t.mem (L.bufBase + 14 * n + i.val) ≠ 0) := by simp [hcond.1]
-          have hsub_f : insert eFin (Finset.univ.filter (fun i : Fin L.es.length =>
-              t.mem (L.bufBase + 14 * n + i.val) ≠ 0)) ⊆
-              Finset.univ.filter (fun i : Fin L.es.length =>
-                t₂.mem (L.bufBase + 14 * n + i.val) ≠ 0) := by
-            intro i hi; rw [Finset.mem_filter]; refine ⟨Finset.mem_univ _, ?_⟩
-            rcases Finset.mem_insert.mp hi with rfl | hi_old
-            · rw [hset_me]; omega
-            · have hne : i.val ≠ eFin.val := fun h => he_not_f (Fin.ext h ▸ hi_old)
-              rw [hmod_me _ (by omega)]; exact (Finset.mem_filter.mp hi_old).2
-          have hc := Finset.card_le_card hsub_f
-          rw [Finset.card_insert_of_notMem he_not_f] at hc
+        · have hc := card_filter_ne_zero_add_one
+              (fun i : Fin L.es.length => t.mem (L.bufBase + 14 * n + i.val))
+              (fun i : Fin L.es.length => t₂.mem (L.bufBase + 14 * n + i.val))
+              eFin hcond.1 (by rw [hset_me]; omega) fun i hne =>
+            hmod_me _ (by have := Fin.val_ne_of_ne hne; omega)
           dsimp only [t₂] at hc ⊢; omega
     · obtain ⟨hres_me, hst_me⟩ := hme_false hcond
       refine ⟨hsafe_step, hvh_step, by omega,
@@ -615,7 +590,7 @@ private theorem partEmitEdgeLoop_spec {w n size : ℕ} (L : PartLayout w n)
       (iterate partEmitEdgeStep edgeStepD (endJ - startJ) ⟨startJ, a2⟩)).frontier = st.frontier :=
     ht_fr'.trans hst_fr.symm
   refine ⟨hsafe_it, hvh_it, by simpa only [add_zero, zero_add] using hcost_it, hfr_it, fun x hx =>
-    mem_eq_of_modifies hmod_it hvh_it hfr_it fun hxS => hx (by
+    mem_eq_of_modifies_frontier hvh_it hmod_it hfr_it x fun hxS => hx (by
       rcases hxS with ⟨h1, h2⟩ | ⟨h1, h2⟩ <;> [left; right] <;> exact ⟨h1, h2⟩),
     hce_le', ht_fr', ht_wf', ht_mod', emitted', comp', hnd', hlen', hhold', hmap', hemit_sub',
     fun eIdx he0 hu hv hcov => hemit_cov' eIdx he0 hu hv ?_, hest', hclaim'⟩
@@ -1069,10 +1044,7 @@ private theorem partEmitCorrLoop_spec {w n : ℕ} (L : PartLayout w n)
       rw [hprog_s]; refine validHistory_read_bind hcb_lt ?_; rw [hst_agree_corr]
       exact validHistory_read_bind hst_lt htail
     by_cases hst0 : st.mem (L.bufBase + 14 * n + eFin.val) = 0
-    · have he_not_filt : eFin ∉
-          Finset.univ.filter (fun i : Fin m => st.mem (L.bufBase + 14 * n + i.val) ≠ 0) := by
-        simp [hst0]
-      have hfilt_lt : (Finset.univ.filter (fun i : Fin m =>
+    · have hfilt_lt : (Finset.univ.filter (fun i : Fin m =>
           st.mem (L.bufBase + 14 * n + i.val) ≠ 0)).card < m :=
         filter_ne_zero_card_lt (fun i : Fin m => st.mem (L.bufBase + 14 * n + i.val)) eFin hst0
       have hmc_lt_m : a.count < m := by dsimp only [m] at *; omega
@@ -1141,7 +1113,7 @@ private theorem partEmitCorrLoop_spec {w n : ℕ} (L : PartLayout w n)
       have hhold_new : HoldsIndexedEdges (L.bufBase + 14 * n + 6 * m + 4 * mcLen0)
           ((corrEmitted ++ [eFin]).map fun i => L.es[i.val]'i.isLt) st₂.mem := by
         rw [List.map_append, List.map_singleton]
-        refine partHoldsIndexedEdges_append (hhold_ce.congr fun x _ hx2 => by
+        refine holdsIndexedEdges_append (hhold_ce.congr fun x _ hx2 => by
           rw [List.length_map, hlen_ce] at hx2; exact hmod_cp x (by omega) |>.trans (by
             dsimp only [st₁]; rw [Function.update_of_ne (by omega)])) fun i hi => ?_
         have hi0 : i = 0 := Nat.lt_one_iff.mp hi; subst hi0; dsimp only [m] at *
@@ -1181,19 +1153,14 @@ private theorem partEmitCorrLoop_spec {w n : ℕ} (L : PartLayout w n)
             rw [hmod_cp _ (by omega)]; dsimp only [st₁]
             rw [Function.update_of_ne (by omega), hst_es i hi]
             simp only [List.mem_append, List.mem_singleton, hne_f, or_false]
-        · have hsub_f : insert eFin (Finset.univ.filter (fun i : Fin L.es.length =>
-              st.mem (L.bufBase + 14 * n + i.val) ≠ 0)) ⊆
-              Finset.univ.filter (fun i : Fin L.es.length =>
-                st₂.mem (L.bufBase + 14 * n + i.val) ≠ 0) := by
-            intro i hi; rw [Finset.mem_filter]; refine ⟨Finset.mem_univ _, ?_⟩
-            rcases Finset.mem_insert.mp hi with rfl | hi_old
-            · rw [hmod_cp _ (by omega)]; dsimp only [st₁]; rw [Function.update_self]; omega
-            · have hne : i.val ≠ eFin.val := fun h => he_not_filt (Fin.ext h ▸ hi_old)
-              rw [hmod_cp _ (by omega)]; dsimp only [st₁]
-              rw [Function.update_of_ne (by omega)]
-              exact (Finset.mem_filter.mp hi_old).2
-          have hc := Finset.card_le_card hsub_f
-          rw [Finset.card_insert_of_notMem he_not_filt] at hc
+        · have hc := card_filter_ne_zero_add_one
+              (fun i : Fin L.es.length => st.mem (L.bufBase + 14 * n + i.val))
+              (fun i : Fin L.es.length => st₂.mem (L.bufBase + 14 * n + i.val))
+              eFin hst0
+              (by rw [hmod_cp _ (by omega)]; dsimp only [st₁]; rw [Function.update_self]; omega)
+              fun i hne => by
+            have := Fin.val_ne_of_ne hne
+            rw [hmod_cp _ (by omega)]; dsimp only [st₁]; rw [Function.update_of_ne (by omega)]
           dsimp only [st₂] at hc ⊢; omega
     · have hsafe_s : partEmitCorrStepSafe w (stepD, a) st := by
         rw [partEmitCorrStepSafe_def]

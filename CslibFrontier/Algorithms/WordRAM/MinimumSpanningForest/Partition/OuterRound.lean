@@ -10,6 +10,7 @@ module
 public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.OuterEmit
 public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.Bridges
 import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Collect
+import Mathlib.Data.List.Perm.Subperm
 import Mathlib.Tactic.Linarith
 
 /-!
@@ -56,25 +57,6 @@ private theorem shInv_next_round {w ic₀ nc₀ m : ℕ}
   have hcap_new : h.nodeCount + 2 * (2 * m - h.itemCount) ≤ 4 * m := by omega
   exact ⟨hnc_new, shInit_inv hinv.fits16 hinv.wf hic_max hcap_new hinv.item_pool_lt
     hinv.node_pool_lt hinv.pools_disj hinv.fits_fuel⟩
-
-private theorem nodup_subset_subperm {α : Type*} {xs ys : List α} (hnd : xs.Nodup)
-    (hsub : ∀ x ∈ xs, x ∈ ys) : xs.Subperm ys := by
-  induction xs generalizing ys with
-  | nil => exact List.nil_subperm
-  | cons a rest ih =>
-    have ha : a ∈ ys := hsub a List.mem_cons_self
-    obtain ⟨ys₁, ys₂, rfl⟩ := List.append_of_mem ha
-    have hnd' := List.nodup_cons.mp hnd
-    have hsub' : ∀ x ∈ rest, x ∈ ys₁ ++ ys₂ := fun x hx => by
-      have hm := hsub x (List.mem_cons_of_mem _ hx)
-      rw [List.mem_append, List.mem_cons] at hm
-      rcases hm with h1 | rfl | h2
-      · exact List.mem_append_left _ h1
-      · exact absurd hx hnd'.1
-      · exact List.mem_append_right _ h2
-    obtain ⟨l, hl1, hl2⟩ := ih hnd'.2 hsub'
-    exact List.Subperm.trans ⟨a :: l, hl1.cons a, List.Sublist.cons_cons a hl2⟩
-      List.perm_middle.symm.subperm
 
 private theorem djp_edge_ne_of_lt {n : ℕ} (D : DynamicDJPTree n) (i j : Fin D.numSteps)
     (hlt : i.val < j.val) : D.edge i ≠ D.edge j := by
@@ -828,7 +810,6 @@ theorem partRunRound_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memory.State)
     (hu_alive : dead0 u.val = 0)
     (hedge₀ : ∀ i < L.es.length, s₀.mem (L.bufBase + 14 * n + i) = edgeState0 i)
     (hsimp_g : IsSimple (edgeEnds (L.es.map IndexedEdge.toWeighted)))
-    (hnc : numComps < n)
     (hnc_dead : numComps ≤ (Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0)).card)
     (htLen_dead : tLen0 ≤ (Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0)).card)
     (hcl_dead : cLiftLen0 ≤
@@ -932,6 +913,16 @@ theorem partRunRound_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memory.State)
   let st0 : PartOuterState := ⟨u.val, numComps, cEdgeLen0, cLiftLen0, mcLen0, tLen0, h₀⟩
   let deadSet : Finset (Fin n) := Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0)
   have h16 := L.h16; have hn_pos := L.hn_pos
+  have hu_not_dead : u ∉ deadSet := by simp [deadSet, hu_alive]
+  have hdead_lt_n : deadSet.card < n := by
+    have hlt : Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0) ⊂
+        (Finset.univ : Finset (Fin n)) :=
+      Finset.ssubset_univ_iff.mpr fun heq => by
+        have : u ∈ Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0) := by
+          rw [heq]; exact Finset.mem_univ _
+        exact hu_not_dead this
+    simpa [Fintype.card_fin] using Finset.card_lt_card hlt
+  have hnc : numComps < n := lt_of_le_of_lt hnc_dead hdead_lt_n
   have hincur_ne : ∀ x < n, inCur0 x ≠ numComps + 1 := fun x hx h => by
     have := hincur₀_le x hx; omega
   have hcid_fit : Fits w (numComps + 1) := L.hfit_end.of_le (by omega)
@@ -989,15 +980,6 @@ theorem partRunRound_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memory.State)
       exact (Finset.card_le_card hsub).trans (Finset.card_singleton _).le
   have hu_in_Vi : u ∈ V_i := mem_djpVerts_mono W'.D.root W'.D.vOut (Nat.zero_le _)
     (Finset.mem_singleton.mpr W'.hroot.symm)
-  have hu_not_dead : u ∉ deadSet := by simp [deadSet, hu_alive]
-  have hdead_lt_n : deadSet.card < n := by
-    have hlt : Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0) ⊂
-        (Finset.univ : Finset (Fin n)) :=
-      Finset.ssubset_univ_iff.mpr fun heq => by
-        have : u ∈ Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0) := by
-          rw [heq]; exact Finset.mem_univ _
-        exact hu_not_dead this
-    simpa [Fintype.card_fin] using Finset.card_lt_card hlt
   have hdead_union_card : (deadSet ∪ V_i).card =
       deadSet.card + size - (if hitPrev = 0 then 0 else 1) := by
     have hcu := Finset.card_union_add_card_inter deadSet V_i; rw [Finset.inter_comm] at hcu
@@ -1125,7 +1107,7 @@ theorem partRunRound_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memory.State)
       exact Fin.ext (hnd_em.getElem_inj_iff.mp (Fin.ext (by
         simpa using congrArg Fin.val (hsimp_g.2 hsame))))
   have htree_sub : r.tree.treeEdges.Subperm (r.compGlobal.map IndexedEdge.toWeighted) := by
-    refine nodup_subset_subperm (djp_treeEdges_nodup W'.D) fun ew hew => ?_
+    refine (djp_treeEdges_nodup W'.D).subperm fun ew hew => ?_
     rw [← W'.htree_w, List.mem_map] at hew; obtain ⟨ei, hei, rfl⟩ := hew
     obtain ⟨eIdx, hei_eq, he0⟩ := W'.htree_src ei hei
     obtain ⟨s_step, hs_mem⟩ : ∃ s_step : Fin W'.D.numSteps, W'.D.edge s_step =
