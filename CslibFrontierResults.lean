@@ -64,6 +64,7 @@ import CslibFrontierResults.Entries.TwoSATWordRAM
 import CslibFrontierResults.Entries.SergeevBkSequence
 import CslibFrontierResults.Entries.PredictionMarket
 import CslibFrontierResults.Entries.ODonnellDNFWidth
+import CslibFrontierResults.Entries.UniformFanIn
 import CslibFrontierResults.Entries.RelabelToFront
 import CslibFrontierResults.Entries.LoadBalancing
 import CslibFrontierResults.Entries.PlantedClique
@@ -79,6 +80,7 @@ import CslibFrontierResults.Entries.EvolutionaryStability
 import CslibFrontierResults.Entries.ODonnellFriedgutConcentration
 import CslibFrontierResults.Entries.LupanovRectifier
 import CslibFrontierResults.Entries.CBCMAC
+import CslibFrontierResults.Entries.LogspaceUniformNC
 import CslibFrontierResults.Entries.ExternalRegret
 import CslibFrontierResults.Entries.UtilityGame
 import CslibFrontierResults.Entries.PrefixFreePRF
