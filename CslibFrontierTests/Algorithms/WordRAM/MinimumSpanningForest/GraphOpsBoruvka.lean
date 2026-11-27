@@ -28,6 +28,10 @@ Exercises `boruvkaMinProg`, `boruvkaSelectProg`, `boruvkaPartitionProg`, `boruvk
 4. Composite `Realizes .exact` pipeline (`initAndBoruvkaStepProg` via `realize`) and lowering to a
    width-blind deterministic `Program .standard` via
    `exists_standard_basis_init_program_state_from_words`.
+5. Equal-weight 3-cycle witnesses (`[⟨0, 1, 5, 10⟩, ⟨1, 2, 5, 11⟩, ⟨0, 2, 5, 12⟩]` and rotated
+   tie order `[⟨1, 2, 5, 11⟩, ⟨2, 0, 5, 12⟩, ⟨0, 1, 5, 10⟩]`) verifying exact selected edge
+   IDs (`[10, 11]` and `[12, 11]`) through `boruvkaPartitionProg_spec` and `boruvkaStepProg_spec`
+   under smallest-index tie-breaking (selecting 2 edges rather than the 3-cycle).
 -/
 
 -- This test module intentionally exports no declarations.
@@ -412,5 +416,233 @@ example :
     frontier, y, n, runs_stripRand hruns, step_stripRand_of_halt hhalt, ?_, ?_⟩
   · rw [hmem_eq]
   · simpa only [Nat.add_zero] using hsteps
+
+/-! ## 5. Equal-weight cycle index tie-breaking witnesses -/
+
+private theorem selIdxs_eq_two_of_minEdge {n : ℕ} {es : List (IndexedEdge n)}
+    {selIdxs : List (Fin es.length)} {idx0 idx1 : Fin es.length} {x0 : Fin n}
+    (hnd : selIdxs.Nodup) (hne01 : idx0 ≠ idx1)
+    (hsound : ∀ idx ∈ selIdxs, ∃ x : Fin n, IsVertexMinEdge es x idx)
+    (hcov : ∀ x : Fin n, (∃ e ∈ es, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) →
+      ∃ idx ∈ selIdxs, IsVertexMinEdge es x idx)
+    (hord : ∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : Fin n, xi < xj ∧
+      IsVertexMinEdge es xi selIdxs[i.val] ∧ IsVertexMinEdge es xj selIdxs[j.val] ∧
+      ∀ x' : Fin n, x' < xj → ¬IsVertexMinEdge es x' selIdxs[j.val])
+    (honly : ∀ x idx, IsVertexMinEdge es x idx → idx = idx0 ∨ idx = idx1)
+    (hmin0 : IsVertexMinEdge es x0 idx0)
+    (hex0 : ∃ x : Fin n, (∃ e ∈ es, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge es x idx → idx = idx0)
+    (hex1 : ∃ x : Fin n, (∃ e ∈ es, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge es x idx → idx = idx1)
+    (hgt0 : ∀ x' : Fin n, IsVertexMinEdge es x' idx1 → x0 < x') :
+    selIdxs = [idx0, idx1] := by
+  obtain ⟨xa, hxa_nl, hxa_only⟩ := hex0
+  obtain ⟨idxa, hidxa_mem, hidxa_min⟩ := hcov xa hxa_nl
+  have hmem0 : idx0 ∈ selIdxs := (hxa_only idxa hidxa_min) ▸ hidxa_mem
+  obtain ⟨xb, hxb_nl, hxb_only⟩ := hex1
+  obtain ⟨idxb, hidxb_mem, hidxb_min⟩ := hcov xb hxb_nl
+  have hmem1 : idx1 ∈ selIdxs := (hxb_only idxb hidxb_min) ▸ hidxb_mem
+  have hsub_le : selIdxs.length ≤ 2 := by
+    have hsub := List.subperm_of_subset hnd (l₂ := [idx0, idx1]) fun idx hidx => by
+      obtain ⟨x, hx⟩ := hsound idx hidx
+      rcases honly x idx hx with rfl | rfl <;>
+        simp only [List.mem_cons, List.not_mem_nil, or_false, or_true, true_or]
+    simpa only [List.length_cons, List.length_nil] using hsub.length_le
+  have hsub_ge : 2 ≤ selIdxs.length := by
+    have hnd01 : ([idx0, idx1] : List (Fin es.length)).Nodup :=
+      List.nodup_cons.mpr ⟨by simp only [List.mem_singleton, hne01, not_false_eq_true],
+        List.nodup_singleton _⟩
+    have hsub := List.subperm_of_subset hnd01 (l₂ := selIdxs) fun idx hidx => by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hidx
+      rcases hidx with rfl | rfl <;> assumption
+    simpa only [List.length_cons, List.length_nil] using hsub.length_le
+  rcases selIdxs with _ | ⟨a, _ | ⟨b, _ | rest⟩⟩ <;>
+    simp only [List.length_nil, List.length_cons, Nat.reduceAdd] at hsub_le hsub_ge <;> try omega
+  have ha_or : a = idx0 ∨ a = idx1 := let ⟨x, hx⟩ := hsound a List.mem_cons_self; honly x a hx
+  have hb_or : b = idx0 ∨ b = idx1 :=
+    let ⟨x, hx⟩ := hsound b (List.mem_cons_of_mem _ List.mem_cons_self); honly x b hx
+  have hnd_ab : a ≠ b := by
+    simp only [List.nodup_cons, List.mem_singleton, List.nodup_nil, and_true] at hnd; exact hnd.1
+  rcases ha_or with rfl | rfl
+  · rcases hb_or with rfl | rfl
+    · exact absurd rfl hnd_ab
+    · rfl
+  · rcases hb_or with rfl | rfl
+    · obtain ⟨xi, xj, hxij, hxi_min, _, hnf⟩ :=
+        hord ⟨0, Nat.zero_lt_succ 1⟩ ⟨1, Nat.one_lt_succ_succ 0⟩ (Fin.lt_def.mpr Nat.zero_lt_one)
+      simp only [List.getElem_cons_zero, List.getElem_cons_succ] at hxi_min hnf
+      have hx0_lt : x0 < xi := hgt0 xi hxi_min
+      have hxj_le : xj ≤ x0 := Nat.le_of_not_lt fun hlt => hnf x0 hlt hmin0
+      omega
+    · exact absurd rfl hnd_ab
+
+private theorem eqTri_partition_and_step (e0 e1 e2 : IndexedEdge 3)
+    (hwts : ∀ e ∈ ([e0, e1, e2] : List (IndexedEdge 3)), Fits 16 e.weight ∧ Fits 16 e.id)
+    {idx0 idx1 x0 : Fin 3} (hne01 : idx0 ≠ idx1)
+    (honly : ∀ x idx, IsVertexMinEdge [e0, e1, e2] x idx → idx = idx0 ∨ idx = idx1)
+    (hmin0 : IsVertexMinEdge [e0, e1, e2] x0 idx0)
+    (hex0 : ∃ x : Fin 3, (∃ e ∈ ([e0, e1, e2] : List (IndexedEdge 3)),
+        e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge [e0, e1, e2] x idx → idx = idx0)
+    (hex1 : ∃ x : Fin 3, (∃ e ∈ ([e0, e1, e2] : List (IndexedEdge 3)),
+        e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge [e0, e1, e2] x idx → idx = idx1)
+    (hgt0 : ∀ x' : Fin 3, IsVertexMinEdge [e0, e1, e2] x' idx1 → x0 < x') :
+    let es : List (IndexedEdge 3) := [e0, e1, e2]
+    let s0 := mkInitState es
+    let rP := execWordRAM s0 (boruvkaPartitionProg ⟨3, 3, 0⟩)
+    let rS := execWordRAM s0 (boruvkaStepProg ⟨3, 3, 0⟩)
+    rP.1.selCount = 2 ∧
+    (∃ selIdxs : List (Fin 3),
+      selIdxs.length = 2 ∧ selIdxs.Nodup ∧
+      selIdxs.map (fun i => es[i.val].id) = [es[idx0.val].id, es[idx1.val].id] ∧
+      ∃ F_ext : List (WeightedEdge 3 ℕ),
+        IsMinSpanningForest (es.map IndexedEdge.toWeighted)
+          ((selIdxs.map fun i => es[i.val]).map IndexedEdge.toWeighted ++ F_ext)) ∧
+    rS.1.selCount = 2 ∧ 2 * rS.1.outVertices ≤ 3 ∧ rS.1.outEdges = 0 ∧
+    ∃ selIdxs : List (Fin 3),
+      selIdxs.length = 2 ∧ selIdxs.Nodup ∧
+      selIdxs.map (fun i => es[i.val].id) = [es[idx0.val].id, es[idx1.val].id] ∧
+      ∃ L_orig : List (IndexedEdge 3),
+        (selIdxs.map (fun i => es[i.val]) ++ L_orig).Subperm es ∧
+        L_orig = [] ∧
+        IsMinSpanningForest (es.map IndexedEdge.toWeighted)
+          ((selIdxs.map (fun i => es[i.val]) ++ L_orig).map IndexedEdge.toWeighted) := by
+  intro es s0 rP rS
+  have hlen3 : es.length = 3 := rfl
+  obtain ⟨hwf, hfr, hin⟩ := mkInitState_spec (w := 16) es (by decide) (by rw [hlen3]; decide) hwts
+  have hpart_ft := boruvkaPartitionProg_spec (by decide) hwf hin (by rw [hfr, hlen3])
+    (by rw [hfr, hlen3]; decide)
+  rw [show (⟨3, es.length, 0⟩ : GraphSlice) = ⟨3, 3, 0⟩ from by rw [hlen3]] at hpart_ft
+  have hstep_ft := boruvkaStepProg_spec (by decide) hwf hin (by rw [hfr, hlen3])
+    (by rw [hfr, hlen3]; decide)
+  rw [show (⟨3, es.length, 0⟩ : GraphSlice) = ⟨3, 3, 0⟩ from by rw [hlen3]] at hstep_ft
+  obtain ⟨_, _, _, _, _, _, _, _, _, _, selIdxsP, _, hsl_len_P, hnd_P, _, hmsf_P, _, _, _, _, _,
+      hsound_P, hcov_P, hord_P⟩ := framedTriple_iff_realization.mp hpart_ft
+  obtain ⟨_, _, _, _, _, _, hout_v, _, _, _, _, selIdxsS, _, esOut, hsl_len_S, hnd_S, _, _,
+      hout_len, _, _, _, hout_simp, _, _, hlift_S, hsound_S, hcov_S, hord_S⟩ :=
+    framedTriple_iff_realization.mp hstep_ft
+  have hselP_eq : selIdxsP = [idx0, idx1] :=
+    selIdxs_eq_two_of_minEdge hnd_P hne01 hsound_P hcov_P hord_P honly hmin0 hex0 hex1 hgt0
+  have hselS_eq : selIdxsS = [idx0, idx1] :=
+    selIdxs_eq_two_of_minEdge hnd_S hne01 hsound_S hcov_S hord_S honly hmin0 hex0 hex1 hgt0
+  have hlenP : selIdxsP.length = 2 := by rw [hselP_eq]; rfl
+  have hlenS : selIdxsS.length = 2 := by rw [hselS_eq]; rfl
+  have hidP : selIdxsP.map (fun i => es[i.val].id) = [es[idx0.val].id, es[idx1.val].id] := by
+    rw [hselP_eq]; rfl
+  have hidS : selIdxsS.map (fun i => es[i.val].id) = [es[idx0.val].id, es[idx1.val].id] := by
+    rw [hselS_eq]; rfl
+  have hesOut_nil : esOut = [] := by
+    cases esOut with
+    | nil => rfl
+    | cons e _ =>
+      have hno := ((isSimple_iff _).mp hout_simp).1 ⟨0, by simp⟩
+      simp only [edgeEnds, List.getElem_map, IndexedEdge.toWeighted, List.getElem_cons_zero,
+        Sym2.mk_isDiag_iff] at hno
+      exact absurd (Fin.ext (by omega : e.u.val = e.v.val)) hno
+  have hout_e0 : rS.1.outEdges = 0 := by
+    dsimp only [rS, execWordRAM]; rw [← hout_len, hesOut_nil, List.length_nil]
+  have hmsf_out : IsMinSpanningForest (esOut.map IndexedEdge.toWeighted)
+      (([] : List (IndexedEdge _)).map IndexedEdge.toWeighted) := by
+    rw [hesOut_nil, List.map_nil]
+    exact isMinSpanningForest_nil
+  obtain ⟨L_orig, hsub_orig, hL_id, hmsf_orig⟩ := hlift_S [] (List.nil_subperm) hmsf_out
+  have hL_nil : L_orig = [] := List.eq_nil_of_length_eq_zero (by
+    simpa only [List.length_map, List.length_nil] using congrArg List.length hL_id)
+  exact ⟨hsl_len_P.symm.trans hlenP, ⟨selIdxsP, hlenP, hnd_P, hidP, hmsf_P⟩,
+    hsl_len_S.symm.trans hlenS, hout_v, hout_e0, selIdxsS, hlenS, hnd_S, hidS,
+    L_orig, hsub_orig, hL_nil, hmsf_orig⟩
+
+private abbrev eqTriEdges1 : List (IndexedEdge 3) :=
+  [⟨0, 1, 5, 10⟩, ⟨1, 2, 5, 11⟩, ⟨0, 2, 5, 12⟩]
+
+example :
+    let s0 := mkInitState eqTriEdges1
+    let rP := execWordRAM s0 (boruvkaPartitionProg ⟨3, 3, 0⟩)
+    let rS := execWordRAM s0 (boruvkaStepProg ⟨3, 3, 0⟩)
+    rP.1.selCount = 2 ∧
+    (∃ selIdxs : List (Fin 3),
+      selIdxs.length = 2 ∧ selIdxs.Nodup ∧
+      selIdxs.map (fun i => eqTriEdges1[i.val].id) = [10, 11] ∧
+      ∃ F_ext : List (WeightedEdge 3 ℕ),
+        IsMinSpanningForest (eqTriEdges1.map IndexedEdge.toWeighted)
+          ((selIdxs.map fun i => eqTriEdges1[i.val]).map IndexedEdge.toWeighted ++ F_ext)) ∧
+    rS.1.selCount = 2 ∧ 2 * rS.1.outVertices ≤ 3 ∧ rS.1.outEdges = 0 ∧
+    ∃ selIdxs : List (Fin 3),
+      selIdxs.length = 2 ∧ selIdxs.Nodup ∧
+      selIdxs.map (fun i => eqTriEdges1[i.val].id) = [10, 11] ∧
+      ∃ L_orig : List (IndexedEdge 3),
+        (selIdxs.map (fun i => eqTriEdges1[i.val]) ++ L_orig).Subperm eqTriEdges1 ∧
+        L_orig = [] ∧
+        IsMinSpanningForest (eqTriEdges1.map IndexedEdge.toWeighted)
+          ((selIdxs.map (fun i => eqTriEdges1[i.val]) ++ L_orig).map IndexedEdge.toWeighted) := by
+  have hwts : ∀ e ∈ eqTriEdges1, Fits 16 e.weight ∧ Fits 16 e.id := by
+    intro e he
+    simp only [eqTriEdges1, List.mem_cons, List.not_mem_nil, or_false] at he
+    rcases he with rfl | rfl | rfl <;> exact ⟨by decide, by decide⟩
+  have honly : ∀ x idx, IsVertexMinEdge eqTriEdges1 x idx → idx = 0 ∨ idx = 1 := by
+    intro x idx h; dsimp only [IsVertexMinEdge, eqTriEdges1] at h
+    fin_cases x <;> fin_cases idx <;> revert h <;> decide
+  have hmin0 : IsVertexMinEdge eqTriEdges1 0 0 := by
+    dsimp only [IsVertexMinEdge, eqTriEdges1]; decide
+  have hex0 : ∃ x : Fin 3, (∃ e ∈ eqTriEdges1, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge eqTriEdges1 x idx → idx = 0 :=
+    ⟨0, ⟨eqTriEdges1[0], List.getElem_mem (by decide), by decide⟩, fun idx h => by
+      dsimp only [IsVertexMinEdge, eqTriEdges1] at h; fin_cases idx <;> revert h <;> decide⟩
+  have hex1 : ∃ x : Fin 3, (∃ e ∈ eqTriEdges1, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge eqTriEdges1 x idx → idx = 1 :=
+    ⟨2, ⟨eqTriEdges1[1], List.getElem_mem (by decide), by decide⟩, fun idx h => by
+      dsimp only [IsVertexMinEdge, eqTriEdges1] at h; fin_cases idx <;> revert h <;> decide⟩
+  have hgt0 : ∀ x' : Fin 3, IsVertexMinEdge eqTriEdges1 x' 1 → (0 : Fin 3) < x' := by
+    intro x' h; dsimp only [IsVertexMinEdge, eqTriEdges1] at h
+    fin_cases x' <;> revert h <;> decide
+  exact eqTri_partition_and_step eqTriEdges1[0] eqTriEdges1[1] eqTriEdges1[2] hwts (by decide)
+    honly hmin0 hex0 hex1 hgt0
+
+private abbrev eqTriEdges2 : List (IndexedEdge 3) :=
+  [⟨1, 2, 5, 11⟩, ⟨2, 0, 5, 12⟩, ⟨0, 1, 5, 10⟩]
+
+example :
+    let s0 := mkInitState eqTriEdges2
+    let rP := execWordRAM s0 (boruvkaPartitionProg ⟨3, 3, 0⟩)
+    let rS := execWordRAM s0 (boruvkaStepProg ⟨3, 3, 0⟩)
+    rP.1.selCount = 2 ∧
+    (∃ selIdxs : List (Fin 3),
+      selIdxs.length = 2 ∧ selIdxs.Nodup ∧
+      selIdxs.map (fun i => eqTriEdges2[i.val].id) = [12, 11] ∧
+      ∃ F_ext : List (WeightedEdge 3 ℕ),
+        IsMinSpanningForest (eqTriEdges2.map IndexedEdge.toWeighted)
+          ((selIdxs.map fun i => eqTriEdges2[i.val]).map IndexedEdge.toWeighted ++ F_ext)) ∧
+    rS.1.selCount = 2 ∧ 2 * rS.1.outVertices ≤ 3 ∧ rS.1.outEdges = 0 ∧
+    ∃ selIdxs : List (Fin 3),
+      selIdxs.length = 2 ∧ selIdxs.Nodup ∧
+      selIdxs.map (fun i => eqTriEdges2[i.val].id) = [12, 11] ∧
+      ∃ L_orig : List (IndexedEdge 3),
+        (selIdxs.map (fun i => eqTriEdges2[i.val]) ++ L_orig).Subperm eqTriEdges2 ∧
+        L_orig = [] ∧
+        IsMinSpanningForest (eqTriEdges2.map IndexedEdge.toWeighted)
+          ((selIdxs.map (fun i => eqTriEdges2[i.val]) ++ L_orig).map IndexedEdge.toWeighted) := by
+  have hwts : ∀ e ∈ eqTriEdges2, Fits 16 e.weight ∧ Fits 16 e.id := by
+    intro e he
+    simp only [eqTriEdges2, List.mem_cons, List.not_mem_nil, or_false] at he
+    rcases he with rfl | rfl | rfl <;> exact ⟨by decide, by decide⟩
+  have honly : ∀ x idx, IsVertexMinEdge eqTriEdges2 x idx → idx = 1 ∨ idx = 0 := by
+    intro x idx h; dsimp only [IsVertexMinEdge, eqTriEdges2] at h
+    fin_cases x <;> fin_cases idx <;> revert h <;> decide
+  have hmin0 : IsVertexMinEdge eqTriEdges2 0 1 := by
+    dsimp only [IsVertexMinEdge, eqTriEdges2]; decide
+  have hex0 : ∃ x : Fin 3, (∃ e ∈ eqTriEdges2, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge eqTriEdges2 x idx → idx = 1 :=
+    ⟨0, ⟨eqTriEdges2[1], List.getElem_mem (by decide), by decide⟩, fun idx h => by
+      dsimp only [IsVertexMinEdge, eqTriEdges2] at h; fin_cases idx <;> revert h <;> decide⟩
+  have hex1 : ∃ x : Fin 3, (∃ e ∈ eqTriEdges2, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) ∧
+      ∀ idx, IsVertexMinEdge eqTriEdges2 x idx → idx = 0 :=
+    ⟨1, ⟨eqTriEdges2[0], List.getElem_mem (by decide), by decide⟩, fun idx h => by
+      dsimp only [IsVertexMinEdge, eqTriEdges2] at h; fin_cases idx <;> revert h <;> decide⟩
+  have hgt0 : ∀ x' : Fin 3, IsVertexMinEdge eqTriEdges2 x' 0 → (0 : Fin 3) < x' := by
+    intro x' h; dsimp only [IsVertexMinEdge, eqTriEdges2] at h
+    fin_cases x' <;> revert h <;> decide
+  exact eqTri_partition_and_step eqTriEdges2[0] eqTriEdges2[1] eqTriEdges2[2] hwts (by decide)
+    honly hmin0 hex0 hex1 hgt0
 
 end CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.GraphOpsBoruvka
