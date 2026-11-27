@@ -7,9 +7,10 @@ Authors: vvauted
 module
 -- upstream: candidate
 
-public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Boruvka
-public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSF.BaseOps
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Dedup
+import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Boruvka
 import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Components
+import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSF.BaseOps
 import CslibFrontier.Foundations.Data.List.Subperm
 import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
@@ -18,8 +19,12 @@ import CslibFrontier.Tactic.ValidProg
 /-!
 # Initial Graph Preprocessing and Borůvka Contraction Stages for Optimal MSF
 
-Word-RAM preprocessing and 1/2/3-round Borůvka contraction subroutines toward Section 5.2
-(pp. 26–27) and Theorem 5.8 of [PettieRamachandran2002] (#8624):
+Word-RAM preprocessing and 3-round Borůvka contraction toward Section 2.1 (p. 18), Section 5
+(pp. 23–24), and Theorem 5.8 (Section 5.1, p. 27) of [PettieRamachandran2002] (#8624).
+Pettie and Ramachandran (Section 2.1, p. 18; Section 5, pp. 23–24) use 2-round `Boruvka2` on
+connected inputs with `ε = 1 / 8`, whereas `boruvkaThreeStageProg` runs three contraction rounds
+for an `8×` vertex reduction matching `Partition`'s fixed `ε = 1 / 16` (`partRankThreshold = 8`)
+on general non-isolated multigraphs (`n ≤ 2m`):
 
 - `MSFLiftInv` and `MSFLiftInv.sum_le`: loop invariant tracking accumulated selected edge IDs and
   remaining contracted edges, guaranteeing that any MSF of the contracted graph lifts back to an
@@ -27,10 +32,9 @@ Word-RAM preprocessing and 1/2/3-round Borůvka contraction subroutines toward S
 - `InitPreprocessArgs`, `initPreprocessProg`: materializes stride-3 raw input edges into indexed
   edges, removes self-loops and parallel edges via `dedupSimpleEdgesProg`, and compacts isolated
   vertices via `compactVerticesProg`, returning a simple non-isolated `GraphSlice`.
-- `BoruvkaStageArgs`, `BoruvkaStageResult`, `boruvkaOneStageProg`, `boruvkaTwoStageProg`,
-  `boruvkaThreeStageProg`: 1-, 2-, and 3-round Borůvka contraction stages appending selected
-  original edge IDs to the accumulated MSF array and reducing vertex counts by factors of `2`, `4`,
-  and `8`, respectively.
+- `BoruvkaStageArgs`, `BoruvkaStageResult`, `boruvkaThreeStageProg`: 3-round Borůvka contraction
+  stage appending selected original edge IDs to the accumulated MSF array and reducing the active
+  vertex count by at least a factor of `8` (`8 * res.numVertices ≤ nCur`).
 
 ## Main definitions
 
@@ -46,15 +50,10 @@ Word-RAM preprocessing and 1/2/3-round Borůvka contraction subroutines toward S
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.encBoruvkaStageArgs`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.BoruvkaStageResult`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.encBoruvkaStageResult`: flat 5-word input and
-  4-word result bundles for Borůvka contraction stages.
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaStagePre`: parameterized Word-RAM safety
-  domain for Borůvka contraction stages.
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaOneStageProg`,
-  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaOneStageProgSafe`: single Borůvka stage.
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaTwoStageProg`,
-  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaTwoStageProgSafe`: two Borůvka stages.
+  4-word result bundles for `boruvkaThreeStageProg`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaThreeStageProg`,
-  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaThreeStageProgSafe`: three Borůvka stages.
+  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaThreeStageProgSafe`: three-round Borůvka
+  contraction stage and its closed-form Word-RAM safety domain.
 
 ## Main results
 
@@ -63,20 +62,15 @@ Word-RAM preprocessing and 1/2/3-round Borůvka contraction subroutines toward S
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_initPreprocessProg`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.initPreprocessProg_spec`: Word-RAM realization
   and framed `O(m + n)` specification for `initPreprocessProg`.
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_boruvkaOneStageProg`,
-  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaOneStageProg_spec`: certificates for
-  `boruvkaOneStageProg` (`2 * res.numVertices ≤ nCur`).
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_boruvkaTwoStageProg`,
-  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaTwoStageProg_spec`: certificates for
-  `boruvkaTwoStageProg` (`4 * res.numVertices ≤ nCur`).
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_boruvkaThreeStageProg`,
-  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaThreeStageProg_spec`: certificates for
-  `boruvkaThreeStageProg` (`8 * res.numVertices ≤ nCur`).
+  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.boruvkaThreeStageProg_spec`: Word-RAM realization
+  and framed `O(m + n)` specification for `boruvkaThreeStageProg` (`8 * res.numVertices ≤ nCur`).
 
 ## References
 
 * [Pettie and Ramachandran, *An Optimal Minimum Spanning Tree Algorithm*,
-  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 5.2, pp. 26–27
+  Journal of the ACM 49(1), 2002][PettieRamachandran2002], Section 2.1 (p. 18),
+  Section 5 (pp. 23–24), and Section 5.1 (pp. 25–27)
 -/
 
 public section
@@ -88,35 +82,6 @@ open Cslib.Algorithms.Lean.Kruskal Cslib.Algorithms.WordRAM.Kruskal
 open Cslib.Query.MinimumSpanningForest
 
 /-! ## Section 1: Invariant and Graph-Lifting Helpers -/
-
-private theorem card_le_two_mul_of_noIsolated {n : ℕ} (es : List (IndexedEdge n))
-    (hno : ∀ y : Fin n, ∃ e ∈ es, e.u = y ∨ e.v = y) : n ≤ 2 * es.length := by
-  have hsub : (Finset.univ : Finset (Fin n)) ⊆
-      es.foldr (fun e acc => insert e.u (insert e.v acc)) ∅ := by
-    intro y _
-    obtain ⟨e, he, hy⟩ := hno y
-    clear hno
-    induction es with
-    | nil => simp at he
-    | cons a rest ih =>
-      simp only [List.foldr_cons, Finset.mem_insert]
-      rcases List.mem_cons.mp he with rfl | hmem
-      · rcases hy with rfl | rfl <;> simp
-      · exact Or.inr (Or.inr (ih hmem))
-  have hcard : ∀ l : List (IndexedEdge n),
-      (l.foldr (fun e acc => insert e.u (insert e.v acc)) (∅ : Finset (Fin n))).card ≤
-        2 * l.length := by
-    intro l
-    induction l with
-    | nil => simp
-    | cons a rest ih =>
-      simp only [List.foldr_cons, List.length_cons]
-      have h1 := Finset.card_insert_le a.u (insert a.v (rest.foldr
-        (fun e acc => insert e.u (insert e.v acc)) ∅))
-      have h2 := Finset.card_insert_le a.v (rest.foldr
-        (fun e acc => insert e.u (insert e.v acc)) ∅)
-      omega
-  simpa [Fintype.card_fin] using (Finset.card_le_card hsub).trans (hcard es)
 
 private theorem mem_mapIdx_eq {n : ℕ} {es : List (WeightedEdge n ℕ)} {e : IndexedEdge n}
     (he : e ∈ es.mapIdx fun i x => ⟨x.u, x.v, x.weight, i⟩) :
@@ -318,7 +283,7 @@ theorem initPreprocessProg_spec {w n inBase : ℕ} {es : List (WeightedEdge n �
           es₀.length = res.numEdges ∧
           HoldsIndexedEdges res.edgeBase es₀ s'.mem ∧
           IsSimple (edgeEnds (es₀.map IndexedEdge.toWeighted)) ∧
-          (res.numEdges = 0 → ∀ e ∈ es, e.u = e.v) ∧
+          (res.numEdges = 0 ↔ ∀ e ∈ es, e.u = e.v) ∧
           MSFLiftInv es [] es₀ := by
   dsimp only [initPreprocessProg]
   let es1 : List (IndexedEdge n) := es.mapIdx fun i e => ⟨e.u, e.v, e.weight, i⟩
@@ -362,19 +327,40 @@ theorem initPreprocessProg_spec {w n inBase : ℕ} {es : List (WeightedEdge n �
   rw [← hesOut1_len]
   have hs1_le_s2 : s₁.frontier ≤ s₂.frontier := hmod₂.1
   refine Memory.FramedTriple.pure ⟨by
-    rw [← hes₀_len]; exact card_le_two_mul_of_noIsolated es₀ hnoiso,
+    rw [← hes₀_len]; exact card_le_two_mul_of_noIsolated hnoiso,
     hcp_n, hm1_le, by dsimp only; omega, by dsimp only; omega, by omega, hwf3, es₀, hes₀_len,
     hholds3,
     compactVertices_isSimple hlift_eq hsimp2, ?_, ?_⟩
-  · intro h0 e he
-    have hnil : esOut1 = [] := List.eq_nil_of_length_eq_zero h0
-    obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp he
-    have he1 : (⟨es[i].u, es[i].v, es[i].weight, i⟩ : IndexedEdge n) ∈ es1 :=
-      List.mem_mapIdx.mpr ⟨i, hi, rfl⟩
-    by_contra hne
-    obtain ⟨e', he', _⟩ := hdedup_rep _ he1 hne
-    rw [hnil] at he'
-    simp at he'
+  · constructor
+    · intro h0 e he
+      have hnil : esOut1 = [] := List.eq_nil_of_length_eq_zero h0
+      obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp he
+      have he1 : (⟨es[i].u, es[i].v, es[i].weight, i⟩ : IndexedEdge n) ∈ es1 :=
+        List.mem_mapIdx.mpr ⟨i, hi, rfl⟩
+      by_contra hne
+      obtain ⟨e', he', _⟩ := hdedup_rep _ he1 hne
+      rw [hnil] at he'
+      simp at he'
+    · intro hall
+      cases h_out : esOut1 with
+      | nil => rfl
+      | cons eOut rest =>
+        exfalso
+        have hmem1 : eOut ∈ es1 :=
+          hesOut1_sub.subset (by rw [h_out]; exact List.mem_cons_self)
+        obtain ⟨i, hi, heq⟩ := List.mem_mapIdx.mp hmem1
+        have hdiag : ¬ (edgeEnds (esOut1.map IndexedEdge.toWeighted)
+            ⟨0, by rw [h_out]; simp⟩).IsDiag :=
+          ((isSimple_iff _).mp hsimp2).1 ⟨0, by rw [h_out]; simp⟩
+        have heq_uv : eOut.u = eOut.v := by
+          have h := hall es[i] (List.getElem_mem hi)
+          rw [← heq]
+          exact h
+        have hmk : edgeEnds (esOut1.map IndexedEdge.toWeighted) ⟨0, by rw [h_out]; simp⟩ =
+            s(eOut.u, eOut.u) := by
+          simp [h_out, edgeEnds, IndexedEdge.toWeighted, heq_uv]
+        rw [hmk] at hdiag
+        exact hdiag (by simp)
   · have hsp_range : (es₀.map IndexedEdge.id).Subperm (List.range es.length) := by
       have hid_map : es₀.map IndexedEdge.id = esOut1.map IndexedEdge.id := by
         rw [← hlift_eq, List.map_map]; rfl
@@ -421,10 +407,9 @@ theorem initPreprocessProg_spec {w n inBase : ℕ} {es : List (WeightedEdge n �
     rw [hL_out_eq] at hmsf_es1
     exact ⟨remIds, hrem_val, by simpa using hmsf_es1⟩
 
-/-! ## Section 3: 1-, 2-, and 3-Stage Borůvka Contraction Pipelines -/
+/-! ## Section 3: 3-Stage Borůvka Contraction Pipeline -/
 
-/-- Input arguments for Borůvka contraction stage programs (`boruvkaOneStageProg`,
-`boruvkaTwoStageProg`, `boruvkaThreeStageProg`). -/
+/-- Input arguments for `boruvkaThreeStageProg`. -/
 structure BoruvkaStageArgs where
   /-- Current vertex count `nCur`. -/
   numVertices : ℕ
@@ -471,9 +456,7 @@ word_enc_structure encBoruvkaStageResult : BoruvkaStageResult where
 
 instance : WordEncoding BoruvkaStageResult := ⟨4, encBoruvkaStageResult⟩
 
-/-- Parameterized Word-RAM safety domain for Borůvka contraction stage programs with frontier
-workspace headroom `fBound numVertices numEdges`. -/
-@[expose] def boruvkaStagePre (fBound : ℕ → ℕ → ℕ) (w : ℕ) (a : BoruvkaStageArgs)
+private def boruvkaStagePre (fBound : ℕ → ℕ → ℕ) (w : ℕ) (a : BoruvkaStageArgs)
     (s : Memory.State) : Prop :=
   Fits w 16 ∧
   a.edgeBase + 4 * a.numEdges ≤ s.frontier ∧
@@ -483,15 +466,12 @@ workspace headroom `fBound numVertices numEdges`. -/
     s.mem (a.edgeBase + 4 * j) < a.numVertices ∧
     s.mem (a.edgeBase + 4 * j + 1) < a.numVertices
 
-/-- Execute one Borůvka contraction stage via `boruvkaStepProg` and append the selected original
-edge IDs to `a.selBase` starting at `a.selOff`. -/
-def boruvkaOneStageProg (a : BoruvkaStageArgs) : Memory.Prog BoruvkaStageResult := do
+private def boruvkaOneStageProg (a : BoruvkaStageArgs) : Memory.Prog BoruvkaStageResult := do
   let b ← boruvkaStepProg ⟨a.numVertices, a.numEdges, a.edgeBase⟩
   let sl ← appendSelIdsProg ⟨b.selBase, a.selBase, a.selOff, b.selCount⟩
   pure ⟨b.outVertices, b.outEdges, b.outBase, sl⟩
 
-/-- Safety domain for `boruvkaOneStageProg`. -/
-@[expose] def boruvkaOneStageProgSafe (w : ℕ) (a : BoruvkaStageArgs) (s : Memory.State) : Prop :=
+private def boruvkaOneStageProgSafe (w : ℕ) (a : BoruvkaStageArgs) (s : Memory.State) : Prop :=
   boruvkaStagePre (fun n m => 22 * m + 16 * n + 4) w a s
 
 private theorem selCount_add_outEdges_le {n : ℕ} {selIdxs outIdxs : List (Fin n)}
@@ -534,8 +514,6 @@ private theorem boruvkaOneStage_core_spec {w : ℕ} {a : BoruvkaStageArgs}
           (∀ j (hj : j < selIdxs.length),
             s'.mem (a.selBase + a.selOff + j) = (esCur[selIdxs[j].val]).id) ∧
           (∀ e ∈ esOut, ∃ i ∈ esCur, e.id = i.id) ∧
-          (∀ i ∈ selIdxs, ∀ e ∈ esOut, e.id ≠ (esCur[i.val]).id →
-            True) ∧
           ((esCur.map IndexedEdge.id).Nodup →
             (∀ i ∈ selIdxs, ∀ e ∈ esOut, e.id ≠ (esCur[i.val]).id) ∧
             (esOut.map IndexedEdge.id).Nodup) ∧
@@ -587,7 +565,7 @@ private theorem boruvkaOneStage_core_spec {w : ℕ} {a : BoruvkaStageArgs}
     omega
   refine Memory.FramedTriple.pure ⟨hn_out, by dsimp only; omega, by dsimp only; omega, hout_ge,
     by rw [hs2_fr]; exact hout_fr1, hs2_le, hwf₂, selIdxs, esOut, by dsimp only; omega, hsel_nd,
-    hesOut_len, hholds_out2, hsimp_out, fun j hj => ?_, fun e he => ?_, fun _ _ _ _ _ => trivial,
+    hesOut_len, hholds_out2, hsimp_out, fun j hj => ?_, fun e he => ?_,
     fun hnd_id => ⟨?_, ?_⟩, hmsf_lift⟩
   · have hw := hwritten j (by simpa [selSrcEs] using hj)
     simpa [selSrcEs] using hw
@@ -649,8 +627,7 @@ private theorem boruvkaOneStage_word_post {w : ℕ} {fBound : ℕ → ℕ → �
   obtain ⟨hu, hv, _, _⟩ := hholds_out2 j hj'
   exact ⟨hu ▸ (esOut[j]'hj').u.isLt, hv ▸ (esOut[j]'hj').v.isLt⟩
 
-/-- Uniform `Realizes .exact` certificate for `boruvkaOneStageProg` with `work = 0`. -/
-theorem realizes_boruvkaOneStageProg : Realizes .exact
+private theorem realizes_boruvkaOneStageProg : Realizes .exact
     boruvkaOneStageProg WordEncoding.encode WordEncoding.encode
     boruvkaOneStageProgSafe (fun _ _ => 0) := by
   unfold boruvkaOneStageProg
@@ -662,12 +639,7 @@ theorem realizes_boruvkaOneStageProg : Realizes .exact
     | exact h.1 | exact h.2.1 | exact h.2.2.2.1 | exact h.2.2.2.2
     | exact p1
 
-/-- Framed `O(m + n)` specification for `boruvkaOneStageProg`: performs one Borůvka contraction
-stage, appends the newly selected edge IDs onto `selBase + accIds.length`, halves the active vertex
-count (`2 * res.numVertices ≤ nCur`), preserves `MSFLiftInv`, and modifies only
-`Set.Ico (selBase + accIds.length) (selBase + accIds.length + esCur.length)`, in at most
-`78 * esCur.length + 61 * nCur + 34` memory operations. -/
-theorem boruvkaOneStageProg_spec {w n nCur edgeBase selBase : ℕ}
+private theorem boruvkaOneStageProg_spec {w n nCur edgeBase selBase : ℕ}
     {es : List (WeightedEdge n ℕ)} {accIds : List (Fin es.length)}
     {esCur : List (IndexedEdge nCur)} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
@@ -708,7 +680,7 @@ theorem boruvkaOneStageProg_spec {w n nCur edgeBase selBase : ℕ}
     (fun x hx => by simp only [Set.mem_Ico] at hx; omega)
   refine hkept.mono le_rfl fun res s'
     ⟨⟨hn_out, hoff_le, hsum_out, hout_ge, hout_fr, hs_le, hwf', selIdxs, esOut, hsel_len,
-      hsel_nd, hesOut_len, hholds_out, hsimp_out, hwritten, hesOut_id, _, hdisj_nodup,
+      hsel_nd, hesOut_len, hholds_out, hsimp_out, hwritten, hesOut_id, hdisj_nodup,
       hmsf_lift⟩, hacc_kept⟩ => ?_
   have ⟨hdisj_io, hesOut_nd⟩ := hdisj_nodup hinv.2.1
   have hsel_lt : ∀ i ∈ selIdxs, (esCur[i.val]).id < es.length := fun i _ =>
@@ -872,13 +844,11 @@ private theorem boruvkaStage_seq_spec
       by rw [hes1_len] at hs2_le; omega, hwf2, acc2, es2, hes2_len, hholds2, hsimp2, hacc2_len,
       hacc2_mem, hinv2⟩
 
-/-- Execute two consecutive Borůvka contraction stages (`boruvkaOneStageProg` twice). -/
-def boruvkaTwoStageProg (a : BoruvkaStageArgs) : Memory.Prog BoruvkaStageResult := do
+private def boruvkaTwoStageProg (a : BoruvkaStageArgs) : Memory.Prog BoruvkaStageResult := do
   let r1 ← boruvkaOneStageProg a
   boruvkaOneStageProg ⟨r1.numVertices, r1.numEdges, r1.edgeBase, a.selBase, r1.selOff⟩
 
-/-- Safety domain for `boruvkaTwoStageProg`. -/
-@[expose] def boruvkaTwoStageProgSafe (w : ℕ) (a : BoruvkaStageArgs) (s : Memory.State) : Prop :=
+private def boruvkaTwoStageProgSafe (w : ℕ) (a : BoruvkaStageArgs) (s : Memory.State) : Prop :=
   boruvkaStagePre (fun n m => 44 * m + 24 * n + 8) w a s
 
 private theorem boruvkaTwoStage_word_post {w : ℕ} {fBound : ℕ → ℕ → ℕ}
@@ -929,8 +899,7 @@ private theorem boruvkaStagePre_mono {f₁ f₂ : ℕ → ℕ → ℕ} {w : ℕ}
     (h : boruvkaStagePre f₂ w a s) : boruvkaStagePre f₁ w a s :=
   ⟨h.1, h.2.1, h.2.2.1, h.2.2.2.1.of_le (Nat.add_le_add_left hle s.frontier), h.2.2.2.2⟩
 
-/-- Uniform `Realizes .exact` certificate for `boruvkaTwoStageProg` with `work = 0`. -/
-theorem realizes_boruvkaTwoStageProg : Realizes .exact
+private theorem realizes_boruvkaTwoStageProg : Realizes .exact
     boruvkaTwoStageProg WordEncoding.encode WordEncoding.encode
     boruvkaTwoStageProgSafe (fun _ _ => 0) := by
   unfold boruvkaTwoStageProg
@@ -941,12 +910,7 @@ theorem realizes_boruvkaTwoStageProg : Realizes .exact
     | exact boruvkaStagePre_mono (by omega) h
     | exact hsafe2
 
-/-- Framed `O(m + n)` specification for `boruvkaTwoStageProg`: runs two Borůvka contraction
-stages, reducing active vertices by at least a factor of `4` (`4 * res.numVertices ≤ nCur`),
-appending selected original edge IDs onto `selBase + accIds.length`, preserving `MSFLiftInv`, and
-modifying only `Set.Ico (selBase + accIds.length) (selBase + accIds.length + esCur.length)`, in at
-most `156 * esCur.length + 92 * nCur + 68` memory operations. -/
-theorem boruvkaTwoStageProg_spec {w n nCur edgeBase selBase : ℕ}
+private theorem boruvkaTwoStageProg_spec {w n nCur edgeBase selBase : ℕ}
     {es : List (WeightedEdge n ℕ)} {accIds : List (Fin es.length)}
     {esCur : List (IndexedEdge nCur)} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
@@ -980,16 +944,22 @@ theorem boruvkaTwoStageProg_spec {w n nCur edgeBase selBase : ℕ}
       (hfit.of_le (by omega)))
     (by omega) (by omega) (by omega) fun r1 hn1 hoff1 hsum1 => hfit.of_le (by omega)
 
-/-- Execute three consecutive Borůvka contraction stages (`boruvkaTwoStageProg` followed by
-`boruvkaOneStageProg`). -/
+/-- Execute three consecutive Borůvka contraction stages, appending selected original edge IDs
+to `a.selBase` starting at `a.selOff`. -/
 def boruvkaThreeStageProg (a : BoruvkaStageArgs) : Memory.Prog BoruvkaStageResult := do
   let r2 ← boruvkaTwoStageProg a
   boruvkaOneStageProg ⟨r2.numVertices, r2.numEdges, r2.edgeBase, a.selBase, r2.selOff⟩
 
-/-- Safety domain for `boruvkaThreeStageProg`. -/
+/-- Closed-form Word-RAM safety domain for `boruvkaThreeStageProg`. -/
 @[expose] def boruvkaThreeStageProgSafe (w : ℕ) (a : BoruvkaStageArgs)
     (s : Memory.State) : Prop :=
-  boruvkaStagePre (fun n m => 66 * m + 28 * n + 12) w a s
+  Fits w 16 ∧
+  a.edgeBase + 4 * a.numEdges ≤ s.frontier ∧
+  a.selBase + a.selOff + a.numEdges ≤ s.frontier ∧
+  Fits w (s.frontier + (66 * a.numEdges + 28 * a.numVertices + 12)) ∧
+  ∀ j < a.numEdges,
+    s.mem (a.edgeBase + 4 * j) < a.numVertices ∧
+    s.mem (a.edgeBase + 4 * j + 1) < a.numVertices
 
 /-- Uniform `Realizes .exact` certificate for `boruvkaThreeStageProg` with `work = 0`. -/
 theorem realizes_boruvkaThreeStageProg : Realizes .exact
@@ -998,14 +968,15 @@ theorem realizes_boruvkaThreeStageProg : Realizes .exact
   unfold boruvkaThreeStageProg
   realize [realizes_boruvkaTwoStageProg, realizes_boruvkaOneStageProg]
   all_goals
+    have h' : boruvkaStagePre (fun n m => 66 * m + 28 * n + 12) w d s := h
     have ⟨_, p2⟩ := boruvkaTwoStage_word_post
       (by omega : 44 * d.numEdges + 24 * d.numVertices + 8 ≤
         66 * d.numEdges + 28 * d.numVertices + 12)
-      hmem h
+      hmem h'
     obtain ⟨hn2, hoff2, hsum2, hed2_ge, hed2_fr, hs2_le, hsel2_fr, _, hedges2⟩ := p2
     have hfit : Fits w (s.frontier + (66 * d.numEdges + 28 * d.numVertices + 12)) := h.2.2.2.1
     first
-    | exact boruvkaStagePre_mono (by omega) h
+    | exact boruvkaStagePre_mono (by omega) h'
     | (dsimp only [boruvkaOneStageProgSafe, boruvkaStagePre]
        exact ⟨h.1, hed2_fr, hsel2_fr, hfit.of_le (by omega), hedges2⟩)
 

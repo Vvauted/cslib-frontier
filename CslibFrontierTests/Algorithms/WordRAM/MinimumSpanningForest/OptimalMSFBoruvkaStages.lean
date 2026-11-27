@@ -14,17 +14,18 @@ import CslibFrontier.Tactic.Realize
 import CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.GraphOpsTestSupport
 
 /-!
-# Tests for Optimal MSF Preprocessing and 1/2/3-Stage Borůvka Contraction
+# Tests for Optimal MSF Preprocessing and 3-Stage Borůvka Contraction
 
-Exercises `MSFLiftInv`, `MSFLiftInv.sum_le`, `initPreprocessProg`, `boruvkaOneStageProg`,
-`boruvkaTwoStageProg`, and `boruvkaThreeStageProg` across:
+Exercises `MSFLiftInv`, `MSFLiftInv.sum_le`, `initPreprocessProg`, and `boruvkaThreeStageProg`
+across:
 
 1. Empty-edge (`m = 0, n = 0` and `m = 0, n = 4`) and all-self-loop raw graph boundaries.
 2. Multigraph preprocessing (`initPreprocessProg_spec`) eliminating self-loops, parallel heavier
    edges, and isolated vertices while preserving `IsSimple` and `MSFLiftInv`.
-3. Non-empty 1-, 2-, and 3-stage Borůvka contraction on a 9-vertex cyclic graph verifying `2x`,
-   `4x`, and `8x` vertex reduction, `MSFLiftInv.sum_le`, selection array writes, non-empty initial
-   `accIds` preservation, and full `MSFLiftInv` MSF lifting back to `IsMinSpanningForest`.
+3. Non-empty 3-stage Borůvka contraction on a 9-vertex cyclic graph verifying `8x` vertex
+   reduction (`8 * res.numVertices ≤ nCur`), `MSFLiftInv.sum_le`, selection array writes,
+   non-empty initial `accIds` preservation, and full `MSFLiftInv` MSF lifting back to
+   `IsMinSpanningForest`.
 4. Composite `Realizes .exact` pipeline (`initAndBoruvkaThreeProg` via `realize`) and lowering to a
    width-blind deterministic `Program .standard` via
    `exists_standard_basis_init_program_state_from_words`.
@@ -150,9 +151,9 @@ private def selfLoops3Raw : List (WeightedEdge 3 ℕ) :=
 example :
     let s₀ := mkRawInitState selfLoops3Raw
     let r := execWordRAM s₀ (initPreprocessProg ⟨3, selfLoops3Raw.length, 0⟩)
-    r.1.numVertices ≤ 2 * r.1.numEdges ∧ r.1.numEdges ≤ 2 ∧ r.2.2 ≤ 162 ∧
-    (r.1.numEdges = 0 → ∀ e ∈ selfLoops3Raw, e.u = e.v) ∧
-    (∀ e ∈ selfLoops3Raw, e.u = e.v) := by
+    r.1.numEdges = 0 ∧ r.1.numVertices = 0 ∧ r.2.2 ≤ 162 ∧
+    (∀ e ∈ selfLoops3Raw, e.u = e.v) ∧
+    IsMinSpanningForest selfLoops3Raw [] := by
   intro s₀ r
   dsimp only [r, s₀, execWordRAM]
   have hwts : ∀ e ∈ selfLoops3Raw, Fits 16 e.weight := by
@@ -163,25 +164,39 @@ example :
     mkRawInitState_spec (w := 16) selfLoops3Raw (by decide) (by decide) hwts
   have hft := initPreprocessProg_spec (by decide) hwf hraw (by rw [hfr]; decide)
     (by rw [hfr]; decide)
-  obtain ⟨_, hcost, _, hn_le, _, hm_le, _, _, _, _, _, _, _, _, hall_self, hinv⟩ :=
+  obtain ⟨_, hcost, _, hn_le, _, hm_le, _, _, _, _, es₀, hes₀_len, _, _, hall_self, hinv⟩ :=
     framedTriple_iff_realization.mp hft
   have hsum := hinv.sum_le
-  have hlen : selfLoops3Raw.length = 2 := rfl
-  refine ⟨hn_le, by omega, hcost, hall_self, fun e he => ?_⟩
-  simp only [selfLoops3Raw, List.mem_cons, List.not_mem_nil, or_false] at he
-  rcases he with rfl | rfl <;> rfl
+  have hall_loop : ∀ e ∈ selfLoops3Raw, e.u = e.v := fun e he => by
+    simp only [selfLoops3Raw, List.mem_cons, List.not_mem_nil, or_false] at he
+    rcases he with rfl | rfl <;> rfl
+  have hm0 : ((Memory.spec 0).clientResult (mkRawInitState selfLoops3Raw)
+      (initPreprocessProg ⟨3, selfLoops3Raw.length, 0⟩)).numEdges = 0 :=
+    hall_self.mpr hall_loop
+  have hn0 : ((Memory.spec 0).clientResult (mkRawInitState selfLoops3Raw)
+      (initPreprocessProg ⟨3, selfLoops3Raw.length, 0⟩)).numVertices = 0 := by omega
+  have hes0 : es₀ = [] := List.length_eq_zero_iff.mp (hes₀_len.trans hm0)
+  have hmsf0 : IsMinSpanningForest (es₀.map IndexedEdge.toWeighted)
+      (([] : List (IndexedEdge ((Memory.spec 0).clientResult (mkRawInitState selfLoops3Raw)
+        (initPreprocessProg ⟨3, selfLoops3Raw.length, 0⟩)).numVertices)).map
+          IndexedEdge.toWeighted) := by
+    rw [hes0]
+    exact isMinSpanningForest_nil
+  obtain ⟨remIds, hrem_val, hmsf_lift⟩ := hinv.2.2.2.2 [] List.nil_subperm hmsf0
+  have hrem0 : remIds = [] := by
+    cases remIds with
+    | nil => rfl
+    | cons _ _ => simp at hrem_val
+  rw [hrem0, List.append_nil, List.map_nil] at hmsf_lift
+  exact ⟨hm0, hn0, hcost, hall_loop, hmsf_lift⟩
 
 example :
     let es : List (IndexedEdge 4) := []
     let s₀ := mkStageState es 0
-    let r1 := execWordRAM s₀ (boruvkaOneStageProg ⟨4, 0, 0, 0, 0⟩)
-    let r2 := execWordRAM s₀ (boruvkaTwoStageProg ⟨4, 0, 0, 0, 0⟩)
     let r3 := execWordRAM s₀ (boruvkaThreeStageProg ⟨4, 0, 0, 0, 0⟩)
-    2 * r1.1.numVertices ≤ 4 ∧ r1.1.numEdges = 0 ∧ r1.1.selOff = 0 ∧ r1.2.2 ≤ 278 ∧
-    4 * r2.1.numVertices ≤ 4 ∧ r2.1.numEdges = 0 ∧ r2.1.selOff = 0 ∧ r2.2.2 ≤ 436 ∧
     r3.1.numVertices = 0 ∧ r3.1.numEdges = 0 ∧ r3.1.selOff = 0 ∧ r3.2.2 ≤ 534 := by
-  intro es s₀ r1 r2 r3
-  dsimp only [r1, r2, r3, s₀, es, execWordRAM]
+  intro es s₀ r3
+  dsimp only [r3, s₀, es, execWordRAM]
   obtain ⟨hwf, hfr, hin⟩ := mkStageState_spec (w := 16) es (extra := 0) (by decide) (by decide)
     (fun _ h => by simp [es] at h)
   have hacc : ∀ j (hj : j < ([] : List (Fin ([] : List (WeightedEdge 4 ℕ)).length)).length),
@@ -190,21 +205,12 @@ example :
     ⟨List.nodup_nil, List.nodup_nil, fun _ h => by simp [es] at h,
       fun _ h => by simp at h, fun L hL _ => ⟨[], by simp [List.subperm_nil.mp hL],
         isMinSpanningForest_nil⟩⟩
-  have ft1 := boruvkaOneStageProg_spec (w := 16) (es := ([] : List (WeightedEdge 4 ℕ)))
-    (accIds := []) (esCur := es) (selBase := 0) (by decide) hwf hin (by rw [hfr]; decide)
-    hacc (by rw [hfr]; decide) hinv (by rw [hfr]; decide)
-  have ft2 := boruvkaTwoStageProg_spec (w := 16) (es := ([] : List (WeightedEdge 4 ℕ)))
-    (accIds := []) (esCur := es) (selBase := 0) (by decide) hwf hin (by rw [hfr]; decide)
-    hacc (by rw [hfr]; decide) hinv (by rw [hfr]; decide)
   have ft3 := boruvkaThreeStageProg_spec (w := 16) (es := ([] : List (WeightedEdge 4 ℕ)))
     (accIds := []) (esCur := es) (selBase := 0) (by decide) hwf hin (by rw [hfr]; decide)
     hacc (by rw [hfr]; decide) hinv (by rw [hfr]; decide)
-  dsimp only [es, s₀, List.length_nil] at ft1 ft2 ft3
-  obtain ⟨_, hc1, _, h1v, h1off, h1sum, _⟩ := framedTriple_iff_realization.mp ft1
-  obtain ⟨_, hc2, _, h2v, h2off, h2sum, _⟩ := framedTriple_iff_realization.mp ft2
+  dsimp only [es, s₀, List.length_nil] at ft3
   obtain ⟨_, hc3, _, h3v, h3off, h3sum, _⟩ := framedTriple_iff_realization.mp ft3
-  exact ⟨h1v, by omega, by omega, hc1, h2v, by omega, by omega, hc2,
-    by omega, by omega, by omega, hc3⟩
+  exact ⟨by omega, by omega, by omega, hc3⟩
 
 /-! ## 2. Multigraph preprocessing (`initPreprocessProg_spec`) -/
 
@@ -238,13 +244,13 @@ example :
     by_contra h0
     have h0' : ((Memory.spec 0).clientResult (mkRawInitState multiRaw5Edges)
         (initPreprocessProg ⟨5, multiRaw5Edges.length, 0⟩)).numEdges = 0 := by omega
-    have hloop := hall_self h0' ⟨⟨0, by decide⟩, ⟨1, by decide⟩, 20⟩
+    have hloop := hall_self.mp h0' ⟨⟨0, by decide⟩, ⟨1, by decide⟩, 20⟩
       (by simp [multiRaw5Edges])
     simp at hloop
   have hlen : multiRaw5Edges.length = 5 := rfl
   exact ⟨hm_pos, by omega, hvn, hn5, hcost⟩
 
-/-! ## 3. 1-, 2-, and 3-stage Borůvka contraction and MSF lifting -/
+/-! ## 3. 3-stage Borůvka contraction and MSF lifting -/
 
 private def stage9Raw : List (WeightedEdge 9 ℕ) :=
   [⟨⟨0, by decide⟩, ⟨1, by decide⟩, 10⟩,
@@ -302,18 +308,15 @@ private theorem stage9_msf_lift_init : MSFLiftInv stage9Raw [] stage9Indexed := 
 example :
     let selBase := 4 * stage9Indexed.length
     let s₀ := mkStageState stage9Indexed stage9Indexed.length
-    let r1 := execWordRAM s₀ (boruvkaOneStageProg ⟨9, stage9Indexed.length, 0, selBase, 0⟩)
-    let r2 := execWordRAM s₀ (boruvkaTwoStageProg ⟨9, stage9Indexed.length, 0, selBase, 0⟩)
     let r3 := execWordRAM s₀ (boruvkaThreeStageProg ⟨9, stage9Indexed.length, 0, selBase, 0⟩)
-    2 * r1.1.numVertices ≤ 9 ∧ r1.1.selOff + r1.1.numEdges ≤ 10 ∧ r1.2.2 ≤ 1363 ∧
-    4 * r2.1.numVertices ≤ 9 ∧ r2.1.selOff + r2.1.numEdges ≤ 10 ∧ r2.2.2 ≤ 2456 ∧
-    8 * r3.1.numVertices ≤ 9 ∧ r3.1.numVertices ≤ 1 ∧ r3.1.numEdges = 0 ∧ r3.2.2 ≤ 3414 ∧
+    8 * r3.1.numVertices ≤ 9 ∧ r3.1.numVertices ≤ 1 ∧ r3.1.numEdges = 0 ∧
+    r3.1.selOff ≤ 10 ∧ r3.2.2 ≤ 3414 ∧
     ∃ accIds : List (Fin stage9Raw.length),
       accIds.length = r3.1.selOff ∧
       (∀ j (hj : j < accIds.length), r3.2.1.mem (selBase + j) = accIds[j].val) ∧
       IsMinSpanningForest stage9Raw (accIds.map fun i => stage9Raw[i.val]) := by
-  intro selBase s₀ r1 r2 r3
-  dsimp only [r1, r2, r3, s₀, execWordRAM]
+  intro selBase s₀ r3
+  dsimp only [r3, s₀, execWordRAM]
   have hwts : ∀ e ∈ stage9Indexed, Fits 16 e.weight ∧ Fits 16 e.id := fun e he => by
     rw [stage9Indexed, List.mem_mapIdx] at he
     obtain ⟨i, hi, rfl⟩ := he
@@ -327,20 +330,13 @@ example :
   have hacc : ∀ j (hj : j < ([] : List (Fin stage9Raw.length)).length),
       s₀.mem (selBase + j) = ([] : List (Fin stage9Raw.length))[j].val := fun _ hj => by
     simp at hj
-  have ft1 := boruvkaOneStageProg_spec (w := 16) (es := stage9Raw) (accIds := [])
-    (esCur := stage9Indexed) (selBase := selBase) (by decide) hwf hin (by rw [hfr, hlen]; decide)
-    hacc (by rw [hfr, hlen]; decide) stage9_msf_lift_init (by rw [hfr, hlen]; decide)
-  have ft2 := boruvkaTwoStageProg_spec (w := 16) (es := stage9Raw) (accIds := [])
-    (esCur := stage9Indexed) (selBase := selBase) (by decide) hwf hin (by rw [hfr, hlen]; decide)
-    hacc (by rw [hfr, hlen]; decide) stage9_msf_lift_init (by rw [hfr, hlen]; decide)
   have ft3 := boruvkaThreeStageProg_spec (w := 16) (es := stage9Raw) (accIds := [])
     (esCur := stage9Indexed) (selBase := selBase) (by decide) hwf hin (by rw [hfr, hlen]; decide)
     hacc (by rw [hfr, hlen]; decide) stage9_msf_lift_init (by rw [hfr, hlen]; decide)
-  dsimp only [s₀, List.length_nil] at ft1 ft2 ft3
-  obtain ⟨_, hc1, _, h1v, _, h1sum, _⟩ := framedTriple_iff_realization.mp ft1
-  obtain ⟨_, hc2, _, h2v, _, h2sum, _⟩ := framedTriple_iff_realization.mp ft2
+  dsimp only [s₀, List.length_nil] at ft3
   obtain ⟨_, hc3, _, h3v, _, h3sum, _, _, _, _, acc3, es3, hes3_len, _, h3simp, hacc3_len,
     hacc3_mem, hinv3⟩ := framedTriple_iff_realization.mp ft3
+  have hsum3 := hinv3.sum_le
   have h3v1 : ((Memory.spec 0).clientResult (mkStageState stage9Indexed stage9Indexed.length)
       (boruvkaThreeStageProg ⟨9, stage9Indexed.length, 0, selBase, 0⟩)).numVertices ≤ 1 := by
     omega
@@ -362,10 +358,14 @@ example :
     | nil => rfl
     | cons _ _ => simp at hrem_val
   rw [hrem0, List.append_nil] at hmsf_lift
-  exact ⟨h1v, by simpa [hlen] using h1sum, hc1, h2v, by simpa [hlen] using h2sum, hc2,
-    h3v, h3v1, hm3, hc3, acc3, hacc3_len, hacc3_mem, hmsf_lift⟩
+  have hsel_le : ((Memory.spec 0).clientResult (mkStageState stage9Indexed stage9Indexed.length)
+      (boruvkaThreeStageProg ⟨9, stage9Indexed.length, 0, selBase, 0⟩)).selOff ≤ 10 := by
+    rw [← hacc3_len]
+    have hraw10 : stage9Raw.length = 10 := rfl
+    omega
+  exact ⟨h3v, h3v1, hm3, hsel_le, hc3, acc3, hacc3_len, hacc3_mem, hmsf_lift⟩
 
-/-! Non-empty initial `accIds` preservation across `boruvkaOneStageProg_spec`. -/
+/-! Non-empty initial `accIds` preservation across `boruvkaThreeStageProg_spec`. -/
 example :
     let raw3 : List (WeightedEdge 3 ℕ) :=
       [⟨⟨0, by decide⟩, ⟨1, by decide⟩, 2⟩,
@@ -376,8 +376,8 @@ example :
     let s₀ : Memory.State :=
       ⟨fun a => if a = 4 * curEs.length then 0 else (mkInitState curEs).mem a,
        4 * curEs.length + accIds.length + curEs.length⟩
-    let r := execWordRAM s₀ (boruvkaOneStageProg ⟨2, curEs.length, 0, 4 * curEs.length, 1⟩)
-    1 ≤ r.1.selOff ∧ r.1.selOff + r.1.numEdges ≤ 2 ∧
+    let r := execWordRAM s₀ (boruvkaThreeStageProg ⟨2, curEs.length, 0, 4 * curEs.length, 1⟩)
+    r.1.numVertices = 0 ∧ r.1.numEdges = 0 ∧ 1 ≤ r.1.selOff ∧ r.1.selOff ≤ 2 ∧
     r.2.1.mem (4 * curEs.length) = 0 := by
   intro raw3 curEs accIds s₀ r
   have hwts : ∀ e ∈ curEs, Fits 16 e.weight ∧ Fits 16 e.id := fun e he => by
@@ -465,18 +465,34 @@ example :
           · have hcnt := hF'.1.count_le (⟨⟨1, by decide⟩, ⟨2, by decide⟩, 4⟩ : WeightedEdge 3 ℕ)
             simp [raw3] at hcnt
         · simp at hF'_len
-  have ft := boruvkaOneStageProg_spec (w := 16) (es := raw3) (accIds := accIds)
+  have ft := boruvkaThreeStageProg_spec (w := 16) (es := raw3) (accIds := accIds)
     (esCur := curEs) (selBase := 4 * curEs.length) (by decide) hwf hin (by decide) hacc
     (by decide) hinv (by decide)
-  obtain ⟨_, _, hmod, _, hoff, hsum, _, _, _, _, acc', _, _, _, _, _, hacc'_mem, _⟩ :=
-    framedTriple_iff_realization.mp ft
+  obtain ⟨_, _, hmod, h8v, hoff, hsum, _, _, _, _, acc', es', hes'_len, _, hsimp', hacc'_len, _,
+    hinv'⟩ := framedTriple_iff_realization.mp ft
   have hkept := hmod.mem_eq_of_not_mem (a := 4 * curEs.length)
     (by dsimp only [s₀, curEs, accIds, List.length_cons, List.length_nil]; omega)
     (by simp only [Set.mem_Ico]
         dsimp only [curEs, accIds, List.length_cons, List.length_nil]; omega)
-  dsimp only [r, s₀, curEs, accIds, execWordRAM, List.length_cons, List.length_nil] at hoff hsum
-  dsimp only [r, s₀, curEs, accIds, execWordRAM, List.length_cons, List.length_nil] at hkept ⊢
-  exact ⟨by omega, by omega, hkept⟩
+  have hv0 : ((Memory.spec 0).clientResult s₀
+      (boruvkaThreeStageProg
+        ⟨2, curEs.length, 0, 4 * curEs.length, accIds.length⟩)).numVertices = 0 := by omega
+  have hes_nil : es' = [] := eq_nil_of_isSimple_of_le_one (by omega) es' hsimp'
+  have hm0 : ((Memory.spec 0).clientResult s₀
+      (boruvkaThreeStageProg
+        ⟨2, curEs.length, 0, 4 * curEs.length, accIds.length⟩)).numEdges = 0 := by
+    rw [← hes'_len, hes_nil, List.length_nil]
+  have hsum_inv := hinv'.sum_le
+  have hlen_a : accIds.length = 1 := rfl
+  have hlen_r : raw3.length = 2 := rfl
+  have hoff1 : 1 ≤ ((Memory.spec 0).clientResult s₀
+      (boruvkaThreeStageProg
+        ⟨2, curEs.length, 0, 4 * curEs.length, accIds.length⟩)).selOff := by omega
+  have hoff2 : ((Memory.spec 0).clientResult s₀
+      (boruvkaThreeStageProg
+        ⟨2, curEs.length, 0, 4 * curEs.length, accIds.length⟩)).selOff ≤ 2 := by omega
+  have hs0_kept : s₀.mem (4 * curEs.length) = 0 := by simp [s₀]
+  exact ⟨hv0, hm0, hoff1, hoff2, hkept.trans hs0_kept⟩
 
 /-! ## 4. Composite `realize` pipeline and lowered `Program .standard` execution -/
 
