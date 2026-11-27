@@ -1209,6 +1209,7 @@ public import CslibFrontier.Probability.BennettStep
 public import CslibFrontier.Crypto.Protocols.UOV.Field
 public import CslibFrontier.Algorithms.Lean.Dijkstra.Native.Binary
 public import CslibFrontier.GameTheory.Bimatrix.PPAD
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Components
 public import CslibFrontier.Computability.Complexity.Classes.Promise.Oracle
 public import CslibFrontier.Probability.PMF.Uniform
 public import CslibFrontier.Algorithms.WordRAM.EdmondsKarp.UniformVertexSeparator
