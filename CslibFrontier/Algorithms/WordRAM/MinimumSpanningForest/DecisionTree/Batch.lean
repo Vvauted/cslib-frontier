@@ -18,22 +18,26 @@ import CslibFrontier.Tactic.ValidProg
 /-!
 # Batch Component Compaction, Decision-Tree Evaluation, and Lifting on the Word RAM
 
-Implements `evalDecisionTreeBatchProg` for batch-evaluating a precomputed optimal MSF decision
-tree stored in `HoldsDTTable` across `k` uncompacted simple components `C_0..C_{k-1}` in `Fin n`
-(each touching at most `r0` vertices), using a single `O(n)`-initialized shared `vertMap` and
-`O(v_i)` rollback via `activeVerts` to achieve `O(n + ∑ m_i + ∑ optDepth C_i + k)` total time.
+Implements `evalDecisionTreeBatchProg` as a step toward Theorem 5.8 of [PettieRamachandran2002]
+(`Section 4.1, p. 23; Section 5.1, pp. 25–26`, Corollary 5.6 and Theorem 5.8, `#8624`) for
+batch-evaluating a precomputed optimal MSF decision tree stored in `HoldsDTTable` across `k`
+uncompacted simple components `C_0..C_{k-1}` in `Fin n` (each touching at most `r0` vertices),
+using a single `O(n)`-initialized shared `vertMap`, a single shared `r0.choose 2`-word `slotMap`
+scratch buffer (`evalDecisionTreeWithSlotMapProg`), and `O(v_i)` rollback via `activeVerts` to
+return a compacted `GraphSlice` in `O(n + ∑ m_i + ∑ optDepth C_i + k)` total time and
+`O(n + r0 + r0.choose 2 + ∑ m_i)` words.
 
-Reuses `evalDecisionTreeProg` / `evalDecisionTreeProg_spec` from `DecisionTree.Eval`,
-`compactVertices_isSimple` / `compactVertices_isMinSpanningForest` from `GraphOps.Components`,
-`fillConstProg` / `fillConstProg_spec` from `ArrayOps`, `word_enc_structure` encodings,
-and `Memory.FramedTriple` + `iterate_potential_spec`.
+Reuses `evalDecisionTreeWithSlotMapProg` / `evalDecisionTreeWithSlotMapProg_spec` from
+`DecisionTree.Eval`, `compactVertices_isSimple` / `compactVertices_isMinSpanningForest` from
+`GraphOps.Components`, `fillConstProg` / `fillConstProg_spec` from `ArrayOps`,
+`word_enc_structure` encodings, and `Memory.FramedTriple` + `iterate_potential_spec`.
 
 ## Main definitions
 
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DTBatchArgs`: input arguments (`tableBase`,
   `r0`, `numVerts`, `numComps`, `compMetaBase`) encoded via `word_enc_structure`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeBatchProg`: Word-RAM batch
-  compaction, evaluation, reset, and lifting program.
+  compaction, evaluation, reset, and lifting program returning a `GraphSlice`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeBatchProgSafe`: native
   word-width safety predicate for `evalDecisionTreeBatchProg`.
 
@@ -43,8 +47,13 @@ and `Memory.FramedTriple` + `iterate_potential_spec`.
   `Realizes .exact` certificate with `work = 0`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeBatchProg_spec`:
   `Memory.FramedTriple` specification producing `IsMinSpanningForest` sublists `Fs` packed
-  contiguously at `outBase`, preserving all cells below `s.frontier`, within space
-  `n + r0 + 9 * ∑ m_i + k * r0.choose 2` and time `≤ 47 * (n + ∑ m_i + ∑ optDepth C_i + k + 1)`.
+  contiguously as a `GraphSlice` preserving all cells below `s.frontier`, within space
+  `n + r0 + r0.choose 2 + 9 * ∑ m_i` and time `≤ 47 * (n + ∑ m_i + ∑ optDepth C_i + k + 1)`.
+
+## References
+
+* [PettieRamachandran2002] Seth Pettie and Vijaya Ramachandran, *An Optimal Minimum Spanning Tree
+  Algorithm*, Journal of the ACM 49(1), 16–34, 2002.
 -/
 
 public section
@@ -138,6 +147,7 @@ private structure DTLiftEvalArgs where
   compEdges : ℕ
   outBase : ℕ
   activeVerts : ℕ
+  slotMap : ℕ
   compIdx : ℕ
   outCnt : ℕ
   deriving DecidableEq
@@ -149,10 +159,11 @@ private word_enc_structure encDTLiftEvalArgs : DTLiftEvalArgs where
   compEdges : wordWords,
   outBase : wordWords,
   activeVerts : wordWords,
+  slotMap : wordWords,
   compIdx : wordWords,
   outCnt : wordWords
 
-private instance : WordEncoding DTLiftEvalArgs := ⟨8, encDTLiftEvalArgs⟩
+private instance : WordEncoding DTLiftEvalArgs := ⟨9, encDTLiftEvalArgs⟩
 
 private structure DTBatchEnv where
   tableBase : ℕ
@@ -160,6 +171,7 @@ private structure DTBatchEnv where
   compMetaBase : ℕ
   vertMap : ℕ
   activeVerts : ℕ
+  slotMap : ℕ
   outBase : ℕ
   deriving DecidableEq
 
@@ -169,9 +181,10 @@ private word_enc_structure encDTBatchEnv : DTBatchEnv where
   compMetaBase : wordWords,
   vertMap : wordWords,
   activeVerts : wordWords,
+  slotMap : wordWords,
   outBase : wordWords
 
-private instance : WordEncoding DTBatchEnv := ⟨6, encDTBatchEnv⟩
+private instance : WordEncoding DTBatchEnv := ⟨7, encDTBatchEnv⟩
 
 /-- Input arguments for `evalDecisionTreeBatchProg`. -/
 structure DTBatchArgs where
@@ -420,18 +433,19 @@ private theorem realizes_dtLiftOutStep : Realizes .exact
     fits
 
 private def dtBatchEvalAndLift (d : DTLiftEvalArgs) : Memory.Prog (ℕ × ℕ) := do
-  let delta ← evalDecisionTreeProg
-    ⟨d.tableBase, d.vCount, d.m, d.compEdges, d.outBase + 4 * d.outCnt⟩
+  let delta ← evalDecisionTreeWithSlotMapProg
+    ⟨d.tableBase, d.vCount, d.m, d.compEdges, d.outBase + 4 * d.outCnt, d.slotMap⟩
   let _ ← iterate dtLiftOutStep ⟨d.outBase + 4 * d.outCnt, d.activeVerts⟩ delta 0
   pure (d.compIdx + 1, d.outCnt + delta)
 
 private def dtBatchEvalAndLiftSafe (w : ℕ) (d : DTLiftEvalArgs) (s : Memory.State) : Prop :=
-  let q : DTQuery := ⟨d.tableBase, d.vCount, d.m, d.compEdges, d.outBase + 4 * d.outCnt⟩
-  let delta := (Memory.spec 0).clientResult s (evalDecisionTreeProg q)
-  let s1 := (Memory.spec 0).clientState s (evalDecisionTreeProg q)
+  let q : DTScratchQuery :=
+    ⟨d.tableBase, d.vCount, d.m, d.compEdges, d.outBase + 4 * d.outCnt, d.slotMap⟩
+  let delta := (Memory.spec 0).clientResult s (evalDecisionTreeWithSlotMapProg q)
+  let s1 := (Memory.spec 0).clientState s (evalDecisionTreeWithSlotMapProg q)
   Fits w 16 ∧ Fits w (d.outBase + 4 * d.outCnt) ∧
   Fits w (d.compIdx + 1) ∧ Fits w (d.outCnt + delta) ∧
-  evalDecisionTreeProgSafe w q s ∧
+  evalDecisionTreeWithSlotMapProgSafe w q s ∧
   iterationSafe dtLiftOutStep dtLiftOutStepSafe w
     ⟨d.outBase + 4 * d.outCnt, d.activeVerts⟩ delta 0 s1
 
@@ -440,7 +454,7 @@ private theorem realizes_dtBatchEvalAndLift : Realizes .exact
     (WordEncoding.encode (α := ℕ × ℕ))
     dtBatchEvalAndLiftSafe (fun _ _ => 0) := by
   unfold dtBatchEvalAndLift
-  realize [realizes_evalDecisionTreeProg, realizes_dtLiftOutStep]
+  realize [realizes_evalDecisionTreeWithSlotMapProg, realizes_dtLiftOutStep]
   all_goals
     obtain ⟨h16, hob, hci, hoc, hdt, hlift⟩ := h
     have hfront := hmem.frontier_fits
@@ -450,8 +464,9 @@ private theorem realizes_dtBatchEvalAndLift : Realizes .exact
     have hw_ce : Fits w d.compEdges := fits_at 3 hwords
     have hw_ob : Fits w d.outBase := fits_at 4 hwords
     have hw_av : Fits w d.activeVerts := fits_at 5 hwords
-    have hw_ci : Fits w d.compIdx := fits_at 6 hwords
-    have hw_oc : Fits w d.outCnt := fits_at 7 hwords
+    have hw_sm : Fits w d.slotMap := fits_at 6 hwords
+    have hw_ci : Fits w d.compIdx := fits_at 7 hwords
+    have hw_oc : Fits w d.outCnt := fits_at 8 hwords
     first
     | exact hdt
     | (refine iterationSafe_imp hlift (fun _ => rfl) ?_
@@ -470,7 +485,7 @@ private def dtBatchCompStep (x : DTBatchEnv × ℕ × ℕ) : Memory.Prog (ℕ ×
   let _ ← iterate dtResetVertMapStep
     ⟨env.activeVerts, env.vertMap, env.numVerts⟩ (Prod.snd cr) 0
   dtBatchEvalAndLift ⟨env.tableBase, Prod.snd cr, m, compEdges, env.outBase, env.activeVerts,
-    Prod.fst st, Prod.snd st⟩
+    env.slotMap, Prod.fst st, Prod.snd st⟩
 
 private def dtBatchCompStepSafe (w : ℕ) (x : DTBatchEnv × ℕ × ℕ)
     (s : Memory.State) : Prop :=
@@ -491,7 +506,7 @@ private def dtBatchCompStepSafe (w : ℕ) (x : DTBatchEnv × ℕ × ℕ)
   iterationSafe dtCompactEdgeStep dtCompactEdgeStepSafe w cEnv m (0, 0) s1 ∧
   iterationSafe dtResetVertMapStep dtResetVertMapStepSafe w rEnv (Prod.snd cr) 0 s2 ∧
   dtBatchEvalAndLiftSafe w ⟨env.tableBase, Prod.snd cr, m, compEdges, env.outBase, env.activeVerts,
-    Prod.fst st, Prod.snd st⟩ s3
+    env.slotMap, Prod.fst st, Prod.snd st⟩ s3
 
 private theorem realizes_dtBatchCompStep : Realizes .exact
     dtBatchCompStep
@@ -506,7 +521,7 @@ private theorem realizes_dtBatchCompStep : Realizes .exact
     have hfront := hmem.frontier_fits
     have := fits_at 0 hwords; have := fits_at 1 hwords; have := fits_at 2 hwords
     have := fits_at 3 hwords; have := fits_at 4 hwords; have := fits_at 5 hwords
-    have := fits_at 6 hwords; have := fits_at 7 hwords
+    have := fits_at 6 hwords; have := fits_at 7 hwords; have := fits_at 8 hwords
     first
     | exact iterationSafe_imp hc (fun _ => rfl) (fun _ _ hs => hs)
     | exact iterationSafe_imp hr (fun _ => rfl) (fun _ _ hs => hs)
@@ -514,17 +529,20 @@ private theorem realizes_dtBatchCompStep : Realizes .exact
     | fits
 
 /-- Batch evaluates the precomputed optimal decision tree on `k` uncompacted simple components
-`C_0..C_{k-1}` in `Fin n` (each with `≤ r0` active vertices), using a single `vertMap` reset via
-`activeVerts`, returning `(outBase, outLen)` in `O(n + ∑ m_i + ∑ optDepth C_i + k)` time. -/
-def evalDecisionTreeBatchProg (d : DTBatchArgs) : Memory.Prog (ℕ × ℕ) := do
+`C_0..C_{k-1}` in `Fin n` (each with `≤ r0` active vertices), sharing one `O(n)`-initialized
+`vertMap` reset via `activeVerts` and one `r0.choose 2`-word `slotMap`, returning a `GraphSlice`
+in `O(n + ∑ m_i + ∑ optDepth C_i + k)` time. -/
+def evalDecisionTreeBatchProg (d : DTBatchArgs) : Memory.Prog GraphSlice := do
   let sumRes ← iterate dtBatchSumStep d.compMetaBase d.numComps (0, 0)
   let outBase ← Memory.allocDirty (4 * Prod.snd sumRes)
   let vertMap ← Memory.allocDirty d.numVerts
   let _ ← dtFillConst (vertMap, d.numVerts)
   let activeVerts ← Memory.allocDirty d.r0
+  let slotMap ← Memory.allocDirty (if d.r0 = 0 then 0 else d.r0 * (d.r0 - 1) / 2)
   let res ← iterate dtBatchCompStep
-    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, activeVerts, outBase⟩ d.numComps (0, 0)
-  pure (outBase, Prod.snd res)
+    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, activeVerts, slotMap, outBase⟩
+    d.numComps (0, 0)
+  pure ⟨d.numVerts, Prod.snd res, outBase⟩
 
 /-- Native safety domain for `evalDecisionTreeBatchProg`. -/
 def evalDecisionTreeBatchProgSafe (w : ℕ) (d : DTBatchArgs) (s : Memory.State) : Prop :=
@@ -536,23 +554,26 @@ def evalDecisionTreeBatchProgSafe (w : ℕ) (d : DTBatchArgs) (s : Memory.State)
   let s2 : Memory.State := ⟨s1.mem, vertMap + d.numVerts⟩
   let s3 := (Memory.spec 0).clientState s2 (dtFillConst (vertMap, d.numVerts))
   let activeVerts := s3.frontier
-  let s4 : Memory.State := ⟨s3.mem, activeVerts + d.r0⟩
-  Fits w 16 ∧ Fits w (4 * Prod.snd sumRes) ∧
+  let slotMap := activeVerts + d.r0
+  let maxE := if d.r0 = 0 then 0 else d.r0 * (d.r0 - 1) / 2
+  let s5 : Memory.State := ⟨s3.mem, slotMap + maxE⟩
+  Fits w 16 ∧ Fits w (4 * Prod.snd sumRes) ∧ Fits w (d.r0 * (d.r0 - 1)) ∧ Fits w maxE ∧
   Fits w (s1.frontier + 4 * Prod.snd sumRes) ∧ Fits w (vertMap + d.numVerts) ∧
-  Fits w (s3.frontier + d.r0) ∧
+  Fits w (s3.frontier + d.r0) ∧ Fits w (slotMap + maxE) ∧
   iterationSafe dtBatchSumStep dtBatchSumStepSafe w d.compMetaBase d.numComps (0, 0) s ∧
   iterationSafe dtBatchCompStep dtBatchCompStepSafe w
-    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, activeVerts, outBase⟩ d.numComps (0, 0) s4
+    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, activeVerts, slotMap, outBase⟩
+    d.numComps (0, 0) s5
 
 /-- Uniform `Realizes .exact` certificate for `evalDecisionTreeBatchProg` with `work = 0`. -/
 theorem realizes_evalDecisionTreeBatchProg : Realizes .exact
     evalDecisionTreeBatchProg (WordEncoding.encode (α := DTBatchArgs))
-    (WordEncoding.encode (α := ℕ × ℕ))
+    (WordEncoding.encode (α := GraphSlice))
     evalDecisionTreeBatchProgSafe (fun _ _ => 0) := by
   unfold evalDecisionTreeBatchProg
   realize [realizes_dtBatchSumStep, realizes_dtFillConst, realizes_dtBatchCompStep]
   all_goals
-    obtain ⟨h16, h4m, hs1, hvm, hs3, hsum, hcomp⟩ := h
+    obtain ⟨h16, h4m, hmul, hme, hs1, hvm, hs3, hs5, hsum, hcomp⟩ := h
     have := fits_at 0 hwords; have := fits_at 1 hwords; have := fits_at 2 hwords
     have := fits_at 3 hwords; have := fits_at 4 hwords
     have hfront := hmem.frontier_fits
@@ -561,6 +582,8 @@ theorem realizes_evalDecisionTreeBatchProg : Realizes .exact
     | exact h16
     | exact le_rfl
     | exact iterationSafe_imp hcomp (fun _ => rfl) (fun _ _ hs => hs)
+    | decide
+    | omega
     | fits
 
 /-! ## Section 3: Loop Specifications and Batch Evaluation Correctness -/
@@ -659,8 +682,16 @@ private theorem dtMapVertex_spec {w vertMap activeVerts n r0 u : ℕ}
   have hlen_le_n : active.length ≤ n := hinv.length_le
   let args : DTMapVertArgs := ⟨vertMap, activeVerts, n, u, active.length⟩
   let S : Set ℕ := Set.Ico vertMap (vertMap + n) ∪ Set.Ico activeVerts (activeVerts + r0)
-  have hft : Memory.FramedTriple w s (dtMapVertex args) 3 S
-      (MapVertPost w vertMap activeVerts n r0 u active V s) := by
+  have hftCore : Memory.FramedTriple w s (dtMapVertex args) 3 S fun res s' =>
+      s'.frontier = s.frontier ∧ True ∧
+      (∀ a, ¬(vertMap ≤ a ∧ a < vertMap + n) →
+        ¬(activeVerts ≤ a ∧ a < activeVerts + r0) → s'.mem a = s.mem a) ∧
+      (∀ j < active.length, s'.mem (activeVerts + j) = s.mem (activeVerts + j)) ∧
+      active.length ≤ Prod.snd res ∧ Prod.snd res ≤ active.length + 1 ∧
+      ∃ active' : List ℕ, active'.length = Prod.snd res ∧ active'.length ≤ r0 ∧
+        ∃ (hlt : Prod.fst res < active'.length), active'[Prod.fst res]'hlt = u ∧
+          VertMapInv vertMap activeVerts n active' s'.mem ∧
+          (∀ x ∈ active', ∃ hx : x < n, (⟨x, hx⟩ : Fin n) ∈ V) := by
     dsimp only [dtMapVertex, args]
     refine Memory.FramedTriple.read_bind (by omega) ?_
     by_cases hu_mem : u ∈ active
@@ -668,7 +699,7 @@ private theorem dtMapVertex_spec {w vertMap activeVerts n r0 u : ℕ}
       have hcur : s.mem (vertMap + u) = t := hinv.2.2.2.1 u hu t ht htu
       rw [hcur]
       refine (Memory.FramedTriple.ite (fun h => absurd h (by omega)) fun _ =>
-        Memory.FramedTriple.pure (c := 0) ⟨rfl, hwf, fun _ _ _ => rfl, fun _ _ => rfl,
+        Memory.FramedTriple.pure (c := 0) ⟨rfl, trivial, fun _ _ _ => rfl, fun _ _ => rfl,
           le_rfl, Nat.le_succ _, active, rfl, hlen_le_r0, ht, htu, hinv, hactive_V⟩).mono
         (by omega) fun _ _ h => h
     · have hcur : s.mem (vertMap + u) = n := hinv.2.2.2.2 u hu hu_mem
@@ -703,11 +734,8 @@ private theorem dtMapVertex_spec {w vertMap activeVerts n r0 u : ℕ}
       refine Memory.FramedTriple.write_bind_of_mem (by dsimp only; omega)
         (hwf.frontier_fits.of_le (by omega))
         (Or.inr (by simp only [Set.mem_Ico]; omega)) ?_
-      have hwf'' := wellFormed_update
-        (wellFormed_update hwf (vertMap + u) active.length (hwf.frontier_fits.of_le (by omega)))
-        (activeVerts + active.length) u (hwf.frontier_fits.of_le (by omega))
       refine Memory.FramedTriple.pure (c := 0)
-        ⟨rfl, hwf'', fun a hna1 hna2 => ?_, fun j hj => ?_, Nat.le_succ _, le_rfl, active',
+        ⟨rfl, trivial, fun a hna1 hna2 => ?_, fun j hj => ?_, Nat.le_succ _, le_rfl, active',
           hlen', by rw [hlen']; exact hlen_lt_r0, by omega, by simp [active'],
           ⟨hnd', hlt_n', fun t ht => ?_, fun x hx t ht htx => ?_, fun x hx hnot => ?_⟩, hV'⟩
       · dsimp only; rw [Function.update_of_ne (by omega), Function.update_of_ne (by omega)]
@@ -732,6 +760,9 @@ private theorem dtMapVertex_spec {w vertMap activeVerts n r0 u : ℕ}
         rw [Function.update_of_ne (by rcases hdisj_va with h | h <;> omega),
           Function.update_of_ne (by omega)]
         exact hinv.2.2.2.2 x hx fun ha => hnot (by simp [active', ha])
+  have hft : Memory.FramedTriple w s (dtMapVertex args) 3 S
+      (MapVertPost w vertMap activeVerts n r0 u active V s) :=
+    (hftCore.wellFormed hwf).mono le_rfl fun _ _ ⟨⟨h1, _, h3⟩, hwf'⟩ => ⟨h1, hwf', h3⟩
   have hv1_fit : Fits w (active.length + 1) :=
     hwf.frontier_fits.of_le (by rcases hdisj_va with h | h <;> omega)
   exact ⟨⟨h16, hv1_fit, (framedTriple_iff_realization.mp hft).1⟩, hft⟩
@@ -759,8 +790,8 @@ private theorem dtWriteCompEdge_spec {w n : ℕ} {edgeBase compEdges idx mu mv :
   obtain ⟨_, _, hw, hid⟩ := hin idx hidx
   have hwt_fit := hwf.mem_fits (edgeBase + 4 * idx + 2)
   have hid_fit := hwf.mem_fits (edgeBase + 4 * idx + 3)
-  have hft : Memory.FramedTriple w s (dtWriteCompEdge args) 6 S fun _ s' =>
-      s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
+  have hftCore : Memory.FramedTriple w s (dtWriteCompEdge args) 6 S fun _ s' =>
+      s'.frontier = s.frontier ∧ True ∧
       s'.mem (compEdges + 4 * idx) = mu ∧ s'.mem (compEdges + 4 * idx + 1) = mv ∧
       s'.mem (compEdges + 4 * idx + 2) = C[idx].weight ∧
       s'.mem (compEdges + 4 * idx + 3) = C[idx].id := by
@@ -775,15 +806,19 @@ private theorem dtWriteCompEdge_spec {w n : ℕ} {edgeBase compEdges idx mu mv :
         (by simp only [S, Set.mem_Ico]; omega)
       (Memory.FramedTriple.write_bind_of_mem (by dsimp; omega) hid_fit
         (by simp only [S, Set.mem_Ico]; omega)
-        (Memory.FramedTriple.pure (c := 0) ⟨rfl,
-          wellFormed_update (wellFormed_update (wellFormed_update
-            (wellFormed_update hwf _ mu hmu) _ mv hmv) _ _ hwt_fit) _ _ hid_fit,
+        (Memory.FramedTriple.pure (c := 0) ⟨rfl, trivial,
           by dsimp; rw [Function.update_of_ne (by omega), Function.update_of_ne (by omega),
             Function.update_of_ne (by omega), Function.update_self],
           by dsimp; rw [Function.update_of_ne (by omega), Function.update_of_ne (by omega),
             Function.update_self],
           by dsimp; rw [Function.update_of_ne (by omega), Function.update_self, hw],
           by dsimp; rw [Function.update_self, hid]⟩))))
+  have hft : Memory.FramedTriple w s (dtWriteCompEdge args) 6 S fun _ s' =>
+      s'.frontier = s.frontier ∧ Memory.WellFormed w s' ∧
+      s'.mem (compEdges + 4 * idx) = mu ∧ s'.mem (compEdges + 4 * idx + 1) = mv ∧
+      s'.mem (compEdges + 4 * idx + 2) = C[idx].weight ∧
+      s'.mem (compEdges + 4 * idx + 3) = C[idx].id :=
+    (hftCore.wellFormed hwf).mono le_rfl fun _ _ ⟨⟨h1, _, h3⟩, hwf'⟩ => ⟨h1, hwf', h3⟩
   exact ⟨⟨h16, (framedTriple_iff_realization.mp hft).1⟩, hft⟩
 
 private theorem iterate_dtCompactEdgeStep_spec
@@ -1049,25 +1084,26 @@ private theorem iterate_dtResetVertMapStep_spec {w activeVerts vertMap n : ℕ}
         ∀ x < n, s'.mem (vertMap + x) = n := by
   let env : DTResetEnv := ⟨activeVerts, vertMap, n⟩
   let S : Set ℕ := Set.Ico vertMap (vertMap + n)
-  let inv (k a : ℕ) (t : Memory.State) : Prop :=
-    a = k ∧ t.frontier = s.frontier ∧ Memory.WellFormed w t ∧
+  let invCore (k a : ℕ) (t : Memory.State) : Prop :=
+    a = k ∧ t.frontier = s.frontier ∧
     (∀ x, x ∉ S → t.mem x = s.mem x) ∧
     (∀ x < n, x ∉ active → t.mem (vertMap + x) = s.mem (vertMap + x)) ∧
     (∀ j < k, ∀ (hj : j < active.length), t.mem (vertMap + active[j]'hj) = n)
+  let inv (k a : ℕ) (t : Memory.State) : Prop := invCore k a t ∧ Memory.WellFormed w t
   obtain ⟨hsafe, hft⟩ := iterate_framedTriple_of_step dtResetVertMapStep dtResetVertMapStepSafe w
-    env 2 active.length inv S (fun k hk a t ⟨ha, htfr, hwt, ht_mod, hnot_act, hreset⟩ => by
+    env 2 active.length inv S (fun k hk a t ⟨⟨ha, htfr, ht_mod, hnot_act, hreset⟩, hwt⟩ => by
       subst ha
       have hu_eq : t.mem (activeVerts + a) = active[a]'hk :=
         (ht_mod _ (by simp only [S, Set.mem_Ico]; rcases hdisj with h | h <;> omega)).trans
           (hinv.2.2.1 a hk)
       have hu_lt : active[a]'hk < n := hinv.2.1 _ (List.getElem_mem hk)
-      refine ⟨fun hv => ⟨h16, hwf.frontier_fits.of_le (by have := hinv.length_le; omega), hv⟩, ?_⟩
+      refine ⟨fun hv => ⟨h16, hwf.frontier_fits.of_le (by have := hinv.length_le; omega), hv⟩,
+        Memory.FramedTriple.wellFormed hwt ?_⟩
       dsimp only [dtResetVertMapStep, env]; refine Memory.FramedTriple.read_bind (by omega) ?_
       rw [hu_eq]
       refine Memory.FramedTriple.write_bind_of_mem (by omega) (hwf.frontier_fits.of_le (by omega))
         (by simp [S]; omega) ?_
       refine Memory.FramedTriple.pure (c := 0) ⟨rfl, htfr,
-        wellFormed_update hwt (vertMap + active[a]'hk) n (hwf.frontier_fits.of_le (by omega)),
         fun x hx => ?_, fun x hx hnot => ?_, fun j hj hj' => ?_⟩
       · dsimp only; rw [Function.update_of_ne (by simp only [S, Set.mem_Ico] at hx; omega)]
         exact ht_mod x hx
@@ -1077,8 +1113,8 @@ private theorem iterate_dtResetVertMapStep_spec {w activeVerts vertMap n : ℕ}
         · subst hja; dsimp only; exact Function.update_self _ _ _
         · have hne : active[j]'hj' ≠ active[a]'hk := fun heq => hja (hinv.1.getElem_inj_iff.mp heq)
           dsimp only; rw [Function.update_of_ne (by omega)]; exact hreset j (by omega) hj')
-    0 s ⟨rfl, rfl, hwf, fun _ _ => rfl, fun _ _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _)⟩
-  refine ⟨hsafe, hft.mono le_rfl fun _ _ ⟨_, hfr_end, hwf_end, _, hnot_end, hact_end⟩ =>
+    0 s ⟨⟨rfl, rfl, fun _ _ => rfl, fun _ _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _)⟩, hwf⟩
+  refine ⟨hsafe, hft.mono le_rfl fun _ _ ⟨⟨_, hfr_end, _, hnot_end, hact_end⟩, hwf_end⟩ =>
     ⟨hfr_end, hwf_end, fun x hx => ?_⟩⟩
   by_cases hmem : x ∈ active
   · obtain ⟨j, hj, rfl⟩ := List.mem_iff_getElem.mp hmem; exact hact_end j hj hj
@@ -1104,8 +1140,8 @@ private theorem iterate_dtLiftOutStep_spec {w n v activeVerts outBase : ℕ}
   let env : DTLiftEnv := ⟨outBase, activeVerts⟩
   let S : Set ℕ := Set.Ico outBase (outBase + 4 * F'.length)
   let F_lifted : List (IndexedEdge n) := F'.map fun e => ⟨lift e.u, lift e.v, e.weight, e.id⟩
-  let inv (k a : ℕ) (t : Memory.State) : Prop :=
-    a = k ∧ t.frontier = s.frontier ∧ Memory.WellFormed w t ∧
+  let invCore (k a : ℕ) (t : Memory.State) : Prop :=
+    a = k ∧ t.frontier = s.frontier ∧
     (∀ x, x ∉ S → t.mem x = s.mem x) ∧
     (∀ i (hi : i < k) (hiL : i < F_lifted.length),
       t.mem (outBase + 4 * i) = F_lifted[i].u.val ∧
@@ -1117,8 +1153,9 @@ private theorem iterate_dtLiftOutStep_spec {w n v activeVerts outBase : ℕ}
       t.mem (outBase + 4 * i + 1) = F'[i].v.val ∧
       t.mem (outBase + 4 * i + 2) = F'[i].weight ∧
       t.mem (outBase + 4 * i + 3) = F'[i].id)
+  let inv (k a : ℕ) (t : Memory.State) : Prop := invCore k a t ∧ Memory.WellFormed w t
   obtain ⟨hsafe, hft⟩ := iterate_framedTriple_of_step dtLiftOutStep dtLiftOutStepSafe w env 6
-    F'.length inv S (fun k hk a t ⟨ha, htfr, hwt, ht_mod, hlifted, hunlifted⟩ => by
+    F'.length inv S (fun k hk a t ⟨⟨ha, htfr, ht_mod, hlifted, hunlifted⟩, hwt⟩ => by
       subst ha
       obtain ⟨hmu, hmv, hw, hid⟩ := hunlifted a hk le_rfl
       have hu_lt := F'[a].u.isLt; have hv_lt := F'[a].v.isLt
@@ -1127,7 +1164,8 @@ private theorem iterate_dtLiftOutStep_spec {w n v activeVerts outBase : ℕ}
                                   rcases hdisj with h | h <;> omega)).trans (hlift z hz)
       have hfit_l : ∀ z (hz : z < v), Fits w (lift ⟨z, hz⟩).val := fun z hz => by
         have hmem := hwf.mem_fits (activeVerts + z); rwa [hlift z hz] at hmem
-      refine ⟨fun hv => ⟨h16, hwf.frontier_fits.of_le (by omega), hv⟩, ?_⟩
+      refine ⟨fun hv => ⟨h16, hwf.frontier_fits.of_le (by omega), hv⟩,
+        Memory.FramedTriple.wellFormed hwt ?_⟩
       dsimp only [dtLiftOutStep, env]
       refine Memory.FramedTriple.read_bind (by omega) (Memory.FramedTriple.read_bind (by omega)
         (Memory.FramedTriple.read_bind (by rw [hmu]; omega) (Memory.FramedTriple.read_bind
@@ -1142,8 +1180,6 @@ private theorem iterate_dtLiftOutStep_spec {w n v activeVerts outBase : ℕ}
           mem' (outBase + 4 * i + q) = t.mem (outBase + 4 * i + q) := fun i q _ _ => by
         dsimp only [mem']; rw [Function.update_of_ne (by omega), Function.update_of_ne (by omega)]
       refine Memory.FramedTriple.pure (c := 0) ⟨rfl, htfr,
-        wellFormed_update (wellFormed_update hwt _ (lift F'[a].u).val (hfit_l _ hu_lt))
-          _ (lift F'[a].v).val (hfit_l _ hv_lt),
         fun x hx => by
           dsimp only; rw [Function.update_of_ne (by simp only [S, Set.mem_Ico] at hx; omega),
             Function.update_of_ne (by simp only [S, Set.mem_Ico] at hx; omega)]; exact ht_mod x hx,
@@ -1166,9 +1202,9 @@ private theorem iterate_dtLiftOutStep_spec {w n v activeVerts outBase : ℕ}
             (hother i 1 (by omega) (by omega)).trans h1,
             (hother i 2 (by omega) (by omega)).trans h2,
             (hother i 3 (by omega) (by omega)).trans h3⟩⟩)
-    0 s ⟨rfl, rfl, hwf, fun _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _),
-      fun i hi _ => hholds i hi⟩
-  exact ⟨hsafe, hft.mono le_rfl fun _ _ ⟨_, hfr_end, hwf_end, _, hlifted_end, _⟩ =>
+    0 s ⟨⟨rfl, rfl, fun _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _),
+      fun i hi _ => hholds i hi⟩, hwf⟩
+  exact ⟨hsafe, hft.mono le_rfl fun _ _ ⟨⟨_, hfr_end, _, hlifted_end, _⟩, hwf_end⟩ =>
     ⟨hfr_end, hwf_end, fun i hi => hlifted_end i (by simpa [F_lifted] using hi) hi⟩⟩
 
 private def BatchCompInv {w : ℕ} (d : DTBatchArgs)
@@ -1177,8 +1213,8 @@ private def BatchCompInv {w : ℕ} (d : DTBatchArgs)
   let totalM := (Cs.map List.length).sum
   let sumMk := ((Cs.take k).map List.length).sum
   st.1 = k ∧
-  t.frontier ≤ s0.frontier + 4 * totalM + d.numVerts + d.r0 + 5 * sumMk + k * (d.r0.choose 2) ∧
-  s0.frontier + 4 * totalM + d.numVerts + d.r0 ≤ t.frontier ∧
+  t.frontier ≤ s0.frontier + 4 * totalM + d.numVerts + d.r0 + d.r0.choose 2 + 5 * sumMk ∧
+  s0.frontier + 4 * totalM + d.numVerts + d.r0 + d.r0.choose 2 ≤ t.frontier ∧
   Memory.WellFormed w t ∧
   (∀ a < s0.frontier, t.mem a = s0.mem a) ∧
   (∀ x < d.numVerts, t.mem (s0.frontier + 4 * totalM + x) = d.numVerts) ∧
@@ -1215,13 +1251,14 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
     (htab : HoldsDTTable d.r0 d.tableBase s0.mem)
     (hbnd : DTTableInBounds d.r0 d.tableBase tableFrontier s0.mem)
     (htab_fr : tableFrontier ≤ s0.frontier)
-    (hfit : Fits w (s0.frontier + d.numVerts + d.r0 + 9 * (Cs.map List.length).sum +
-      Cs.length * (d.r0.choose 2) + 1))
+    (hfit : Fits w (s0.frontier + d.numVerts + d.r0 + 2 * d.r0.choose 2 +
+      9 * (Cs.map List.length).sum + 1))
     {k : ℕ} (hk : k < Cs.length) (st : ℕ × ℕ) (t : Memory.State)
     (hinv : BatchCompInv (w := w) d Cs s0 k st t) :
     let vertMap := s0.frontier + 4 * (Cs.map List.length).sum
+    let slotMap := vertMap + d.numVerts + d.r0
     let batchEnv : DTBatchEnv :=
-      ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, vertMap + d.numVerts, s0.frontier⟩
+      ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, vertMap + d.numVerts, slotMap, s0.frontier⟩
     let m := Cs[k].length
     let optD := optDepth (edgeEnds (Cs[k].map IndexedEdge.toWeighted))
     dtBatchCompStepSafe w (batchEnv, st) t ∧
@@ -1231,8 +1268,9 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
     hflat_holds, hFs_msf⟩ := hinv
   subst hk_eq
   let vertMap := s0.frontier + 4 * (Cs.map List.length).sum
+  let slotMap := vertMap + d.numVerts + d.r0
   let batchEnv : DTBatchEnv :=
-    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, vertMap + d.numVerts, s0.frontier⟩
+    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, vertMap + d.numVerts, slotMap, s0.frontier⟩
   let m := Cs[st.1].length
   obtain ⟨hsumM_k1, hsumM_le⟩ := list_map_take_sum_add Cs List.length hk
   rw [hsumM_k1] at hsumM_le
@@ -1242,10 +1280,6 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
     (hlt_s _ (by omega)).trans (hmeta st.1 hk).1
   let edgeBase := edgeBases[st.1]'(heb_len.symm ▸ hk)
   let compEdges := t.frontier; let t1 : Memory.State := ⟨t.mem, compEdges + 4 * m⟩
-  have hst_mul : st.1 * (d.r0.choose 2) ≤ Cs.length * (d.r0.choose 2) :=
-    Nat.mul_le_mul_right _ hk.le
-  have hst1_mul : st.1 * (d.r0.choose 2) + d.r0.choose 2 ≤ Cs.length * (d.r0.choose 2) :=
-    Nat.succ_mul st.1 _ ▸ Nat.mul_le_mul_right _ hk
   have hfit_4m : Fits w (4 * m) := hfit.of_le (by omega)
   have hfit_t1 : Fits w (t.frontier + 4 * m) := hfit.of_le (by omega)
   have hwf_t1 : Memory.WellFormed w t1 := ⟨hfit_t1, fun a => hwt.mem_fits a⟩
@@ -1298,23 +1332,33 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
   have hmax_cr : cr.2.choose 2 ≤ d.r0.choose 2 := by
     rw [Nat.choose_two_right, Nat.choose_two_right]
     exact Nat.div_le_div_right (Nat.mul_le_mul hcr_r0 (Nat.sub_le_sub_right hcr_r0 1))
-  have hfit_dt : Fits w (t3.frontier + cr.2.choose 2 + C'.length) := by
+  have h2c_cr : 2 * cr.2.choose 2 = cr.2 * (cr.2 - 1) := by
+    rw [Nat.choose_two_right, Nat.mul_div_cancel' (Nat.even_mul_pred_self cr.2).two_dvd]
+  have hfit_mul : Fits w (cr.2 * (cr.2 - 1)) := by
+    rw [← h2c_cr]; exact hfit.of_le (by omega)
+  have hfit_dt : Fits w (t3.frontier + C'.length) := by
     rw [hfr_r, hfr_c, hC'_len]
     exact hfit.of_le (by dsimp only [t1, compEdges, m] at ht_fr_le ⊢; omega)
-  let dtQ : DTQuery := ⟨d.tableBase, cr.2, m, compEdges, s0.frontier + 4 * st.2⟩
-  have hev := @evalDecisionTreeProg_spec w d.r0 tableFrontier dtQ C' t3 h16 hwf_t3 hcr_r0
-    (by dsimp only [dtQ, m]; exact hC'_len.symm) hC'_simp hC'_holds_t3
+  let dtQ : DTScratchQuery :=
+    ⟨d.tableBase, cr.2, m, compEdges, s0.frontier + 4 * st.2, slotMap⟩
+  have hev := @evalDecisionTreeWithSlotMapProg_spec w d.r0 tableFrontier dtQ C' t3 h16 hwf_t3
+    hcr_r0 (by dsimp only [dtQ, m]; exact hC'_len.symm) hC'_simp hC'_holds_t3
     (by rw [hfr_r, hfr_c]; dsimp only [dtQ, t1, compEdges, m]; omega)
     (by rw [hfr_r, hfr_c]; dsimp only [dtQ, t1, compEdges]; omega)
     (.inr (by dsimp only [dtQ]; omega)) htab_t3 hbnd_t3
     (by rw [hfr_r, hfr_c]; dsimp only [t1, compEdges]; omega)
-    (fun a ha => by dsimp only [dtQ]; omega) hfit_dt
+    (fun a ha => by dsimp only [dtQ]; omega)
+    (by rw [hfr_r, hfr_c]; dsimp only [dtQ, t1, compEdges, slotMap, vertMap]; omega)
+    (.inr (by dsimp only [dtQ, slotMap, vertMap, compEdges]; omega))
+    (.inl (by dsimp only [dtQ, slotMap, vertMap]; omega))
+    (fun a ha => by dsimp only [dtQ, slotMap, vertMap]; omega)
+    hfit_mul hfit_dt
   obtain ⟨_, _, hmod_dt, hq_dt⟩ :=
-    (framedTriple_iff_realization (p := evalDecisionTreeProg dtQ)).mp hev
+    (framedTriple_iff_realization (p := evalDecisionTreeWithSlotMapProg dtQ)).mp hev
   generalize hdelta_def :
-    (Memory.spec 0).clientResult t3 (evalDecisionTreeProg dtQ) = delta at hmod_dt hq_dt
+    (Memory.spec 0).clientResult t3 (evalDecisionTreeWithSlotMapProg dtQ) = delta at hmod_dt hq_dt
   generalize ht4_def :
-    (Memory.spec 0).clientState t3 (evalDecisionTreeProg dtQ) = t4 at hmod_dt hq_dt
+    (Memory.spec 0).clientState t3 (evalDecisionTreeWithSlotMapProg dtQ) = t4 at hmod_dt hq_dt
   obtain ⟨hsafe_dt, hwf_t4, ht4_fr_le, hdelta_le, F', hF'_len, hF'_sub, hF'_holds, hF'_msf⟩ :=
     hq_dt
   have hopt_C'_eq : optDepth (edgeEnds (C'.map IndexedEdge.toWeighted)) =
@@ -1330,14 +1374,18 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
         edgeEnds (Cs[st.1].map IndexedEdge.toWeighted) ⟨i.val, by simpa using hi_s⟩
       simp only [edgeEnds, List.getElem_map, IndexedEdge.toWeighted, Sym2.map_mk]
       exact congrArg (fun e => s(e.u, e.v)) hget
-  have hdt_pres_outside : ∀ a < t3.frontier, ¬(s0.frontier + 4 * st.2 ≤ a ∧
-      a < s0.frontier + 4 * st.2 + 4 * C'.length) → t4.mem a = t3.mem a := fun a ha hna =>
-    hmod_dt.mem_eq_of_not_mem ha (by simp only [dtQ, Set.mem_Ico]; exact hna)
+  have hdt_pres_outside : ∀ a < t3.frontier,
+      ¬(slotMap ≤ a ∧ a < slotMap + cr.2.choose 2) →
+      ¬(s0.frontier + 4 * st.2 ≤ a ∧ a < s0.frontier + 4 * st.2 + 4 * C'.length) →
+      t4.mem a = t3.mem a := fun a ha hns hna =>
+    hmod_dt.mem_eq_of_not_mem ha (by
+      simp only [dtQ, Set.mem_union, Set.mem_Ico]; rintro (h | h); exacts [hns h, hna h])
   have hlift_t4 : ∀ j (hj : j < cr.2), t4.mem (vertMap + d.numVerts + j) = (lift ⟨j, hj⟩).val :=
     fun j hj => by
       have hst_m : st.2 + C'.length ≤ (Cs.map List.length).sum := by rw [hC'_len]; omega
       rw [hdt_pres_outside _ (by rw [hfr_r, hfr_c]; dsimp only [t1, compEdges, vertMap]; omega)
-        (by dsimp only [vertMap]; omega), ht3_mod_r _ (by rw [hfr_c]; dsimp [t1, compEdges]; omega)
+        (by dsimp only [slotMap, vertMap]; omega) (by dsimp only [vertMap]; omega),
+        ht3_mod_r _ (by rw [hfr_c]; dsimp [t1, compEdges]; omega)
         (by dsimp [vertMap]; omega), hvm_t2.2.2.1 j (hact_len.symm ▸ hj), hlift_val j hj]
   have hfl_le : F'.length ≤ m := hF'_sub.length_le.trans (by rw [hC'_len])
   obtain ⟨hsafe_l, hft_l⟩ := @iterate_dtLiftOutStep_spec w d.numVerts cr.2
@@ -1354,11 +1402,8 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
   have hsafe_step : dtBatchCompStepSafe w (batchEnv, st) t := by
     have hst_m : st.2 + m ≤ (Cs.map List.length).sum := by omega
     have hdl : delta ≤ m := hdelta_le.trans hC'_len.le
-    have ht3_le : t3.frontier ≤ s0.frontier + 4 * (Cs.map List.length).sum + d.numVerts + d.r0 +
-        5 * ((Cs.take st.1).map List.length).sum + st.1 * (d.r0.choose 2) + 4 * m := by
-      rw [hfr_r, hfr_c]; dsimp only [t1, compEdges]; omega
     have hsafe_al : dtBatchEvalAndLiftSafe w ⟨d.tableBase, cr.2, m, compEdges, s0.frontier,
-        vertMap + d.numVerts, st.1, st.2⟩ t3 :=
+        vertMap + d.numVerts, slotMap, st.1, st.2⟩ t3 :=
       ⟨h16, hfit.of_le (by dsimp only; omega), hfit.of_le (by dsimp only; omega),
         hfit.of_le (by dsimp only; rw [hdelta_def]; omega), hsafe_dt,
         by rw [hdelta_def, ht4_def, ← hF'_len]; exact hsafe_l⟩
@@ -1379,16 +1424,18 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
         IndexedEdge.toWeighted]
     exact heq_f ▸ compactVertices_isMinSpanningForest hlift_inj hC'_map hF'_msf
   have hpres_t5_t3 : ∀ a < t3.frontier,
+      ¬(slotMap ≤ a ∧ a < slotMap + cr.2.choose 2) →
       ¬(s0.frontier + 4 * st.2 ≤ a ∧ a < s0.frontier + 4 * st.2 + 4 * m) →
-      t5.mem a = t3.mem a := fun a ha hna =>
+      t5.mem a = t3.mem a := fun a ha hns hna =>
     (hmod_l.mem_eq_of_not_mem (ha.trans_le hmod_dt.1) (by simp [Set.mem_Ico]; omega)).trans
-      (hdt_pres_outside a ha (by rw [hC'_len]; exact hna))
+      (hdt_pres_outside a ha hns (by rw [hC'_len]; exact hna))
   have hflat_new : HoldsIndexedEdges s0.frontier (Fs ++ [F_new]).flatten t5.mem := by
     rw [List.flatten_append, List.flatten_singleton]; intro i hi; rw [List.length_append] at hi
     by_cases hil : i < Fs.flatten.length
     · rw [List.getElem_append_left hil]
       exact hflat_holds.congr (fun a _ _ => (hpres_t5_t3 a
-        (by rw [hfr_r, hfr_c]; dsimp [t1, compEdges]; omega) (by omega)).trans
+        (by rw [hfr_r, hfr_c]; dsimp [t1, compEdges]; omega)
+        (by dsimp [slotMap, vertMap]; omega) (by omega)).trans
         ((ht3_mod_r a (by rw [hfr_c]; dsimp [t1, compEdges]; omega)
           (by dsimp [vertMap]; omega)).trans (hmod_c.mem_eq_of_not_mem (by dsimp [t1]; omega)
           (by simp [Set.mem_Ico, vertMap]; omega)))) i hil
@@ -1400,10 +1447,10 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
   have hQ5 : BatchCompInv (w := w) d Cs s0 (st.1 + 1) (st.1 + 1, st.2 + delta) t5 := by
     refine ⟨rfl, ?_, ?_, hwf_t5,
       fun a ha => (hpres_t5_t3 a (by rw [hfr_r, hfr_c]; dsimp [t1, compEdges]; omega)
-        (by omega)).trans (hpres_t3_lt a ha),
+        (by dsimp [slotMap, vertMap]; omega) (by omega)).trans (hpres_t3_lt a ha),
       fun x hx => (hpres_t5_t3 (vertMap + x)
         (by rw [hfr_r, hfr_c]; dsimp [t1, compEdges, vertMap]; omega)
-        (by dsimp [vertMap]; omega)).trans (hvm_t3 x hx),
+        (by dsimp [slotMap, vertMap]; omega) (by dsimp [vertMap]; omega)).trans (hvm_t3 x hx),
       Fs ++ [F_new], by simp [hFs_len], by simp [List.flatten_append, hflat_len, F_new, hF'_len],
       by dsimp only; rw [hsumM_k1]; omega, hflat_new, fun i hi hiC hiF => by
         rw [List.length_append, List.length_singleton] at hiF; by_cases hil : i < st.1
@@ -1414,9 +1461,7 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
           simp only [hFs_len, Nat.sub_self, List.getElem_singleton]
           exact ⟨hF_new_sub, hF_new_msf⟩⟩
     · have hle := hfr_l.le.trans ht4_fr_le
-      rw [hfr_r, hfr_c, hC'_len] at hle; dsimp only [t1, compEdges, dtQ] at hle; rw [hsumM_k1]
-      have hmul_succ : (st.1 + 1) * (d.r0.choose 2) =
-          st.1 * (d.r0.choose 2) + d.r0.choose 2 := Nat.succ_mul _ _; omega
+      rw [hfr_r, hfr_c, hC'_len] at hle; dsimp only [t1, compEdges] at hle; rw [hsumM_k1]; omega
     · rw [hfr_l]; have := hmod_dt.1; rw [hfr_r, hfr_c] at this
       dsimp [t1, compEdges] at this; omega
   let S_all : Set ℕ := Set.Ici s0.frontier
@@ -1447,8 +1492,10 @@ private theorem dtBatchCompStep_spec {w tableFrontier : ℕ}
         fun _ _ ⟨_, hs', _⟩ => by
         rw [hs', ht3_def]; dsimp only [dtBatchEvalAndLift]
         refine Memory.FramedTriple.bind_same (((framedTriple_with_realization hev).frame_mono
-          fun _ ha => by simp only [S_all, Set.mem_Ici, dtQ, Set.mem_Ico] at ha ⊢; omega).mono
-          le_rfl fun _ _ ⟨hr', hs'', _⟩ => by
+          fun _ ha => by
+            simp only [S_all, Set.mem_Ici, dtQ, Set.mem_union, Set.mem_Ico,
+              slotMap, vertMap] at ha ⊢
+            rcases ha with h | h <;> omega).mono le_rfl fun _ _ ⟨hr', hs'', _⟩ => by
           rw [hr', hs'', hdelta_def, ht4_def, ← hF'_len]
           refine Memory.FramedTriple.bind_same (((framedTriple_with_realization hft_l).frame_mono
             fun _ ha => by simp only [S_all, Set.mem_Ici, Set.mem_Ico] at ha ⊢; omega).mono
@@ -1465,9 +1512,10 @@ private theorem framedTriple_of_Ici {α : Type} {w : ℕ} {s : Memory.State} {p 
 
 /-- Framed specification of `evalDecisionTreeBatchProg`: batch-evaluates the precomputed optimal
 decision tree over `k` uncompacted simple components `C_0..C_{k-1}` in `Fin n` (each with at
-most `r0` active vertices), returning `(outBase, outLen)` with
-`HoldsIndexedEdges outBase Fs.flatten s'.mem`, per-component `Subperm` and
-`IsMinSpanningForest`, full frame preservation below `s.frontier`, and time
+most `r0` active vertices), returning a `GraphSlice` `res` with `res.numVertices = d.numVerts`,
+`HoldsIndexedEdges res.edgeBase Fs.flatten s'.mem`, `Fs.flatten.length = res.numEdges`,
+per-component `Subperm` and `IsMinSpanningForest`, full frame preservation below `s.frontier`,
+space `≤ d.numVerts + d.r0 + d.r0.choose 2 + 9 * ∑ m_i`, and time
 `≤ 47 * (n + ∑ m_i + ∑ optDepth C_i + k + 1)`. -/
 theorem evalDecisionTreeBatchProg_spec {w tableFrontier : ℕ} {d : DTBatchArgs}
     {Cs : List (List (IndexedEdge d.numVerts))} {edgeBases : List ℕ} {s : Memory.State}
@@ -1487,22 +1535,22 @@ theorem evalDecisionTreeBatchProg_spec {w tableFrontier : ℕ} {d : DTBatchArgs}
     (htab : HoldsDTTable d.r0 d.tableBase s.mem)
     (hbnd : DTTableInBounds d.r0 d.tableBase tableFrontier s.mem)
     (htab_fr : tableFrontier ≤ s.frontier)
-    (hfit : Fits w (s.frontier + d.numVerts + d.r0 + 9 * (Cs.map List.length).sum +
-      Cs.length * (d.r0.choose 2) + 1)) :
+    (hfit : Fits w (s.frontier + d.numVerts + d.r0 + 2 * d.r0.choose 2 +
+      9 * (Cs.map List.length).sum + 1)) :
     let prog := evalDecisionTreeBatchProg d
     let totalM := (Cs.map List.length).sum
     let sumOptD := (Cs.map fun C => optDepth (edgeEnds (C.map IndexedEdge.toWeighted))).sum
     Memory.FramedTriple w s prog
       (47 * (d.numVerts + totalM + sumOptD + Cs.length + 1)) ∅ fun res s' =>
         evalDecisionTreeBatchProgSafe w d s ∧
-        s'.frontier ≤ s.frontier + d.numVerts + d.r0 + 9 * totalM +
-          Cs.length * (d.r0.choose 2) ∧
-        res.1 + 4 * res.2 ≤ s'.frontier ∧
+        res.numVertices = d.numVerts ∧
+        s'.frontier ≤ s.frontier + d.numVerts + d.r0 + d.r0.choose 2 + 9 * totalM ∧
+        res.edgeBase + 4 * res.numEdges ≤ s'.frontier ∧
         Memory.WellFormed w s' ∧
         ∃ Fs : List (List (IndexedEdge d.numVerts)),
           Fs.length = Cs.length ∧
-          HoldsIndexedEdges res.1 Fs.flatten s'.mem ∧
-          Fs.flatten.length = res.2 ∧
+          HoldsIndexedEdges res.edgeBase Fs.flatten s'.mem ∧
+          Fs.flatten.length = res.numEdges ∧
           ∀ i (hi : i < Cs.length) (hiF : i < Fs.length),
             Fs[i].Subperm Cs[i] ∧
             IsMinSpanningForest (Cs[i].map IndexedEdge.toWeighted)
@@ -1534,13 +1582,28 @@ theorem evalDecisionTreeBatchProg_spec {w tableFrontier : ℕ} {d : DTBatchArgs}
     from rfl] at hmod_fill hfr_fill hwf3 hvm_vals
   rw [hs3_def.symm] at hmod_fill hfr_fill hwf3 hvm_vals
   let activeVerts := s3.frontier
-  let s4 : Memory.State := ⟨s3.mem, activeVerts + d.r0⟩
+  let slotMap := activeVerts + d.r0
+  let maxE := d.r0.choose 2
+  have hmaxE_def : (if d.r0 = 0 then 0 else d.r0 * (d.r0 - 1) / 2) = maxE := by
+    split_ifs with hr0
+    · simp [maxE, hr0]
+    · exact (Nat.choose_two_right _).symm
   have hav_eq : activeVerts = vertMap + d.numVerts := by dsimp only [activeVerts]; exact hfr_fill
+  have hsm_eq : slotMap = vertMap + d.numVerts + d.r0 := by dsimp only [slotMap]; rw [hav_eq]
   have hfit_s4 : Fits w (s3.frontier + d.r0) := by
     rw [hfr_fill]; exact hfit.of_le (by dsimp only [s2, vertMap, outBase]; omega)
-  have hwf4 : Memory.WellFormed w s4 := ⟨hfit_s4, fun a => hwf3.mem_fits a⟩
+  have hfit_mul : Fits w (d.r0 * (d.r0 - 1)) := by
+    have h2c : d.r0 * (d.r0 - 1) = 2 * maxE := by
+      dsimp only [maxE]; rw [Nat.choose_two_right]
+      exact (Nat.mul_div_cancel' (Nat.even_mul_pred_self d.r0).two_dvd).symm
+    exact hfit.of_le (by rw [h2c]; dsimp only [maxE]; omega)
+  have hfit_maxE : Fits w maxE := hfit.of_le (by dsimp only [maxE]; omega)
+  have hfit_s5 : Fits w (slotMap + maxE) := by
+    rw [hsm_eq]; exact hfit.of_le (by dsimp only [vertMap, outBase, maxE]; omega)
+  let s5 : Memory.State := ⟨s3.mem, slotMap + maxE⟩
+  have hwf5 : Memory.WellFormed w s5 := ⟨hfit_s5, fun a => hwf3.mem_fits a⟩
   let batchEnv : DTBatchEnv :=
-    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, activeVerts, outBase⟩
+    ⟨d.tableBase, d.numVerts, d.compMetaBase, vertMap, activeVerts, slotMap, outBase⟩
   let Φ (k : ℕ) (_ : ℕ × ℕ) (_ : Memory.State) : ℕ :=
     45 * (totalM - ((Cs.take k).map List.length).sum) +
     15 * (sumOptD - ((Cs.take k).map
@@ -1566,13 +1629,13 @@ theorem evalDecisionTreeBatchProg_spec {w tableFrontier : ℕ} {d : DTBatchArgs}
     have hm_c' : memoryCost (dtBatchCompStep (batchEnv, st)) t ≤ _ := hm_c
     dsimp only [Φ, totalM, sumOptD] at *
     rw [hsumM_k1] at hsumM_le ⊢; rw [hsumO_k1] at hsumO_le ⊢; omega
-  have hs4_fr : s4.frontier = s.frontier + 4 * totalM + d.numVerts + d.r0 :=
-    by dsimp only [s4, activeVerts]; rw [hfr_fill]
+  have hs5_fr : s5.frontier = s.frontier + 4 * totalM + d.numVerts + d.r0 + maxE := by
+    dsimp only [s5]; rw [hsm_eq]
   obtain ⟨hsafe_loop, hv_loop, hm_loop, hmod_loop, _, hfr_end_le, hfr_end_ge, hwf_end, _, _, Fs,
       hFs_len, hflat_len, hacc_le_end, hflat_holds, hFs_msf⟩ :=
     iterate_potential_spec dtBatchCompStep dtBatchCompStepSafe w batchEnv 0 Cs.length
-      (BatchCompInv (w := w) d Cs s) Φ (Set.Ici s.frontier) hstep (0, 0) s4
-      ⟨rfl, by omega, by omega, hwf4, fun a ha => hmod_fill.mem_eq_of_not_mem
+      (BatchCompInv (w := w) d Cs s) Φ (Set.Ici s.frontier) hstep (0, 0) s5
+      ⟨rfl, by omega, by omega, hwf5, fun a ha => hmod_fill.mem_eq_of_not_mem
         (by dsimp only [s2, vertMap, outBase]; omega) (by simp only [Set.mem_Ico]; omega),
         hvm_vals, [], rfl, rfl, Nat.zero_le _, fun _ hi => by simp at hi,
         fun _ hi _ _ => absurd hi (Nat.not_lt_zero _)⟩
@@ -1581,19 +1644,22 @@ theorem evalDecisionTreeBatchProg_spec {w tableFrontier : ℕ} {d : DTBatchArgs}
   rw [hsumM_all] at hfr_end_le hacc_le_end
   have hsafe_fin : evalDecisionTreeBatchProgSafe w d s := by
     dsimp only [evalDecisionTreeBatchProgSafe]; rw [hk_eq, ← hsum_def, hs1_eq]
-    exact ⟨h16, hfit_4m, hfit_ob, hsum_acc ▸ hfit_vm, by rw [hsum_acc, ← hs3_def]; exact hfit_s4,
+    rw [hmaxE_def]
+    exact ⟨h16, hfit_4m, hfit_mul, hfit_maxE, hfit_ob, hsum_acc ▸ hfit_vm,
+      by rw [hsum_acc, ← hs3_def]; exact hfit_s4,
+      by rw [hsum_acc, ← hs3_def]; exact hfit_s5,
       hsafe_sum, by rw [hsum_acc, ← hs3_def]; exact hsafe_loop⟩
   let S_all : Set ℕ := Set.Ici s.frontier
-  have hft_loop : Memory.FramedTriple w s4 (iterate dtBatchCompStep batchEnv Cs.length (0, 0))
+  have hft_loop : Memory.FramedTriple w s5 (iterate dtBatchCompStep batchEnv Cs.length (0, 0))
       (45 * totalM + 15 * sumOptD + 18 * Cs.length) S_all fun r' s' =>
-        r' = (Memory.spec 0).clientResult s4 (iterate dtBatchCompStep batchEnv Cs.length (0, 0)) ∧
-        s' = (Memory.spec 0).clientState s4 (iterate dtBatchCompStep batchEnv Cs.length (0, 0)) :=
+        r' = (Memory.spec 0).clientResult s5 (iterate dtBatchCompStep batchEnv Cs.length (0, 0)) ∧
+        s' = (Memory.spec 0).clientState s5 (iterate dtBatchCompStep batchEnv Cs.length (0, 0)) :=
     framedTriple_iff_realization.mpr ⟨hv_loop, by
       dsimp only [Φ] at hm_loop
       simp only [List.take_zero, List.map_nil, List.sum_nil] at hm_loop
-      simpa only [add_zero] using (by omega : memoryCost _ s4 ≤ _), hmod_loop, rfl, rfl⟩
+      simpa only [add_zero] using (by omega : memoryCost _ s5 ≤ _), hmod_loop, rfl, rfl⟩
   refine framedTriple_of_Ici (c := Cs.length + (d.numVerts +
-    (45 * totalM + 15 * sumOptD + 18 * Cs.length + 0 + 1) + 1 + 1)) ?_ (by omega)
+    (45 * totalM + 15 * sumOptD + 18 * Cs.length + 0 + 1 + 1) + 1 + 1)) ?_ (by omega)
   dsimp only [evalDecisionTreeBatchProg]; rw [hk_eq]
   refine Memory.FramedTriple.bind_same (((framedTriple_with_realization hft_sum).frame_mono
     (Set.empty_subset _)).mono le_rfl fun _ _ ⟨hr, hs, _⟩ => ?_)
@@ -1601,16 +1667,22 @@ theorem evalDecisionTreeBatchProg_spec {w tableFrontier : ℕ} {d : DTBatchArgs}
   refine Memory.FramedTriple.allocDirty_bind (hsum_acc ▸ hfit_ob) ?_
   refine Memory.FramedTriple.allocDirty_bind hfit_vm ?_
   change Memory.FramedTriple w s2 _ _ S_all _
-  refine Memory.FramedTriple.bind_same (((framedTriple_with_realization hfill).frame_mono
-    fun a ha => by simp only [S_all, Set.mem_Ici, Set.mem_Ico] at ha ⊢; omega).mono le_rfl
-    fun _ _ ⟨_, hs', _⟩ => ?_)
+  refine Memory.FramedTriple.bind_same (c₁ := d.numVerts)
+    (((framedTriple_with_realization hfill).frame_mono
+      fun a ha => by simp only [S_all, Set.mem_Ici, Set.mem_Ico] at ha ⊢; omega).mono le_rfl
+      fun _ _ ⟨_, hs', _⟩ => ?_)
   rw [hs', show (Memory.spec 0).clientState s2
     (fillConstProg vertMap d.numVerts d.numVerts) = s3 from hs3_def.symm]
   refine Memory.FramedTriple.allocDirty_bind hfit_s4 ?_
+  change Memory.FramedTriple w ⟨s3.mem, slotMap⟩ _ _ S_all _
+  rw [hmaxE_def]
+  refine Memory.FramedTriple.allocDirty_bind hfit_s5 ?_
   refine Memory.FramedTriple.bind_same (c₁ := 45 * totalM + 15 * sumOptD + 18 * Cs.length)
     (c₂ := 0) (hft_loop.mono le_rfl fun _ _ ⟨hr', hs''⟩ => ?_)
   rw [hr', hs'']
-  exact Memory.FramedTriple.pure (c := 0) ⟨hsafe_fin, by omega, by omega, hwf_end,
-    Fs, hFs_len, hflat_holds, hflat_len, fun i hi hiF => hFs_msf i hi hi hiF⟩
+  exact Memory.FramedTriple.pure (c := 0) ⟨hsafe_fin, rfl,
+    by dsimp only [maxE] at hs5_fr; omega,
+    by dsimp only; omega, hwf_end, Fs, hFs_len, hflat_holds, hflat_len,
+    fun i hi hiF => hFs_msf i hi hi hiF⟩
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest

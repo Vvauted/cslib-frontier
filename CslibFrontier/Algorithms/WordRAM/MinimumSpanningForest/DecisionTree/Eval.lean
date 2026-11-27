@@ -18,19 +18,29 @@ import CslibFrontier.Tactic.ValidProg
 /-!
 # Canonicalization and Single-Component Decision-Tree Evaluation on the Word RAM
 
-Implements `evalDecisionTreeProg` for evaluating a precomputed optimal MSF decision tree stored in
-a `HoldsDTTable` on a vertex-compacted simple component `C` (`v ≤ r0` vertices, `m = C.length`
-edges). Reuses `edgePairIdx`, `dtGraphMask`, `walkCompleteTree`, `HoldsDTTable`, and
-`DTTableInBounds` from `DecisionTree.Layout`, `HoldsIndexedEdges` from `GraphOps.IndexedEdges`,
-`Memory.copy` from `ArrayOps`, and `Contraction.Threshold` / `DecisionTree.Canonical` bridges.
+Implements `evalDecisionTreeProg` and caller-scratch `evalDecisionTreeWithSlotMapProg` as steps
+toward Theorem 5.8 of [PettieRamachandran2002] (`Section 4.1, p. 23; Section 5.1, pp. 25–26`,
+Corollary 5.6 and Theorem 5.8, `#8624`) for evaluating a precomputed optimal MSF decision tree
+stored in `HoldsDTTable` on a vertex-compacted simple component `C` (`v ≤ r0` vertices,
+`m = C.length` edges). Reuses `edgePairIdx`, `dtGraphMask`, `walkCompleteTree`, `HoldsDTTable`,
+`DTTableInBounds`, and `testBit_eq_decide_shift_and` from `DecisionTree.Layout`, `HoldsIndexedEdges`
+from `GraphOps.IndexedEdges`, `Memory.copy` from `ArrayOps`, `framedTriple_with_realization` and
+`iterate_framedTriple_of_step` from `LoopFrame`, and `Contraction.Threshold` /
+`DecisionTree.Canonical` bridges.
 
 ## Main definitions
 
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DTQuery`: query handle (`tableBase`,
   `numVerts`, `numEdges`, `edgeBase`, `outBase`) encoded via `word_enc_structure`.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.DTScratchQuery`: query handle adding caller
+  `slotMap` scratch buffer (`v.choose 2` words) encoded via `word_enc_structure`.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeWithSlotMapProg`: Word-RAM
+  evaluation using a caller-supplied reusable `slotMap` buffer in `O(m + optDepth C + 1)` time.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeWithSlotMapProgSafe`: native
+  word-width safety predicate for `evalDecisionTreeWithSlotMapProg`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeProg`: Word-RAM program
-  canonicalizing `C`, querying `HoldsDTTable`, walking the stored complete decision tree, and
-  emitting the resulting MSF at `outBase` in `O(m + optDepth C + 1)` time.
+  allocating `slotMap`, canonicalizing `C`, querying `HoldsDTTable`, walking the stored complete
+  decision tree, and emitting the resulting MSF at `outBase` in `O(m + optDepth C + 1)` time.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeProgSafe`: native word-width
   safety predicate for `evalDecisionTreeProg`.
 
@@ -38,11 +48,20 @@ edges). Reuses `edgePairIdx`, `dtGraphMask`, `walkCompleteTree`, `HoldsDTTable`,
 
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.dt_eval_msf_correct`: pure correctness bridge
   from `HoldsCompleteTree` + `MSFDT.Correct` on `endsOfMask` to `IsMinSpanningForest`.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_evalDecisionTreeWithSlotMapProg`,
+  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeWithSlotMapProg_spec`: uniform
+  `Realizes .exact` (`work = 0`) and `Memory.FramedTriple` specification with caller-supplied
+  `slotMap` (`s'.frontier ≤ s.frontier + m`).
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.realizes_evalDecisionTreeProg`: uniform
   `Realizes .exact` certificate with `work = 0`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.evalDecisionTreeProg_spec`: `Memory.FramedTriple`
   specification proving `IsMinSpanningForest`, `Subperm`, `HoldsIndexedEdges`, space bound
   `s'.frontier ≤ s.frontier + v.choose 2 + m`, and time bound `≤ 15 * (m + optDepth C + 1)`.
+
+## References
+
+* [PettieRamachandran2002] Seth Pettie and Vijaya Ramachandran, *An Optimal Minimum Spanning Tree
+  Algorithm*, Journal of the ACM 49(1), 16–34, 2002.
 -/
 
 public section
@@ -131,45 +150,6 @@ private theorem endsOfMask_reindex_indexedEdges {v : ℕ} (C : List (IndexedEdge
     fun k => ?_⟩
   · simpa [σ₀, pairs, Fin.castOrderIso] using hpidx (σ₀ k)
   · simpa [σ₀, pairs, Fin.castOrderIso] using he_pairs (σ₀ k)
-
-private theorem isAcyclic_msf_toList {v : ℕ} (C : List (IndexedEdge v))
-    (w : Fin (C.map IndexedEdge.toWeighted).length → ℕ ×ₗ ℕ) (hw : Function.Injective w) :
-    IsAcyclic ((Cslib.Multigraph.msf (edgeEnds (C.map IndexedEdge.toWeighted)) w
-      Finset.univ).toList.map fun i => (C.map IndexedEdge.toWeighted)[i.val]) := by
-  classical
-  let es := C.map IndexedEdge.toWeighted
-  suffices ∀ M : Finset (Fin es.length),
-      Cslib.Multigraph.IsAcyclic (edgeEnds es) (M : Set (Fin es.length)) →
-      IsAcyclic (M.toList.map fun k => es[k.val]) from
-    this _ (Cslib.Multigraph.isAcyclic_msf w hw)
-  intro M hM
-  induction M using Finset.induction with
-  | empty =>
-    rw [isAcyclic_iff]; simp [edgePartition, DisjointSet.Partition.numComponents_discrete]
-  | @insert i M hi ih =>
-    have ih_ac := (isAcyclic_iff _).mp (ih (hM.mono fun _ hx => Finset.mem_insert_of_mem hx))
-    have hperm : ((insert i M).toList.map fun k => es[k.val]).Perm
-        ((M.toList.map fun k => es[k.val]) ++ [es[i.val]]) := by
-      have h1 := (Finset.toList_insert hi).map fun k => es[k.val]
-      rw [List.map_cons] at h1
-      exact h1.trans (List.perm_append_comm (l₁ := [es[i.val]]))
-    have hnot : ¬ Cslib.Multigraph.Joins (edgeEnds es) (M : Set (Fin es.length))
-        es[i.val].u es[i.val].v := by
-      have hs : ((insert i M : Finset (Fin es.length)) : Set (Fin es.length)) \ {i} = M := by
-        simp [Finset.coe_insert, Set.insert_sdiff_self_of_notMem hi]
-      rw [← hs]
-      exact (Cslib.Multigraph.isAcyclic_iff.mp hM) i (Finset.mem_insert_self i M) _ _ rfl
-    have hrel_f : (edgePartition (M.toList.map fun k => es[k.val])).rel
-        es[i.val].u es[i.val].v = false := Bool.eq_false_iff.mpr fun hr =>
-      hnot ((rel_edgePartition_map_iff_joins es M _ _).mp hr)
-    rw [Perm.isAcyclic_iff hperm, isAcyclic_iff, edgePartition, edgePartitionFrom_append,
-      edgePartitionFrom_cons, edgePartitionFrom_nil]
-    have hdrop := DisjointSet.Partition.numComponents_merge_of_not_rel hrel_f
-    simp only [List.length_append, List.length_singleton]
-    change ((edgePartition (M.toList.map fun k => es[k.val])).merge
-        es[i.val].u es[i.val].v).numComponents +
-      ((M.toList.map fun k => es[k.val]).length + 1) = v
-    omega
 
 /-- Correctness bridge from `HoldsCompleteTree` + `MSFDT.Correct` on `endsOfMask v mask` to
 `Subperm` and `IsMinSpanningForest` on `C : List (IndexedEdge v)`. -/
@@ -300,53 +280,16 @@ theorem dt_eval_msf_correct {v mask d intBase leafBase : ℕ} {mem : ℕ → ℕ
         dsimp only [Function.comp_apply, Equiv.coe_toEmbedding]
         congr 1; exact congrArg Fin.val (σ'.symm_apply_apply k)
     rwa [hl, hr] at hm
-  have hU_sub : U.Subperm Cw := by
-    obtain ⟨l, hp, hs⟩ := List.subperm_of_subset (Finset.nodup_toList S) fun i _ =>
-      List.mem_finRange i
-    have hm : U.Subperm ((List.finRange Cw.length).map fun k : Fin Cw.length => Cw[k.val]) :=
-      ⟨l.map fun k : Fin Cw.length => Cw[k.val], hp.map _, hs.map _⟩
-    rwa [List.map_getElem_finRange] at hm
-  have hU_ac : IsAcyclic U := isAcyclic_msf_toList C wC (edgeWeight_injective Cw)
+  have hU_sf : IsSpanningForest Cw (msfEdges Cw wC) :=
+    msfEdges_isSpanningForest Cw wC (edgeWeight_injective Cw)
   have hU_thresh : ∀ t : ℕ,
-      edgePartition (U.filter fun e => decide (e.weight ≤ t)) =
-        edgePartition (Cw.filter fun e => decide (e.weight ≤ t)) := fun t => by
-    have hl_p : (U.filter fun e => decide (e.weight ≤ t)).Perm
-        ((S.filter fun i => decide (Cw[i.val].weight ≤ t)).toList.map fun i => Cw[i.val]) := by
-      dsimp only [U]; rw [List.filter_map]
-      exact List.Perm.map _ (List.perm_of_nodup_nodup_toFinset_eq
-        ((Finset.nodup_toList _).filter _) (Finset.nodup_toList _) (by ext i; simp [S]))
-    have hr_p : (Cw.filter fun e => decide (e.weight ≤ t)).Perm
-        (((Finset.univ : Finset (Fin Cw.length)).filter fun i =>
-          decide (Cw[i.val].weight ≤ t)).toList.map fun i => Cw[i.val]) := by
-      have hfin : Cw.filter (fun e => decide (e.weight ≤ t)) = ((List.finRange Cw.length).filter
-          fun i => decide (Cw[i.val].weight ≤ t)).map fun i => Cw[i.val] := by
-        conv_lhs => rw [← List.map_getElem_finRange Cw, List.filter_map]
-        rfl
-      rw [hfin]; exact List.Perm.map _ (List.perm_of_nodup_nodup_toFinset_eq
-        ((List.nodup_finRange _).filter _) (Finset.nodup_toList _) (by ext i; simp))
-    let k : ℕ ×ₗ ℕ := toLex (t + 1, 0)
-    have hcut : ∀ i : Fin Cw.length, wC i < k ↔ Cw[i.val].weight ≤ t := fun i => by
-      dsimp only [wC, edgeWeight, k]; rw [Prod.Lex.lt_iff]; simp only [ofLex_toLex]; omega
-    ext u1 u2
-    rw [Bool.eq_iff_iff, Perm.edgePartition_eq hl_p, Perm.edgePartition_eq hr_p,
-      rel_edgePartition_map_iff_joins, rel_edgePartition_map_iff_joins,
-      show (((S.filter fun i => decide (Cw[i.val].weight ≤ t)) :
-          Finset (Fin Cw.length)) : Set (Fin Cw.length)) =
-        {f | f ∈ S ∧ wC f < k} from by ext i; simp [S, hcut],
-      show (((Finset.univ.filter fun i : Fin Cw.length =>
-          decide (Cw[i.val].weight ≤ t)) :
-          Finset (Fin Cw.length)) : Set (Fin Cw.length)) =
-        {f | f ∈ (Finset.univ : Finset (Fin Cw.length)) ∧ wC f < k} from by ext i; simp [hcut]]
-    exact Cslib.Multigraph.joins_msf_lt_iff wC
-  have hU_part : edgePartition U = edgePartition Cw := by
-    have hle : ∀ x ∈ Cw, x.weight ≤ totalWeight Cw := fun _ hx =>
-      List.le_sum_of_mem (List.mem_map_of_mem hx)
-    simpa [List.filter_eq_self.mpr fun x hx => decide_eq_true (hle x (hU_sub.subset hx)),
-      List.filter_eq_self.mpr fun x hx => decide_eq_true (hle x hx)] using
-      hU_thresh (totalWeight Cw)
+      edgePartition ((msfEdges Cw wC).filter fun e => decide (e.weight ≤ t)) =
+        edgePartition (Cw.filter fun e => decide (e.weight ≤ t)) := fun t =>
+    msfEdges_threshold_partition Cw wC (fun t => ⟨toLex (t + 1, 0), fun i => by
+      dsimp only [wC, edgeWeight]; rw [Prod.Lex.lt_iff]; simp only [ofLex_toLex]; omega⟩) t
   have hF_sf : IsSpanningForest Cw (F.map IndexedEdge.toWeighted) :=
-    ⟨hFw_perm.subperm.trans hU_sub, (Perm.isAcyclic_iff hFw_perm).mpr hU_ac,
-      (Perm.edgePartition_eq hFw_perm).trans hU_part⟩
+    ⟨hFw_perm.subperm.trans hU_sf.1, (Perm.isAcyclic_iff hFw_perm).mpr hU_sf.2.1,
+      (Perm.edgePartition_eq hFw_perm).trans hU_sf.2.2⟩
   refine ⟨hF_sub, (isMinSpanningForest_iff_threshold_partition Cw _).mpr ⟨hF_sf, fun t => ?_⟩⟩
   rw [Perm.edgePartition_eq (hFw_perm.filter _)]
   exact hU_thresh t
@@ -464,15 +407,17 @@ private structure DTSetupArgs where
   numVerts : ℕ
   numEdges : ℕ
   edgeBase : ℕ
+  slotMap : ℕ
   deriving DecidableEq
 
 private word_enc_structure encDTSetupArgs : DTSetupArgs where
   tableBase : wordWords,
   numVerts : wordWords,
   numEdges : wordWords,
-  edgeBase : wordWords
+  edgeBase : wordWords,
+  slotMap : wordWords
 
-private instance : WordEncoding DTSetupArgs := ⟨4, encDTSetupArgs⟩
+private instance : WordEncoding DTSetupArgs := ⟨5, encDTSetupArgs⟩
 
 /-- Query handle for single-component optimal decision-tree evaluation. -/
 structure DTQuery where
@@ -499,6 +444,36 @@ word_enc_structure encDTQuery : DTQuery where
 
 /-- Registered `WordEncoding` instance for `DTQuery`. -/
 instance : WordEncoding DTQuery := ⟨5, encDTQuery⟩
+
+/-- Query handle for single-component optimal decision-tree evaluation using a caller-supplied
+reusable `slotMap` scratch buffer of size `v.choose 2`. -/
+structure DTScratchQuery where
+  /-- Base address of precomputed decision-tree lookup table. -/
+  tableBase : ℕ
+  /-- Compacted vertex count `v ≤ r0`. -/
+  numVerts : ℕ
+  /-- Edge count `m`. -/
+  numEdges : ℕ
+  /-- Base address of stride-4 input `IndexedEdge` array. -/
+  edgeBase : ℕ
+  /-- Base address of stride-4 output `IndexedEdge` array. -/
+  outBase : ℕ
+  /-- Base address of caller-supplied `v.choose 2`-word edge-pair scratch buffer. -/
+  slotMap : ℕ
+  deriving DecidableEq
+
+/-- Faithful six-word encoding of `DTScratchQuery` as
+`[tableBase, numVerts, numEdges, edgeBase, outBase, slotMap]`. -/
+word_enc_structure encDTScratchQuery : DTScratchQuery where
+  tableBase : wordWords,
+  numVerts : wordWords,
+  numEdges : wordWords,
+  edgeBase : wordWords,
+  outBase : wordWords,
+  slotMap : wordWords
+
+/-- Registered `WordEncoding` instance for `DTScratchQuery`. -/
+instance : WordEncoding DTScratchQuery := ⟨6, encDTScratchQuery⟩
 
 private theorem iterationSafe_map_fix {δ δ' σ : Type} (f : δ → δ')
     (step : δ' × σ → Memory.Prog σ) (safe : ℕ → δ' × σ → Memory.State → Prop)
@@ -681,43 +656,38 @@ private theorem realizes_dtEmitStep : Realizes .exact
     (WordEncoding.encode (α := DTScanState)) dtEmitStepSafe (fun _ _ => 0) :=
   realizes_dtEmitStep_history.consequence_valid (fun _ _ _ _ _ hv h => ⟨h, hv⟩)
 
-private def evalDTSetup (d : DTSetupArgs) : Memory.Prog DTSetupOut := do
-  let slotMap ← Memory.allocDirty (d.numVerts * (d.numVerts - 1) / 2)
-  let scan ← iterate dtScanEdgeStep ⟨d.edgeBase, slotMap⟩ d.numEdges ⟨0, 0⟩
+private def evalDTSetupWithSlotMap (d : DTSetupArgs) : Memory.Prog DTSetupOut := do
+  let scan ← iterate dtScanEdgeStep ⟨d.edgeBase, d.slotMap⟩ d.numEdges ⟨0, 0⟩
   let entryPtr ← Memory.read (d.tableBase + scan.mask)
   let e ← Memory.read entryPtr
   let origSlot ← Memory.allocDirty e
-  pure ⟨entryPtr, e, origSlot, slotMap⟩
+  pure ⟨entryPtr, e, origSlot, d.slotMap⟩
 
-private def evalDTSetupSafe (w : ℕ) (d : DTSetupArgs) (s : Memory.State) : Prop :=
-  let maxE := d.numVerts * (d.numVerts - 1) / 2
-  let slotMap := s.frontier
-  let s1 : Memory.State := ⟨s.mem, s.frontier + maxE⟩
-  let scan := (Memory.spec 0).clientResult s1
-    (iterate dtScanEdgeStep ⟨d.edgeBase, slotMap⟩ d.numEdges ⟨0, 0⟩)
-  let s2 := (Memory.spec 0).clientState s1
-    (iterate dtScanEdgeStep ⟨d.edgeBase, slotMap⟩ d.numEdges ⟨0, 0⟩)
-  let entryPtr := s2.mem (d.tableBase + scan.mask)
-  let e := s2.mem entryPtr
-  Fits w 16 ∧ 1 ≤ d.numVerts ∧ Fits w maxE ∧
-  Fits w (d.numVerts * (d.numVerts - 1)) ∧ Fits w (s.frontier + maxE) ∧
-  Fits w (d.tableBase + scan.mask) ∧ Fits w (s2.frontier + e) ∧
-  d.tableBase + scan.mask < s2.frontier ∧ entryPtr < s2.frontier ∧
-  iterationSafe dtScanEdgeStep dtScanEdgeStepSafe w ⟨d.edgeBase, slotMap⟩ d.numEdges ⟨0, 0⟩ s1
+private def evalDTSetupWithSlotMapSafe (w : ℕ) (d : DTSetupArgs) (s : Memory.State) : Prop :=
+  let scan := (Memory.spec 0).clientResult s
+    (iterate dtScanEdgeStep ⟨d.edgeBase, d.slotMap⟩ d.numEdges ⟨0, 0⟩)
+  let s1 := (Memory.spec 0).clientState s
+    (iterate dtScanEdgeStep ⟨d.edgeBase, d.slotMap⟩ d.numEdges ⟨0, 0⟩)
+  let entryPtr := s1.mem (d.tableBase + scan.mask)
+  let e := s1.mem entryPtr
+  Fits w 16 ∧ 1 ≤ d.numVerts ∧ Fits w (d.numVerts * (d.numVerts - 1)) ∧
+  Fits w (d.tableBase + scan.mask) ∧ Fits w (s1.frontier + e) ∧
+  d.tableBase + scan.mask < s1.frontier ∧ entryPtr < s1.frontier ∧
+  iterationSafe dtScanEdgeStep dtScanEdgeStepSafe w ⟨d.edgeBase, d.slotMap⟩ d.numEdges ⟨0, 0⟩ s
 
-private theorem realizes_evalDTSetup : Realizes .exact
-    evalDTSetup (WordEncoding.encode (α := DTSetupArgs))
-    (WordEncoding.encode (α := DTSetupOut)) evalDTSetupSafe (fun _ _ => 0) := by
-  unfold evalDTSetup
+private theorem realizes_evalDTSetupWithSlotMap : Realizes .exact
+    evalDTSetupWithSlotMap (WordEncoding.encode (α := DTSetupArgs))
+    (WordEncoding.encode (α := DTSetupOut)) evalDTSetupWithSlotMapSafe (fun _ _ => 0) := by
+  unfold evalDTSetupWithSlotMap
   realize [realizes_dtScanEdgeStep]
   all_goals
-    obtain ⟨h16, hnv, hmax, hmul, hs1, htb, hs2, hlt1, hlt2, hit⟩ := h
+    obtain ⟨h16, hnv, hmul, htb, hs1, hlt1, hlt2, hit⟩ := h
     have hfront := hmem.frontier_fits
+    have hw_sm : Fits w d.slotMap := by
+      have h4 : Fits w (encDTSetupArgs d 4) := hwords 4; simpa using h4
     first
-    | exact hnv
-    | decide
     | exact iterationSafe_map_fix
-        (fun p : DTSetupArgs × ℕ => (⟨(Prod.fst p).edgeBase, Prod.snd p⟩ : DTScanEnv))
+        (fun p : DTSetupArgs => (⟨p.edgeBase, p.slotMap⟩ : DTScanEnv))
         dtScanEdgeStep dtScanEdgeStepSafe _ (fun _ _ hs => hs) hit
     | fits
 
@@ -793,6 +763,59 @@ private theorem realizes_evalDTRunTree : Realizes .exact
     | exact hle
     | fits
 
+/-- Evaluates the precomputed optimal decision tree on a vertex-compacted simple graph `C_i`
+using a caller-supplied `slotMap` buffer of size `d.numVerts.choose 2`, emitting `F_i` at
+`d.outBase` and returning `|F_i|` in `O(m_i + optDepth C_i + 1)` time with `work = 0`. -/
+def evalDecisionTreeWithSlotMapProg (d : DTScratchQuery) : Memory.Prog ℕ := do
+  if d.numEdges = 0 then pure 0
+  else if d.numEdges = 1 then
+    copy4 (d.edgeBase, d.outBase)
+    pure 1
+  else
+    let st ← evalDTSetupWithSlotMap ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, d.slotMap⟩
+    evalDTRunTree ⟨st, d.edgeBase, d.outBase⟩
+
+/-- Native safety domain for `evalDecisionTreeWithSlotMapProg`. -/
+def evalDecisionTreeWithSlotMapProgSafe (w : ℕ) (d : DTScratchQuery) (s : Memory.State) : Prop :=
+  Fits w 16 ∧
+  (d.numEdges = 1 → d.edgeBase + 4 ≤ s.frontier ∧ d.outBase + 4 ≤ s.frontier) ∧
+  (d.numEdges ≠ 0 → d.numEdges ≠ 1 →
+    let setupArgs : DTSetupArgs :=
+      ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, d.slotMap⟩
+    let st := (Memory.spec 0).clientResult s (evalDTSetupWithSlotMap setupArgs)
+    let s1 := (Memory.spec 0).clientState s (evalDTSetupWithSlotMap setupArgs)
+    evalDTSetupWithSlotMapSafe w setupArgs s ∧
+    evalDTRunTreeSafe w ⟨st, d.edgeBase, d.outBase⟩ s1)
+
+/-- Uniform `Realizes .exact` certificate for `evalDecisionTreeWithSlotMapProg` with
+`work = 0`. -/
+theorem realizes_evalDecisionTreeWithSlotMapProg : Realizes .exact
+    evalDecisionTreeWithSlotMapProg (WordEncoding.encode (α := DTScratchQuery))
+    (WordEncoding.encode (α := ℕ)) evalDecisionTreeWithSlotMapProgSafe (fun _ _ => 0) := by
+  unfold evalDecisionTreeWithSlotMapProg
+  realize [realizes_copy4, realizes_evalDTSetupWithSlotMap, realizes_evalDTRunTree]
+  all_goals
+    obtain ⟨h16, h1, h2⟩ := h
+    have hw_tb : Fits w d.tableBase := by
+      have h0 : Fits w (encDTScratchQuery d 0) := hwords 0; simpa using h0
+    have hw_nv : Fits w d.numVerts := by
+      have h1 : Fits w (encDTScratchQuery d 1) := hwords 1; simpa using h1
+    have hw_ne : Fits w d.numEdges := by
+      have h2 : Fits w (encDTScratchQuery d 2) := hwords 2; simpa using h2
+    have hw_eb : Fits w d.edgeBase := by
+      have h3 : Fits w (encDTScratchQuery d 3) := hwords 3; simpa using h3
+    have hw_ob : Fits w d.outBase := by
+      have h4 : Fits w (encDTScratchQuery d 4) := hwords 4; simpa using h4
+    have hw_sm : Fits w d.slotMap := by
+      have h5 : Fits w (encDTScratchQuery d 5) := hwords 5; simpa using h5
+    first
+    | exact (h1 ‹_›).1
+    | exact (h1 ‹_›).2
+    | exact (h2 ‹_› ‹_›).1
+    | exact (h2 ‹_› ‹_›).2
+    | exact h16
+    | fits
+
 /-- Evaluates the precomputed optimal decision tree on a vertex-compacted simple graph `C_i`,
 emitting `F_i` at `d.outBase` and returning `|F_i|` in `O(m_i + optDepth C_i + 1)` time with
 `work = 0`. -/
@@ -802,7 +825,8 @@ def evalDecisionTreeProg (d : DTQuery) : Memory.Prog ℕ := do
     copy4 (d.edgeBase, d.outBase)
     pure 1
   else
-    let st ← evalDTSetup ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase⟩
+    let slotMap ← Memory.allocDirty (d.numVerts * (d.numVerts - 1) / 2)
+    let st ← evalDTSetupWithSlotMap ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, slotMap⟩
     evalDTRunTree ⟨st, d.edgeBase, d.outBase⟩
 
 /-- Native safety domain for `evalDecisionTreeProg`. -/
@@ -810,10 +834,15 @@ def evalDecisionTreeProgSafe (w : ℕ) (d : DTQuery) (s : Memory.State) : Prop :
   Fits w 16 ∧
   (d.numEdges = 1 → d.edgeBase + 4 ≤ s.frontier ∧ d.outBase + 4 ≤ s.frontier) ∧
   (d.numEdges ≠ 0 → d.numEdges ≠ 1 →
-    let setupArgs : DTSetupArgs := ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase⟩
-    let st := (Memory.spec 0).clientResult s (evalDTSetup setupArgs)
-    let s1 := (Memory.spec 0).clientState s (evalDTSetup setupArgs)
-    evalDTSetupSafe w setupArgs s ∧
+    let maxE := d.numVerts * (d.numVerts - 1) / 2
+    let slotMap := s.frontier
+    let s0 : Memory.State := ⟨s.mem, s.frontier + maxE⟩
+    let setupArgs : DTSetupArgs := ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, slotMap⟩
+    let st := (Memory.spec 0).clientResult s0 (evalDTSetupWithSlotMap setupArgs)
+    let s1 := (Memory.spec 0).clientState s0 (evalDTSetupWithSlotMap setupArgs)
+    1 ≤ d.numVerts ∧ Fits w d.numVerts ∧ Fits w (d.numVerts * (d.numVerts - 1)) ∧
+    Fits w maxE ∧ Fits w (s.frontier + maxE) ∧
+    evalDTSetupWithSlotMapSafe w setupArgs s0 ∧
     evalDTRunTreeSafe w ⟨st, d.edgeBase, d.outBase⟩ s1)
 
 /-- Uniform `Realizes .exact` certificate for `evalDecisionTreeProg` with `work = 0`. -/
@@ -821,9 +850,10 @@ theorem realizes_evalDecisionTreeProg : Realizes .exact
     evalDecisionTreeProg (WordEncoding.encode (α := DTQuery)) (WordEncoding.encode (α := ℕ))
     evalDecisionTreeProgSafe (fun _ _ => 0) := by
   unfold evalDecisionTreeProg
-  realize [realizes_copy4, realizes_evalDTSetup, realizes_evalDTRunTree]
+  realize [realizes_copy4, realizes_evalDTSetupWithSlotMap, realizes_evalDTRunTree]
   all_goals
     obtain ⟨h16, h1, h2⟩ := h
+    have hfront := hmem.frontier_fits
     have hw_tb : Fits w d.tableBase := by
       have h0 : Fits w (encDTQuery d 0) := hwords 0; simpa using h0
     have hw_nv : Fits w d.numVerts := by
@@ -838,61 +868,14 @@ theorem realizes_evalDecisionTreeProg : Realizes .exact
     | exact (h1 ‹_›).1
     | exact (h1 ‹_›).2
     | exact (h2 ‹_› ‹_›).1
-    | exact (h2 ‹_› ‹_›).2
+    | exact (h2 ‹_› ‹_›).2.2.1
+    | exact (h2 ‹_› ‹_›).2.2.2.2.2.1
+    | exact (h2 ‹_› ‹_›).2.2.2.2.2.2
+    | decide
     | exact h16
     | fits
 
 /-! ## Section 3: Specifications for Setup, Tree Walk, Emission, and Main Evaluation -/
-
-private theorem two_mul_choose_two (n : ℕ) : 2 * n.choose 2 = n * (n - 1) := by
-  rw [Nat.choose_two_right, Nat.mul_div_cancel' (Nat.even_mul_pred_self n).two_dvd]
-
-private theorem testBit_eq_decide_shift_and (m j : ℕ) :
-    ((m >>> j) &&& 1 = 1) ↔ m.testBit j = true := by
-  rw [Nat.and_one_is_mod, Nat.testBit, Nat.and_comm 1 (m >>> j), Nat.and_one_is_mod]
-  rcases Nat.mod_two_eq_zero_or_one (m >>> j) with h | h <;> simp [h]
-
-/-- Updating one address of a well-formed `Memory.State` with a `Fits` value preserves
-`Memory.WellFormed`. -/
-theorem wellFormed_update {w : ℕ} {s : Memory.State} (hwf : Memory.WellFormed w s)
-    (a val : ℕ) (hval : Fits w val) :
-    Memory.WellFormed w ⟨Function.update s.mem a val, s.frontier⟩ :=
-  ⟨hwf.frontier_fits, fun z => by
-    by_cases hz : z = a
-    · subst hz; simp [hval]
-    · simp [hz, hwf.mem_fits]⟩
-
-/-- Refine a `Memory.FramedTriple` to expose equality with `(Memory.spec 0).clientResult` and
-`clientState`. -/
-theorem framedTriple_with_realization {α : Type} {w : ℕ} {s : Memory.State}
-    {p : Memory.Prog α} {c : ℕ} {S : Set ℕ} {Q : α → Memory.State → Prop}
-    (hft : Memory.FramedTriple w s p c S Q) :
-    Memory.FramedTriple w s p c S fun r s' =>
-      r = (Memory.spec 0).clientResult s p ∧
-      s' = (Memory.spec 0).clientState s p ∧ Q r s' := by
-  obtain ⟨hv, hc, hm, hq⟩ := framedTriple_iff_realization.mp hft
-  exact framedTriple_iff_realization.mpr ⟨hv, hc, hm, rfl, rfl, hq⟩
-
-/-- Lift a step `FramedTriple` (whose safety guard may depend on the step `ValidHistory`) into
-`iterationSafe` and a `FramedTriple` for `iterate body d n a₀`. -/
-theorem iterate_framedTriple_of_step {δ σ : Type} (body : δ × σ → Memory.Prog σ)
-    (safe : ℕ → δ × σ → Memory.State → Prop) (w : ℕ) (d : δ) (B n : ℕ)
-    (inv : ℕ → σ → Memory.State → Prop) (S : Set ℕ)
-    (hstep : ∀ k < n, ∀ a t, inv k a t →
-      ((Memory.spec w).ValidHistory t ((Memory.spec w).clientHistory t (body (d, a))) →
-        safe w (d, a) t) ∧
-      Memory.FramedTriple w t (body (d, a)) B S (inv (k + 1)))
-    (a₀ : σ) (s₀ : Memory.State) (h₀ : inv 0 a₀ s₀) :
-    iterationSafe body safe w d n a₀ s₀ ∧
-    Memory.FramedTriple w s₀ (iterate body d n a₀) (B * n) S (inv n) := by
-  have hpot := iterate_potential_spec body safe w d B n inv (fun _ _ _ => 0) S
-    (fun k hk a t hi => by
-      obtain ⟨hsf, hft⟩ := hstep k hk a t hi
-      obtain ⟨hv, hc, hm, hinv'⟩ := framedTriple_iff_realization.mp hft
-      exact ⟨hsf hv, hv, by omega, hm, hinv'⟩)
-    a₀ s₀ h₀
-  obtain ⟨hsafe, hv, hc, hm, hinv_end⟩ := hpot
-  exact ⟨hsafe, framedTriple_iff_realization.mpr ⟨hv, by omega, hm, hinv_end⟩⟩
 
 private theorem wellFormed_copy4 {w : ℕ} {s : Memory.State} (hwf : Memory.WellFormed w s)
     (src dst : ℕ) :
@@ -921,7 +904,7 @@ private theorem walkCompleteTree_bounds {e dInit intBase leafBase : ℕ} {mem : 
     simp only [ha, hb, and_self, ↓reduceDIte]
     split_ifs <;> [exact walkCompleteTree_bounds cmp hl; exact walkCompleteTree_bounds cmp hr]
 
-private theorem evalDTSetup_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
+private theorem evalDTSetupWithSlotMap_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
     {C : List (IndexedEdge d.numVerts)} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
     (hvr : d.numVerts ≤ r0) (hm_eq : d.numEdges = C.length) (hm_ge : 2 ≤ C.length)
@@ -931,13 +914,20 @@ private theorem evalDTSetup_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
     (htab : HoldsDTTable r0 d.tableBase s.mem)
     (hbnd : DTTableInBounds r0 d.tableBase tableFrontier s.mem)
     (htab_fr : tableFrontier ≤ s.frontier)
-    (hfit : Fits w (s.frontier + d.numVerts.choose 2 + C.length)) :
-    Memory.FramedTriple w s (evalDTSetup d) (3 * C.length + 4) ∅ fun res s' =>
-      evalDTSetupSafe w d s ∧
-      s'.frontier = s.frontier + d.numVerts.choose 2 + C.length ∧
+    (hslot_lt : d.slotMap + d.numVerts.choose 2 ≤ s.frontier)
+    (hslot_disj_in :
+      d.edgeBase + 4 * C.length ≤ d.slotMap ∨ d.slotMap + d.numVerts.choose 2 ≤ d.edgeBase)
+    (hslot_disj_tab : ∀ a < tableFrontier,
+      ¬(d.slotMap ≤ a ∧ a < d.slotMap + d.numVerts.choose 2))
+    (hfit_mul : Fits w (d.numVerts * (d.numVerts - 1)))
+    (hfit : Fits w (s.frontier + C.length)) :
+    Memory.FramedTriple w s (evalDTSetupWithSlotMap d) (3 * C.length + 3)
+      (Set.Ico d.slotMap (d.slotMap + d.numVerts.choose 2)) fun res s' =>
+      evalDTSetupWithSlotMapSafe w d s ∧
+      s'.frontier = s.frontier + C.length ∧
       Memory.WellFormed w s' ∧
-      res.slotMap = s.frontier ∧
-      res.origSlot = s.frontier + d.numVerts.choose 2 ∧
+      res.slotMap = d.slotMap ∧
+      res.origSlot = s.frontier ∧
       res.entryPtr = s.mem (d.tableBase + dtGraphMask (C.map fun e => (e.u, e.v))) ∧
       res.edgeCount = C.length ∧
       (∀ k (hk : k < C.length),
@@ -950,50 +940,43 @@ private theorem evalDTSetup_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
     simpa [edgeEnds, IndexedEdge.toWeighted] using hsimp'.1 ⟨k, hk'⟩
   have hnv : 1 ≤ d.numVerts := Nat.lt_of_le_of_lt (Nat.zero_le _) (C[0]'(by omega)).u.isLt
   let maxE := d.numVerts.choose 2
-  have hmaxE_def : d.numVerts * (d.numVerts - 1) / 2 = maxE := (Nat.choose_two_right _).symm
-  let slotMap := s.frontier
-  let s1 : Memory.State := ⟨s.mem, slotMap + maxE⟩
+  let slotMap := d.slotMap
   have hpow_v_le : 2 ^ maxE ≤ 2 ^ r0.choose 2 := Nat.pow_le_pow_right (by decide) (by
     dsimp only [maxE]; rw [Nat.choose_two_right, Nat.choose_two_right]
     exact Nat.div_le_div_right (Nat.mul_le_mul hvr (Nat.sub_le_sub_right hvr 1)))
-  have hmax_lt_fr : maxE < s.frontier := by
-    have := hbnd'.1; have := Nat.lt_two_pow_self (n := maxE); omega
-  have hfit_maxE : Fits w maxE := hfit.of_le (by omega)
-  have hfit_mul : Fits w (d.numVerts * (d.numVerts - 1)) := by
-    rw [← two_mul_choose_two d.numVerts]; exact hfit.of_le (by change 2 * maxE ≤ _; omega)
-  have hfit_s1 : Fits w (s.frontier + maxE) := hfit.of_le (by omega)
-  have hwf1 : Memory.WellFormed w s1 := ⟨hfit_s1, fun a => hwf.mem_fits a⟩
   let scanEnv : DTScanEnv := ⟨d.edgeBase, slotMap⟩
   let S_scan : Set ℕ := Set.Ico slotMap (slotMap + maxE)
-  let inv (k : ℕ) (st : DTScanState) (t : Memory.State) : Prop :=
+  let invCore (k : ℕ) (st : DTScanState) (t : Memory.State) : Prop :=
     st.idx = k ∧
     st.mask = ((C.take k).map fun e => (e.u, e.v)).foldl
       (fun acc e => acc ||| (1 <<< edgePairIdx e.1.val e.2.val)) 0 ∧
-    t.frontier = s1.frontier ∧ Memory.WellFormed w t ∧
-    (∀ a < slotMap, t.mem a = s.mem a) ∧
+    t.frontier = s.frontier ∧
+    (∀ a, a ∉ S_scan → t.mem a = s.mem a) ∧
     ∀ i (hi : i < k), ∀ (hiC : i < C.length),
       t.mem (slotMap + edgePairIdx (C[i]'hiC).u.val (C[i]'hiC).v.val) = i
+  let inv (k : ℕ) (st : DTScanState) (t : Memory.State) : Prop :=
+    invCore k st t ∧ Memory.WellFormed w t
   have hstep : ∀ k < C.length, ∀ st t, inv k st t →
       ((Memory.spec w).ValidHistory t
         ((Memory.spec w).clientHistory t (dtScanEdgeStep (scanEnv, st))) →
         dtScanEdgeStepSafe w (scanEnv, st) t) ∧
       Memory.FramedTriple w t (dtScanEdgeStep (scanEnv, st)) 3 S_scan (inv (k + 1)) := by
-    intro k hk_lt st t ⟨hidx_eq, hmask_eq, htfr, hwt, hlt_s, hslots⟩
+    intro k hk_lt st t ⟨⟨hidx_eq, hmask_eq, htfr, hlt_s, hslots⟩, hwt⟩
     subst hidx_eq
-    have htfr' : t.frontier = s.frontier + maxE := htfr
     have hidx_fit : Fits w (st.idx + 1) := hfit.of_le (by omega)
     have hin_t : HoldsIndexedEdges d.edgeBase C t.mem :=
-      hin.congr fun a _ ha2 => hlt_s a (by omega)
+      hin.congr fun a ha1 ha2 => hlt_s a (by
+        simp only [S_scan, Set.mem_Ico]; rcases hslot_disj_in with h | h <;> omega)
     obtain ⟨hu, hv, _, _⟩ := hin_t st.idx hk_lt
     set uM := t.mem (d.edgeBase + 4 * st.idx)
     set vM := t.mem (d.edgeBase + 4 * st.idx + 1)
     set hi := if uM < vM then vM else uM
     set lo := if uM < vM then uM else vM
-    have hne : C[st.idx].u.val ≠ C[st.idx].v.val :=
-      Fin.val_ne_of_ne (hno _ (List.getElem_mem hk_lt))
     have hp_lt : edgePairIdx C[st.idx].u.val C[st.idx].v.val < maxE :=
       edgePairIdx_lt_choose_two _ (hno _ (List.getElem_mem hk_lt))
-    have hhi_ge : 1 ≤ hi := by dsimp only [hi]; rw [hu, hv]; split_ifs <;> omega
+    have hhi_ge : 1 ≤ hi := by
+      have hne := Fin.val_ne_of_ne (hno _ (List.getElem_mem hk_lt))
+      dsimp only [hi]; rw [hu, hv]; split_ifs <;> omega
     have hhi_le : hi ≤ d.numVerts - 1 := by
       dsimp only [hi]; rw [hu, hv]; split_ifs
       · exact Nat.le_sub_one_of_lt C[st.idx].v.isLt
@@ -1015,7 +998,8 @@ private theorem evalDTSetup_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
       rw [hp_eq]
       have hpow_le_fr : 2 ^ maxE ≤ t.frontier := by have := hbnd'.1; omega
       exact hwt.frontier_fits.of_le (by omega)
-    refine ⟨fun hv_st => ⟨h16, hidx_fit, hhi_ge, hmul_fit, hor_fit, hv_st⟩, ?_⟩
+    refine ⟨fun hv_st => ⟨h16, hidx_fit, hhi_ge, hmul_fit, hor_fit, hv_st⟩,
+      Memory.FramedTriple.wellFormed hwt ?_⟩
     dsimp only [dtScanEdgeStep, scanEnv]
     refine Memory.FramedTriple.read_bind (by omega) ?_
     refine Memory.FramedTriple.read_bind (by omega) ?_
@@ -1029,12 +1013,14 @@ private theorem evalDTSetup_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
         (by simp only [S_scan, Set.mem_Ico]; rw [haddr]; omega) ?_
       have htake : C.take (st.idx + 1) = C.take st.idx ++ [C[st.idx]] := by
         rw [List.take_add_one, List.getElem?_eq_getElem hk_lt]; simp
-      refine Memory.FramedTriple.pure (c := 0) ⟨rfl, ?_, htfr,
-        wellFormed_update hwt _ st.idx (hidx_fit.of_le (by omega)), fun a ha => ?_,
+      refine Memory.FramedTriple.pure (c := 0) ⟨rfl, ?_, htfr, fun a ha => ?_,
         fun i hi hiC => ?_⟩
       · rw [haddr, htake, List.map_append, List.map_singleton, List.foldl_append, List.foldl_cons,
           List.foldl_nil, hmask_eq]
-      · dsimp only; rw [Function.update_of_ne (by rw [haddr]; omega)]; exact hlt_s a ha
+      · dsimp only
+        rw [Function.update_of_ne (fun heq => ha (by
+          simp only [S_scan, Set.mem_Ico]; rw [heq, haddr]; omega))]
+        exact hlt_s a ha
       · dsimp only; rw [haddr]
         by_cases hist : i = st.idx
         · subst hist; rw [Function.update_self]
@@ -1050,13 +1036,12 @@ private theorem evalDTSetup_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
           rw [Function.update_of_ne (by omega)]; exact hslots i (by omega) hiC
   obtain ⟨hsafe_loop, hft_scan⟩ :=
     iterate_framedTriple_of_step dtScanEdgeStep dtScanEdgeStepSafe w scanEnv 3 C.length
-      inv S_scan hstep ⟨0, 0⟩ s1
-      ⟨rfl, rfl, rfl, hwf1, fun _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _)⟩
-  obtain ⟨_, _, _, hscan_idx, hscan_mask, hs2_fr, hwf2, hlt_s2, hslots_s2⟩ :=
+      inv S_scan hstep ⟨0, 0⟩ s
+      ⟨⟨rfl, rfl, rfl, fun _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _)⟩, hwf⟩
+  obtain ⟨_, _, _, ⟨hscan_idx, hscan_mask, hs1_fr, hlt_s1, hslots_s1⟩, hwf1⟩ :=
     framedTriple_iff_realization.mp hft_scan
-  set scan := (Memory.spec 0).clientResult s1 (iterate dtScanEdgeStep scanEnv C.length ⟨0, 0⟩)
-  set s2 := (Memory.spec 0).clientState s1 (iterate dtScanEdgeStep scanEnv C.length ⟨0, 0⟩)
-  have hs2_fr' : s2.frontier = s.frontier + maxE := hs2_fr
+  set scan := (Memory.spec 0).clientResult s (iterate dtScanEdgeStep scanEnv C.length ⟨0, 0⟩)
+  set s1 := (Memory.spec 0).clientState s (iterate dtScanEdgeStep scanEnv C.length ⟨0, 0⟩)
   rw [List.take_of_length_le le_rfl] at hscan_mask
   have hmask_lt_v : dtGraphMask (C.map fun e => (e.u, e.v)) < 2 ^ d.numVerts.choose 2 :=
     dtGraphMask_lt _ fun e he => by
@@ -1068,52 +1053,54 @@ private theorem evalDTSetup_spec {w r0 tableFrontier : ℕ} {d : DTSetupArgs}
   have hbnd_m := hbnd'.2 _ hmask_lt_r0; dsimp only at hbnd_m
   have htb_scan_eq : d.tableBase + scan.mask =
       d.tableBase + dtGraphMask (C.map fun e => (e.u, e.v)) := by rw [hscan_mask]; rfl
-  have htb_lt_s : d.tableBase + scan.mask < s.frontier := by
+  have htb_lt_tab : d.tableBase + scan.mask < tableFrontier := by
     have := hbnd'.1; rw [htb_scan_eq]; omega
-  have hep_s2 : s2.mem (d.tableBase + scan.mask) =
+  have htb_not_S : d.tableBase + scan.mask ∉ S_scan := fun hx =>
+    hslot_disj_tab _ htb_lt_tab hx
+  have hep_s1 : s1.mem (d.tableBase + scan.mask) =
       s.mem (d.tableBase + dtGraphMask (C.map fun e => (e.u, e.v))) := by
-    rw [htb_scan_eq]; exact hlt_s2 _ (by omega)
+    rw [hlt_s1 _ htb_not_S, htb_scan_eq]
   have h2d_pos : 0 <
       2 ^ s.mem (s.mem (d.tableBase + dtGraphMask (C.map fun e => (e.u, e.v))) + 1) :=
     Nat.two_pow_pos _
-  have hep_lt_s : s2.mem (d.tableBase + scan.mask) < s.frontier := by rw [hep_s2]; omega
-  have he_s2 : s2.mem (s2.mem (d.tableBase + scan.mask)) = C.length := by
-    rw [hep_s2, hlt_s2 _ (by omega), hep_e]; exact (endsOfMask_reindex_indexedEdges C hsimp).2.1
-  have hfit_e : Fits w (s2.frontier + s2.mem (s2.mem (d.tableBase + scan.mask))) := by
-    rw [hs2_fr', he_s2]; exact hfit
-  have hscan_eq : (Memory.spec 0).clientResult s1
+  have hep_lt_tab : s1.mem (d.tableBase + scan.mask) < tableFrontier := by rw [hep_s1]; omega
+  have hep_not_S : s1.mem (d.tableBase + scan.mask) ∉ S_scan := fun hx =>
+    hslot_disj_tab _ hep_lt_tab hx
+  have he_s1 : s1.mem (s1.mem (d.tableBase + scan.mask)) = C.length := by
+    rw [hep_s1, hlt_s1 _ (fun hx => hslot_disj_tab _ (by rw [← hep_s1]; exact hep_lt_tab) hx),
+      hep_e]
+    exact (endsOfMask_reindex_indexedEdges C hsimp).2.1
+  have hfit_e : Fits w (s1.frontier + s1.mem (s1.mem (d.tableBase + scan.mask))) := by
+    rw [hs1_fr, he_s1]; exact hfit
+  have hscan_eq : (Memory.spec 0).clientResult s
       (iterate dtScanEdgeStep scanEnv C.length ⟨0, 0⟩) = scan := rfl
-  have hs2_eq : (Memory.spec 0).clientState s1
-      (iterate dtScanEdgeStep scanEnv C.length ⟨0, 0⟩) = s2 := rfl
-  have hsafe : evalDTSetupSafe w d s := by
-    refine ⟨h16, hnv, hmaxE_def ▸ hfit_maxE, hfit_mul, hmaxE_def ▸ hfit_s1, ?_, ?_, ?_, ?_, ?_⟩
-    · rw [hm_eq, hmaxE_def, hscan_eq]; exact hfit_s1.of_le (by omega)
-    · rw [hm_eq, hmaxE_def]; exact hfit_e
-    · rw [hm_eq, hmaxE_def, hscan_eq, hs2_eq]; omega
-    · rw [hm_eq, hmaxE_def, hscan_eq, hs2_eq]; exact hep_lt_s.trans_le (by omega)
-    · rw [hm_eq, hmaxE_def]; exact hsafe_loop
-  have hprog : evalDTSetup d =
-      (Memory.allocDirty (d.numVerts * (d.numVerts - 1) / 2) >>= fun slotMap' =>
-        iterate dtScanEdgeStep ⟨d.edgeBase, slotMap'⟩ C.length ⟨0, 0⟩ >>= fun scan' =>
+  have hs1_eq : (Memory.spec 0).clientState s
+      (iterate dtScanEdgeStep scanEnv C.length ⟨0, 0⟩) = s1 := rfl
+  have hsafe : evalDTSetupWithSlotMapSafe w d s := by
+    refine ⟨h16, hnv, hfit_mul, ?_, ?_, ?_, ?_, ?_⟩
+    · rw [hm_eq, hscan_eq]; exact hwf.frontier_fits.of_le (by omega)
+    · rw [hm_eq]; exact hfit_e
+    · rw [hm_eq, hscan_eq, hs1_eq]; omega
+    · rw [hm_eq, hscan_eq, hs1_eq]; exact hep_lt_tab.trans_le (by omega)
+    · rw [hm_eq]; exact hsafe_loop
+  have hprog : evalDTSetupWithSlotMap d =
+      (iterate dtScanEdgeStep ⟨d.edgeBase, d.slotMap⟩ C.length ⟨0, 0⟩ >>= fun scan' =>
         Memory.read (d.tableBase + scan'.mask) >>= fun entryPtr =>
         Memory.read entryPtr >>= fun e =>
         Memory.allocDirty e >>= fun origSlot =>
-        pure (⟨entryPtr, e, origSlot, slotMap'⟩ : DTSetupOut)) := by
-    dsimp only [evalDTSetup]; rw [hm_eq]
-  rw [hprog, hmaxE_def]
-  refine Memory.Triple.mono (Memory.FramedTriple.allocDirty_bind hfit_s1
-    (Memory.FramedTriple.bind_same (c₁ := 3 * C.length) (c₂ := 3)
-      ((framedTriple_with_realization hft_scan).mono le_rfl (by
-        rintro _ _ ⟨rfl, rfl, _⟩
-        rw [hscan_eq, hs2_eq]
-        refine Memory.FramedTriple.read_bind (by rw [hs2_fr']; omega) ?_
-        refine Memory.FramedTriple.read_bind (hep_lt_s.trans_le (by omega)) ?_
-        refine Memory.FramedTriple.allocDirty_bind hfit_e ?_
-        exact Memory.FramedTriple.pure (c := 0) ⟨hsafe, by rw [hs2_fr', he_s2],
-          ⟨hfit_e, fun a => hwf2.mem_fits a⟩, rfl, hs2_fr', hep_s2, he_s2,
-          fun k hk => hslots_s2 k hk hk⟩))))
-    (by omega) fun _ _ ⟨hm, hq⟩ => ⟨⟨hm.1, fun a ha _ =>
-      hm.2 a ha (by simp only [S_scan, Set.mem_Ico, not_and, not_lt]; omega)⟩, hq⟩
+        pure (⟨entryPtr, e, origSlot, d.slotMap⟩ : DTSetupOut)) := by
+    dsimp only [evalDTSetupWithSlotMap]; rw [hm_eq]
+  rw [hprog]
+  refine Memory.FramedTriple.mono (Memory.FramedTriple.bind_same (c₁ := 3 * C.length) (c₂ := 3)
+    ((framedTriple_with_realization hft_scan).mono le_rfl (by
+      rintro _ _ ⟨rfl, rfl, _⟩
+      rw [hscan_eq, hs1_eq]
+      refine Memory.FramedTriple.read_bind (by rw [hs1_fr]; omega) ?_
+      refine Memory.FramedTriple.read_bind (hep_lt_tab.trans_le (by omega)) ?_
+      refine Memory.FramedTriple.allocDirty_bind hfit_e ?_
+      exact Memory.FramedTriple.pure (c := 0) ⟨hsafe, by rw [hs1_fr, he_s1],
+        ⟨hfit_e, fun a => hwf1.mem_fits a⟩, rfl, hs1_fr, hep_s1, he_s1,
+        fun k hk => hslots_s1 k hk hk⟩))) (by omega) fun _ _ h => h
 
 private theorem iterate_dtFillOrigStep_spec {w e pairsBase slotMap origSlot : ℕ}
     {v : ℕ} {C : List (IndexedEdge v)} {mask : ℕ}
@@ -1136,15 +1123,16 @@ private theorem iterate_dtFillOrigStep_spec {w e pairsBase slotMap origSlot : �
       ∀ j (hj : j < e), s'.mem (origSlot + j) = (σ.symm ⟨j, hj⟩).val := by
   let env : DTFillEnv := ⟨pairsBase, slotMap, origSlot⟩
   let S : Set ℕ := Set.Ico origSlot (origSlot + e)
-  let inv (k a : ℕ) (t : Memory.State) : Prop :=
-    a = k ∧ t.frontier = s.frontier ∧ Memory.WellFormed w t ∧
+  let invCore (k a : ℕ) (t : Memory.State) : Prop :=
+    a = k ∧ t.frontier = s.frontier ∧
     (∀ x, x ∉ S → t.mem x = s.mem x) ∧
     ∀ j (hj : j < k), ∀ (hje : j < e), t.mem (origSlot + j) = (σ.symm ⟨j, hje⟩).val
+  let inv (k a : ℕ) (t : Memory.State) : Prop := invCore k a t ∧ Memory.WellFormed w t
   have hstep : ∀ k < e, ∀ a t, inv k a t →
       ((Memory.spec w).ValidHistory t ((Memory.spec w).clientHistory t (dtFillOrigStep (env, a))) →
         dtFillOrigStepSafe w (env, a) t) ∧
       Memory.FramedTriple w t (dtFillOrigStep (env, a)) 3 S (inv (k + 1)) := by
-    intro k hk a t ⟨ha, htfr, hwt, hframe, hpref⟩
+    intro k hk a t ⟨⟨ha, htfr, hframe, hpref⟩, hwt⟩
     subst a
     have hp_eq : t.mem (pairsBase + k) = s.mem (pairsBase + k) :=
       hframe _ (by simp only [S, Set.mem_Ico]; exact hdisj_p k hk)
@@ -1156,15 +1144,14 @@ private theorem iterate_dtFillOrigStep_spec {w e pairsBase slotMap origSlot : �
       rw [hp_eq, hsm_eq, horig_val k hk]; exact (σ.symm ⟨k, hk⟩).isLt
     have hval_fit : Fits w (t.mem (slotMap + t.mem (pairsBase + k))) :=
       hwf.frontier_fits.of_le (by omega)
-    refine ⟨fun hv => ⟨h16, hfit_k1, hv⟩, ?_⟩
+    refine ⟨fun hv => ⟨h16, hfit_k1, hv⟩, Memory.FramedTriple.wellFormed hwt ?_⟩
     dsimp only [dtFillOrigStep, env]
     refine Memory.FramedTriple.read_bind (by omega) ?_
     refine Memory.FramedTriple.read_bind
       (by rw [hp_eq]; exact lt_of_lt_of_eq (hslot_lt k hk) htfr.symm) ?_
     refine Memory.FramedTriple.write_bind_of_mem (by omega) hval_fit
       (by simp only [S, Set.mem_Ico]; omega) ?_
-    refine Memory.FramedTriple.pure ⟨rfl, htfr, wellFormed_update hwt _ _ hval_fit,
-      fun x hx => ?_, fun j hj hje => ?_⟩
+    refine Memory.FramedTriple.pure ⟨rfl, htfr, fun x hx => ?_, fun j hj hje => ?_⟩
     · dsimp only
       rw [Function.update_of_ne (by simp only [S, Set.mem_Ico] at hx; omega)]
       exact hframe x hx
@@ -1173,8 +1160,9 @@ private theorem iterate_dtFillOrigStep_spec {w e pairsBase slotMap origSlot : �
       · subst j; rw [Function.update_self, hp_eq, hsm_eq, horig_val k hk]
       · rw [Function.update_of_ne (by omega)]; exact hpref j (by omega) hje
   obtain ⟨hsafe, hft⟩ := iterate_framedTriple_of_step dtFillOrigStep dtFillOrigStepSafe w env 3 e
-    inv S hstep 0 s ⟨rfl, rfl, hwf, fun _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _)⟩
-  exact ⟨hsafe, hft.mono le_rfl fun _ _ ⟨_, hfr, hwf', _, hvals⟩ =>
+    inv S hstep 0 s
+    ⟨⟨rfl, rfl, fun _ _ => rfl, fun _ h => absurd h (Nat.not_lt_zero _)⟩, hwf⟩
+  exact ⟨hsafe, hft.mono le_rfl fun _ _ ⟨⟨_, hfr, _, hvals⟩, hwf'⟩ =>
     ⟨hfr, hwf', fun j hj => hvals j hj hj⟩⟩
 
 private theorem iterate_dtWalkStep_spec {w v e dInit intBase leafBase edgeBase origSlot : ℕ}
@@ -1646,6 +1634,214 @@ private theorem evalDTRunTree_spec {w r0 v tableBase tableFrontier : ℕ} {d : D
       (by rintro _ _ ⟨_, rfl, _⟩; exact hinner)))
     (by rw [← hopt_eq_dDepth]; omega) fun _ _ h => h
 
+private theorem evalDTCore_spec {w r0 outBase tableFrontier : ℕ} {d : DTSetupArgs}
+    {C : List (IndexedEdge d.numVerts)} {s : Memory.State}
+    (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
+    (hvr : d.numVerts ≤ r0) (hm_eq : d.numEdges = C.length) (hm_ge : 2 ≤ C.length)
+    (hsimp : IsSimple (edgeEnds (C.map IndexedEdge.toWeighted)))
+    (hin : HoldsIndexedEdges d.edgeBase C s.mem)
+    (hin_lt : d.edgeBase + 4 * C.length ≤ s.frontier)
+    (hout_lt : outBase + 4 * C.length ≤ s.frontier)
+    (hout_disj_in :
+      d.edgeBase + 4 * C.length ≤ outBase ∨ outBase + 4 * C.length ≤ d.edgeBase)
+    (htab : HoldsDTTable r0 d.tableBase s.mem)
+    (hbnd : DTTableInBounds r0 d.tableBase tableFrontier s.mem)
+    (htab_fr : tableFrontier ≤ s.frontier)
+    (_hout_disj_tab : ∀ a < tableFrontier, ¬(outBase ≤ a ∧ a < outBase + 4 * C.length))
+    (hslot_lt : d.slotMap + d.numVerts.choose 2 ≤ s.frontier)
+    (hslot_disj_in :
+      d.edgeBase + 4 * C.length ≤ d.slotMap ∨ d.slotMap + d.numVerts.choose 2 ≤ d.edgeBase)
+    (_hslot_disj_out :
+      outBase + 4 * C.length ≤ d.slotMap ∨ d.slotMap + d.numVerts.choose 2 ≤ outBase)
+    (hslot_disj_tab : ∀ a < tableFrontier,
+      ¬(d.slotMap ≤ a ∧ a < d.slotMap + d.numVerts.choose 2))
+    (hfit_mul : Fits w (d.numVerts * (d.numVerts - 1)))
+    (hfit : Fits w (s.frontier + C.length)) :
+    let prog := evalDTSetupWithSlotMap d >>= fun st => evalDTRunTree ⟨st, d.edgeBase, outBase⟩
+    let optD := optDepth (edgeEnds (C.map IndexedEdge.toWeighted))
+    Memory.FramedTriple w s prog (15 * C.length + 6 * optD + 5)
+      (Set.Ico d.slotMap (d.slotMap + d.numVerts.choose 2) ∪
+        Set.Ico outBase (outBase + 4 * C.length)) fun res s' =>
+        evalDTSetupWithSlotMapSafe w d s ∧
+        evalDTRunTreeSafe w ⟨(Memory.spec 0).clientResult s (evalDTSetupWithSlotMap d),
+          d.edgeBase, outBase⟩
+          ((Memory.spec 0).clientState s (evalDTSetupWithSlotMap d)) ∧
+        Memory.WellFormed w s' ∧
+        s'.frontier ≤ s.frontier + C.length ∧
+        res ≤ C.length ∧
+        ∃ F : List (IndexedEdge d.numVerts),
+          F.length = res ∧
+          F.Subperm C ∧
+          HoldsIndexedEdges outBase F s'.mem ∧
+          IsMinSpanningForest (C.map IndexedEdge.toWeighted) (F.map IndexedEdge.toWeighted) := by
+  have hbnd' := (dtTableInBounds_iff _ _ _ _).mp hbnd
+  have hsu := @evalDTSetupWithSlotMap_spec w r0 tableFrontier d C s h16 hwf hvr hm_eq hm_ge
+    hsimp hin hin_lt htab hbnd htab_fr hslot_lt hslot_disj_in hslot_disj_tab hfit_mul hfit
+  set st := (Memory.spec 0).clientResult s (evalDTSetupWithSlotMap d)
+  set s1 := (Memory.spec 0).clientState s (evalDTSetupWithSlotMap d)
+  obtain ⟨_, _, hsu_mod, hsu_safe, hs1_fr, hwf1, hsm_eq, hos_eq, hep_eq, hec_eq, hslots⟩ :=
+    framedTriple_iff_realization.mp hsu
+  have hs0_le_s1 : s.frontier ≤ s1.frontier := hsu_mod.1
+  have hpres_in : HoldsIndexedEdges d.edgeBase C s1.mem := hin.congr fun a _ _ =>
+    hsu_mod.mem_eq_of_not_mem (by omega) (by
+      simp only [Set.mem_Ico]; rcases hslot_disj_in with h | h <;> omega)
+  have hpres_tab : ∀ a < tableFrontier, s1.mem a = s.mem a := fun a ha =>
+    hsu_mod.mem_eq_of_not_mem (by omega) (hslot_disj_tab a ha)
+  have htab_s1 : HoldsDTTable r0 d.tableBase s1.mem := htab.congr hbnd hpres_tab
+  have hbnd_s1 : DTTableInBounds r0 d.tableBase tableFrontier s1.mem := hbnd.mono le_rfl hpres_tab
+  have hep_s1 : st.entryPtr =
+      s1.mem (d.tableBase + dtGraphMask (C.map fun e => (e.u, e.v))) := by
+    have hm_lt := dtGraphMask_lt (C.map fun e => (e.u, e.v)) fun e he => by
+      rw [List.mem_map] at he; obtain ⟨e₀, he₀, rfl⟩ := he
+      obtain ⟨k, hk, rfl⟩ := List.mem_iff_getElem.mp he₀
+      simpa [edgeEnds, IndexedEdge.toWeighted] using ((isSimple_iff _).mp hsimp).1
+        ⟨k, by simpa using hk⟩
+    have hpow := Nat.pow_le_pow_right (by decide : 1 ≤ 2) (show d.numVerts.choose 2 ≤
+      r0.choose 2 by rw [Nat.choose_two_right, Nat.choose_two_right]; exact
+      Nat.div_le_div_right (Nat.mul_le_mul hvr (Nat.sub_le_sub_right hvr 1)))
+    rw [hep_eq, hpres_tab _ (by have := hbnd'.1; omega)]
+  have hrun := @evalDTRunTree_spec w r0 d.numVerts d.tableBase tableFrontier
+    ⟨st, d.edgeBase, outBase⟩ C s1 h16 hwf1 hvr hsimp hpres_in (by dsimp only; omega)
+    (by dsimp only; omega) hout_disj_in htab_s1 hbnd_s1 (by omega) hep_s1 hec_eq
+    (by dsimp only; rw [hos_eq, hs1_fr]) (by dsimp only; rw [hsm_eq]; omega)
+    (by dsimp only; rw [hsm_eq, hos_eq]; exact .inl hslot_lt)
+    (.inl (by dsimp only; rw [hos_eq]; omega))
+    (.inl (by dsimp only; rw [hos_eq]; omega))
+    (fun a _ => by dsimp only; rw [hos_eq]; omega) hslots
+  dsimp only at hrun
+  have hft_comb : Memory.FramedTriple w s
+      (evalDTSetupWithSlotMap d >>= fun st' => evalDTRunTree ⟨st', d.edgeBase, outBase⟩)
+      ((3 * C.length + 3) +
+        (12 * C.length + 6 * optDepth (edgeEnds (C.map IndexedEdge.toWeighted)) + 2))
+      (Set.Ico d.slotMap (d.slotMap + d.numVerts.choose 2) ∪
+        (Set.Ico st.origSlot (st.origSlot + C.length) ∪
+          Set.Ico outBase (outBase + 4 * C.length))) _ :=
+    Memory.FramedTriple.bind ((framedTriple_with_realization hsu).mono le_rfl
+      (by rintro _ _ ⟨rfl, rfl, _⟩; exact hrun))
+  refine Memory.Triple.mono hft_comb (by omega) fun res s' ⟨hm, hrun_safe, hs'_fr, hwf', hres,
+      F, hF_len, hF_sub, hF_holds, hF_msf⟩ => ?_
+  refine ⟨⟨hm.1, fun a ha ha_not => hm.2 a ha fun hx => by
+    rcases hx with hx_sm | hx_os | hx_out
+    · exact ha_not (.inl hx_sm)
+    · simp only [Set.mem_Ico] at hx_os; rw [hos_eq] at hx_os; omega
+    · exact ha_not (.inr hx_out)⟩, hsu_safe, hrun_safe, hwf', by rw [hs'_fr, hs1_fr], hres,
+    F, hF_len, hF_sub, hF_holds, hF_msf⟩
+
+/-- Framed specification of `evalDecisionTreeWithSlotMapProg`: produces an `IsMinSpanningForest`
+sublist `F` at `d.outBase` using caller-supplied `d.slotMap`, at most `m` fresh words, and at most
+`15 * (m + optDepth C + 1)` memory operations, preserving all cells below `s.frontier` outside
+`[d.slotMap, d.slotMap + v.choose 2) ∪ [d.outBase, d.outBase + 4 * m)`. -/
+theorem evalDecisionTreeWithSlotMapProg_spec {w r0 tableFrontier : ℕ} {d : DTScratchQuery}
+    {C : List (IndexedEdge d.numVerts)} {s : Memory.State}
+    (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
+    (hvr : d.numVerts ≤ r0) (hm_eq : d.numEdges = C.length)
+    (hsimp : IsSimple (edgeEnds (C.map IndexedEdge.toWeighted)))
+    (hin : HoldsIndexedEdges d.edgeBase C s.mem)
+    (hin_lt : d.edgeBase + 4 * C.length ≤ s.frontier)
+    (hout_lt : d.outBase + 4 * C.length ≤ s.frontier)
+    (hout_disj_in :
+      d.edgeBase + 4 * C.length ≤ d.outBase ∨ d.outBase + 4 * C.length ≤ d.edgeBase)
+    (htab : HoldsDTTable r0 d.tableBase s.mem)
+    (hbnd : DTTableInBounds r0 d.tableBase tableFrontier s.mem)
+    (htab_fr : tableFrontier ≤ s.frontier)
+    (hout_disj_tab : ∀ a < tableFrontier, ¬(d.outBase ≤ a ∧ a < d.outBase + 4 * C.length))
+    (hslot_lt : d.slotMap + d.numVerts.choose 2 ≤ s.frontier)
+    (hslot_disj_in :
+      d.edgeBase + 4 * C.length ≤ d.slotMap ∨ d.slotMap + d.numVerts.choose 2 ≤ d.edgeBase)
+    (hslot_disj_out :
+      d.outBase + 4 * C.length ≤ d.slotMap ∨ d.slotMap + d.numVerts.choose 2 ≤ d.outBase)
+    (hslot_disj_tab : ∀ a < tableFrontier,
+      ¬(d.slotMap ≤ a ∧ a < d.slotMap + d.numVerts.choose 2))
+    (hfit_mul : Fits w (d.numVerts * (d.numVerts - 1)))
+    (hfit : Fits w (s.frontier + C.length)) :
+    let prog := evalDecisionTreeWithSlotMapProg d
+    let optD := optDepth (edgeEnds (C.map IndexedEdge.toWeighted))
+    Memory.FramedTriple w s prog (15 * (C.length + optD + 1))
+      (Set.Ico d.slotMap (d.slotMap + d.numVerts.choose 2) ∪
+        Set.Ico d.outBase (d.outBase + 4 * C.length)) fun res s' =>
+        evalDecisionTreeWithSlotMapProgSafe w d s ∧
+        Memory.WellFormed w s' ∧
+        s'.frontier ≤ s.frontier + C.length ∧
+        res ≤ C.length ∧
+        ∃ F : List (IndexedEdge d.numVerts),
+          F.length = res ∧
+          F.Subperm C ∧
+          HoldsIndexedEdges d.outBase F s'.mem ∧
+          IsMinSpanningForest (C.map IndexedEdge.toWeighted) (F.map IndexedEdge.toWeighted) := by
+  by_cases hm0 : d.numEdges = 0
+  · have hC0 : C = [] := List.eq_nil_of_length_eq_zero (hm_eq.symm.trans hm0)
+    subst hC0
+    have hprog : evalDecisionTreeWithSlotMapProg d = pure 0 := by
+      simp [evalDecisionTreeWithSlotMapProg, hm0]
+    rw [hprog]
+    refine Memory.FramedTriple.pure ⟨⟨h16, fun h => by omega, fun h => by omega⟩, hwf,
+      by simp, le_rfl, [], rfl, List.Subperm.refl _, fun _ hi => by simp at hi, ?_⟩
+    exact (isMinSpanningForest_iff_threshold_partition _ _).mpr
+      ⟨⟨List.Subperm.refl _, by simp [isAcyclic_nil], rfl⟩, fun _ => rfl⟩
+  · by_cases hm1 : d.numEdges = 1
+    · have hC1 : C.length = 1 := hm_eq.symm.trans hm1
+      obtain ⟨e₀, rfl⟩ := List.length_eq_one_iff.mp hC1
+      have hno : e₀.u ≠ e₀.v := fun heq =>
+        ((isSimple_iff _).mp hsimp).1 ⟨0, by simp⟩ (Sym2.mk_isDiag_iff.mpr heq)
+      have hprog : evalDecisionTreeWithSlotMapProg d = (Memory.copy d.edgeBase d.outBase 4 >>=
+          fun _ => pure 1) := by
+        dsimp only [evalDecisionTreeWithSlotMapProg, copy4]; simp only [hm1, ↓reduceIte]; rfl
+      have hsafe : evalDecisionTreeWithSlotMapProgSafe w d s :=
+        ⟨h16, fun _ => ⟨by simpa using hin_lt, by simpa using hout_lt⟩, fun _ h => absurd hm1 h⟩
+      have hcp := Memory.FramedTriple.copy (w := w) (s := s) (src := d.edgeBase)
+        (dst := d.outBase) (n := 4)
+        (by rcases hout_disj_in with h | h <;> simp at h ⊢ <;> omega)
+        (by simpa using hin_lt) (by simpa using hout_lt) (fun i _ => hwf.mem_fits _)
+        (Q := fun _ s' => evalDecisionTreeWithSlotMapProgSafe w d s ∧ Memory.WellFormed w s' ∧
+          s'.frontier ≤ s.frontier + [e₀].length ∧ 1 ≤ [e₀].length ∧
+          ∃ F : List (IndexedEdge d.numVerts), F.length = 1 ∧ F.Subperm [e₀] ∧
+            HoldsIndexedEdges d.outBase F s'.mem ∧
+            IsMinSpanningForest ([e₀].map IndexedEdge.toWeighted)
+              (F.map IndexedEdge.toWeighted))
+        ⟨hsafe, wellFormed_copy4 hwf d.edgeBase d.outBase, by dsimp only; omega, by simp, [e₀],
+          rfl, List.Subperm.refl _, fun i hi => by
+            have hi0 : i = 0 := by simpa using hi
+            subst hi0; obtain ⟨hu, hv, hw, hid⟩ := hin 0 (by simp)
+            have hrd : ∀ q < 4, ArrayCopy.copyPrefix s.mem d.edgeBase d.outBase 4
+                (d.outBase + q) = s.mem (d.edgeBase + q) := fun _ hq =>
+              ArrayCopy.copyPrefix_read hq
+            have hrd0 := hrd 0 (by decide); simp only [Nat.add_zero] at hrd0
+            dsimp only
+            exact ⟨by rw [Nat.mul_zero, Nat.add_zero, hrd0]; exact hu,
+              by rw [Nat.mul_zero, hrd 1 (by decide)]; simpa using hv,
+              by rw [Nat.mul_zero, hrd 2 (by decide)]; simpa using hw,
+              by rw [Nat.mul_zero, hrd 3 (by decide)]; simpa using hid⟩,
+          by
+            refine (isMinSpanningForest_iff_threshold_partition _ _).mpr
+              ⟨⟨List.Subperm.refl _, ?_, rfl⟩, fun _ => rfl⟩
+            rw [isAcyclic_iff, edgePartition]
+            simp only [List.map_cons, List.map_nil, edgePartitionFrom_cons, edgePartitionFrom_nil,
+              IndexedEdge.toWeighted, List.length_cons, List.length_nil]
+            have hnot : (DisjointSet.Partition.discrete d.numVerts).rel e₀.u e₀.v = false := by
+              rw [DisjointSet.Partition.rel_discrete]; exact decide_eq_false hno
+            rw [DisjointSet.Partition.numComponents_merge_of_not_rel hnot,
+              DisjointSet.Partition.numComponents_discrete]⟩
+      rw [hprog]
+      exact Memory.FramedTriple.mono
+        ((Memory.FramedTriple.bind_same (hcp.mono le_rfl fun _ _ h =>
+          Memory.FramedTriple.pure (c := 0) h)).frame_mono fun a ha => Or.inr (by
+          simp only [List.length_singleton, Nat.mul_one] at ha ⊢; exact ha))
+        (by simp only [List.length_singleton]; omega) fun _ _ h => h
+    · have hm_ge : 2 ≤ C.length := by omega
+      have hcore := @evalDTCore_spec w r0 d.outBase tableFrontier
+        ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, d.slotMap⟩ C s h16 hwf hvr hm_eq hm_ge
+        hsimp hin hin_lt hout_lt hout_disj_in htab hbnd htab_fr hout_disj_tab hslot_lt
+        hslot_disj_in hslot_disj_out hslot_disj_tab hfit_mul hfit
+      have hprog : evalDecisionTreeWithSlotMapProg d =
+          (evalDTSetupWithSlotMap ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, d.slotMap⟩ >>=
+            fun st' => evalDTRunTree ⟨st', d.edgeBase, d.outBase⟩) := by
+        dsimp only [evalDecisionTreeWithSlotMapProg]; simp only [hm0, hm1, ↓reduceIte]
+      rw [hprog]
+      exact hcore.mono (by omega) fun _ _ ⟨hsu_safe, hrun_safe, hwf', hfr', hres, F, hfl, hfs,
+          hfh, hfm⟩ =>
+        ⟨⟨h16, fun h => absurd h hm1, fun _ _ => ⟨hsu_safe, hrun_safe⟩⟩,
+          hwf', hfr', hres, F, hfl, hfs, hfh, hfm⟩
+
 /-- Framed specification of `evalDecisionTreeProg`: produces an `IsMinSpanningForest` sublist `F`
 at `d.outBase` using at most `v.choose 2 + m` fresh words and `15 * (m + optDepth C + 1)` memory
 operations, preserving all cells below `s.frontier` outside `[d.outBase, d.outBase + 4 * m)`. -/
@@ -1736,65 +1932,56 @@ theorem evalDecisionTreeProg_spec {w r0 tableFrontier : ℕ} {d : DTQuery}
           simp only [List.length_singleton, Nat.mul_one] at ha ⊢; exact ha)
         (by simp only [List.length_singleton]; omega) fun _ _ h => h
     · have hm_ge : 2 ≤ C.length := by omega
-      let setupArgs : DTSetupArgs := ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase⟩
-      have hsu := @evalDTSetup_spec w r0 tableFrontier setupArgs C s h16 hwf hvr hm_eq hm_ge
-        hsimp hin hin_lt htab hbnd htab_fr hfit
-      set st := (Memory.spec 0).clientResult s (evalDTSetup setupArgs)
-      set s1 := (Memory.spec 0).clientState s (evalDTSetup setupArgs)
-      obtain ⟨_, _, hsu_mod, hsu_safe, hs1_fr, hwf1, hsm_eq, hos_eq, hep_eq, hec_eq, hslots⟩ :=
-        framedTriple_iff_realization.mp hsu
-      dsimp only [setupArgs] at hs1_fr hsm_eq hos_eq hep_eq
-      have hs0_le_s1 : s.frontier ≤ s1.frontier := hsu_mod.1
-      have hpres_s1 : ∀ a < s.frontier, s1.mem a = s.mem a := fun a ha =>
-        hsu_mod.mem_eq_of_not_mem ha id
-      have hin_s1 : HoldsIndexedEdges d.edgeBase C s1.mem :=
-        hin.congr fun a _ _ => hpres_s1 a (by omega)
-      have htab_s1 : HoldsDTTable r0 d.tableBase s1.mem :=
-        htab.congr hbnd fun a ha => hpres_s1 a (by omega)
-      have hbnd_s1 : DTTableInBounds r0 d.tableBase tableFrontier s1.mem :=
-        hbnd.mono le_rfl fun a ha => hpres_s1 a (by omega)
-      have hep_s1 : st.entryPtr =
-          s1.mem (d.tableBase + dtGraphMask (C.map fun e => (e.u, e.v))) := by
-        have hbnd' := (dtTableInBounds_iff _ _ _ _).mp hbnd
-        have hm_lt := dtGraphMask_lt (C.map fun e => (e.u, e.v)) fun e he => by
-          rw [List.mem_map] at he; obtain ⟨e₀, he₀, rfl⟩ := he
-          obtain ⟨k, hk, rfl⟩ := List.mem_iff_getElem.mp he₀
-          simpa [edgeEnds, IndexedEdge.toWeighted] using ((isSimple_iff _).mp hsimp).1
-            ⟨k, by simpa using hk⟩
-        have hpow := Nat.pow_le_pow_right (by decide : 1 ≤ 2) (show d.numVerts.choose 2 ≤
-          r0.choose 2 by rw [Nat.choose_two_right, Nat.choose_two_right]; exact
-          Nat.div_le_div_right (Nat.mul_le_mul hvr (Nat.sub_le_sub_right hvr 1)))
-        rw [hep_eq, hpres_s1 _ (by have := hbnd'.1; omega)]
-      have hrun := @evalDTRunTree_spec w r0 d.numVerts d.tableBase tableFrontier
-        ⟨st, d.edgeBase, d.outBase⟩ C s1 h16 hwf1 hvr hsimp hin_s1 (by dsimp only; omega)
-        (by dsimp only; omega) hout_disj_in htab_s1 hbnd_s1 (by omega) hep_s1 hec_eq
-        (by dsimp only; rw [hos_eq, hs1_fr]) (by dsimp only; rw [hsm_eq, hs1_fr]; omega)
-        (.inl (by dsimp only; rw [hsm_eq, hos_eq]))
-        (.inl (by dsimp only; rw [hos_eq]; omega))
-        (.inl (by dsimp only; rw [hos_eq]; omega))
-        (fun a _ => by dsimp only; rw [hos_eq]; omega) hslots
-      dsimp only at hrun
+      let maxE := d.numVerts.choose 2
+      have hmaxE_def : d.numVerts * (d.numVerts - 1) / 2 = maxE := (Nat.choose_two_right _).symm
+      have h2c : 2 * maxE = d.numVerts * (d.numVerts - 1) := by
+        dsimp only [maxE]
+        rw [Nat.choose_two_right, Nat.mul_div_cancel' (Nat.even_mul_pred_self d.numVerts).two_dvd]
+      have hnv1 : 1 ≤ d.numVerts := (C[0]'(by omega)).u.pos
+      have hfit_nv : Fits w d.numVerts := by
+        by_cases hv3 : 3 ≤ d.numVerts
+        · exact hfit.of_le (by
+            have hvc : d.numVerts ≤ maxE := by
+              dsimp only [maxE]; rw [Nat.choose_two_right]
+              exact (Nat.le_div_iff_mul_le (by decide)).mpr
+                (Nat.mul_le_mul_left d.numVerts (by omega))
+            omega)
+        · exact h16.of_le (by omega)
+      have hfit_maxE : Fits w maxE := hfit.of_le (by omega)
+      have hfit_s0 : Fits w (s.frontier + maxE) := hfit.of_le (by omega)
+      have hfit_mul : Fits w (d.numVerts * (d.numVerts - 1)) := by
+        rw [← h2c]
+        have htb_bnd := ((dtTableInBounds_iff _ _ _ _).mp hbnd).1
+        have hlt_pow := Nat.lt_two_pow_self (n := maxE)
+        have hpow : 2 ^ maxE ≤ 2 ^ r0.choose 2 :=
+          Nat.pow_le_pow_right (by decide) (by
+            dsimp only [maxE]
+            rw [Nat.choose_two_right, Nat.choose_two_right]
+            exact Nat.div_le_div_right (Nat.mul_le_mul hvr (Nat.sub_le_sub_right hvr 1)))
+        exact hfit.of_le (by omega)
+      let s0 : Memory.State := ⟨s.mem, s.frontier + maxE⟩
+      have hwf0 : Memory.WellFormed w s0 := ⟨hfit_s0, hwf.mem_fits⟩
+      have hcore := @evalDTCore_spec w r0 d.outBase tableFrontier
+        ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, s.frontier⟩ C s0 h16 hwf0 hvr hm_eq
+        hm_ge hsimp hin (by dsimp [s0]; omega) (by dsimp [s0]; omega) hout_disj_in htab hbnd
+        (by dsimp [s0]; omega) hout_disj_tab (le_refl _) (.inl hin_lt) (.inl hout_lt)
+        (fun a ha => by dsimp only; omega) hfit_mul hfit
       have hprog : evalDecisionTreeProg d =
-          (evalDTSetup setupArgs >>= fun st' => evalDTRunTree ⟨st', d.edgeBase, d.outBase⟩) := by
-        dsimp only [evalDecisionTreeProg]; simp only [hm0, hm1, ↓reduceIte]; rfl
+          (Memory.allocDirty maxE >>= fun slotMap' =>
+            evalDTSetupWithSlotMap ⟨d.tableBase, d.numVerts, d.numEdges, d.edgeBase, slotMap'⟩ >>=
+              fun st' => evalDTRunTree ⟨st', d.edgeBase, d.outBase⟩) := by
+        dsimp only [evalDecisionTreeProg]; rw [hmaxE_def]; simp only [hm0, hm1, ↓reduceIte]
       rw [hprog]
-      have hft_comb : Memory.FramedTriple w s
-          (evalDTSetup setupArgs >>= fun st' => evalDTRunTree ⟨st', d.edgeBase, d.outBase⟩)
-          ((3 * C.length + 4) +
-            (12 * C.length + 6 * optDepth (edgeEnds (C.map IndexedEdge.toWeighted)) + 2))
-          (∅ ∪ (Set.Ico st.origSlot (st.origSlot + C.length) ∪
-            Set.Ico d.outBase (d.outBase + 4 * C.length))) _ :=
-        Memory.FramedTriple.bind ((framedTriple_with_realization hsu).mono le_rfl
-          (by rintro _ _ ⟨rfl, rfl, _⟩; exact hrun))
-      refine Memory.Triple.mono hft_comb (by omega) fun res s' ⟨hm, hrun_safe, hs'_fr, hwf', hres,
-          F, hF_len, hF_sub, hF_holds, hF_msf⟩ => ?_
-      refine ⟨⟨hm.1, fun a ha ha_out => ?_⟩,
-        ⟨h16, fun h => absurd h hm1, fun _ _ => ⟨hsu_safe, hrun_safe⟩⟩,
-        hwf', by rw [hs'_fr, hs1_fr], hres, F, hF_len, hF_sub, hF_holds, hF_msf⟩
-      exact hm.2 a ha fun hx => by
-        rcases hx with hx0 | hx_os | hx_out
-        · exact hx0
-        · simp only [Set.mem_Ico] at hx_os; rw [hos_eq] at hx_os; omega
-        · exact ha_out hx_out
+      refine Memory.Triple.mono (Memory.FramedTriple.allocDirty_bind hfit_s0 hcore)
+        (by omega) fun res s' ⟨hm, hsu_safe, hrun_safe, hwf', hs'_fr, hres, F, hF_len, hF_sub,
+          hF_holds, hF_msf⟩ => ?_
+      refine ⟨⟨hm.1, fun a ha ha_out => hm.2 a ha fun hx => by
+        rcases hx with hx_sm | hx_out
+        · simp only [Set.mem_Ico] at hx_sm; omega
+        · exact ha_out hx_out⟩,
+        ⟨h16, fun h => absurd h hm1, fun _ _ =>
+          ⟨hnv1, hfit_nv, hfit_mul, hmaxE_def ▸ hfit_maxE, hmaxE_def ▸ hfit_s0,
+            hmaxE_def ▸ hsu_safe, hmaxE_def ▸ hrun_safe⟩⟩,
+        hwf', by dsimp [s0] at hs'_fr; omega, hres, F, hF_len, hF_sub, hF_holds, hF_msf⟩
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest

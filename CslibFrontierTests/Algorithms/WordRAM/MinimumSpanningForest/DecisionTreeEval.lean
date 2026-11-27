@@ -7,22 +7,26 @@ Authors: vvauted
 module
 -- upstream: local-only (test driver)
 
-public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.Batch
+import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.Batch
 import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Components
+import CslibFrontier.Computability.WordRAM.Realization.Program.Standard
+import CslibFrontier.Foundations.Data.List.Subperm
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.IntervalCases
 
 /-!
 # Client Tests for `DecisionTree.Eval` and `DecisionTree.Batch`
 
-Exercises `evalDecisionTreeProg`, `evalDecisionTreeProg_spec`, `evalDecisionTreeBatchProg`,
-`evalDecisionTreeBatchProg_spec`, `compactVertices_isSimple`, and
+Exercises `evalDecisionTreeProg`, `evalDecisionTreeProg_spec`, `realizes_evalDecisionTreeProg`,
+`evalDecisionTreeBatchProg`, `evalDecisionTreeBatchProg_spec`,
+`realizes_evalDecisionTreeBatchProg`, `compactVertices_isSimple`, and
 `compactVertices_isMinSpanningForest` across pure vertex lifting on `Fin 3 ↪ Fin 6`,
-a concrete `r0 = 3` `HoldsDTTable` witness (`dtTable3`), and end-to-end single-component (`m = 0`,
-`m = 1`, unsorted `K_3`) and 3-component `Fin 6` batch runs.
+a concrete `r0 = 3` `HoldsDTTable` witness (`dtTable3`), end-to-end single-component (`m = 0`,
+`m = 1`, `m = 2`, distinct-weight `K_3`, equal-weight `K_3` tie-breaking) and 3-component `Fin 6`
+batch runs, and width-blind `Program .standard` lowering via `realize`.
 -/
 
-public section
+set_option linter.privateModule false
 
 namespace CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.DecisionTreeEval
 
@@ -32,7 +36,7 @@ open Cslib.Query.MinimumSpanningForest Cslib.Algorithms.WordRAM.MinimumSpanningF
 
 /-! ## 1. Pure Graph Lifting and Small-Graph Decision-Tree Helpers -/
 
-private theorem small_simple_msf_univ {e : ℕ} {ends : Fin e → Sym2 (Fin 3)}
+private theorem small_simple_msf_univ {v e : ℕ} {ends : Fin e → Sym2 (Fin v)}
     (hsimp : IsSimple ends) (he : e ≤ 2) (p : Equiv.Perm (Fin e)) :
     Cslib.Multigraph.msf ends p Finset.univ = Finset.univ := by
   ext x; rw [iff_true_right (Finset.mem_univ x)]
@@ -58,7 +62,7 @@ private theorem small_simple_msf_univ {e : ℕ} {ends : Fin e → Sym2 (Fin 3)}
       · rw [Cslib.Multigraph.joins_empty_iff] at hac hdb; subst hac hdb
         exact hxx' ((isSimple_iff _).mp hsimp |>.2 (hcd.trans hx.symm))
 
-private theorem small_simple_optDepth_zero {e : ℕ} {ends : Fin e → Sym2 (Fin 3)}
+private theorem small_simple_optDepth_zero {v e : ℕ} {ends : Fin e → Sym2 (Fin v)}
     (hsimp : IsSimple ends) (he : e ≤ 2) :
     MSFDT.Correct ends (.leaf (Finset.univ : Finset (Fin e))) ∧ optDepth ends = 0 := by
   have hcorr : MSFDT.Correct ends (.leaf (Finset.univ : Finset (Fin e))) :=
@@ -197,16 +201,16 @@ private theorem k3_optDepth_eq_two : optDepth (endsOfMask 3 7) = 2 := by
 /-! ## 2. Concrete `r0 = 3` Decision-Tree Table Witness -/
 
 /-- Memory image of a complete optimal MSF decision-tree table for `r0 = 3` vertices. -/
-@[expose] def dtTable3Mem : List ℕ :=
+private def dtTable3Mem : List ℕ :=
   [ 8, 11, 15, 19, 24, 28, 33, 38
   , 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 2, 0, 0, 1, 3, 1, 0, 2, 1, 2, 0, 0, 2, 3, 2, 0, 1, 2, 3
   , 3, 2, 0, 1, 2, 0, 1, 1, 2, 0, 2, 3, 5, 3, 6 ]
 
 /-- Word-RAM memory lookup function for the `r0 = 3` table (`dtTable3Mem`). -/
-@[expose] def dtTable3 (a : ℕ) : ℕ := dtTable3Mem.getD a 0
+private def dtTable3 (a : ℕ) : ℕ := dtTable3Mem.getD a 0
 
 /-- All entries of `dtTable3` lie strictly within address bound `53`. -/
-theorem dtTable3_bounds : DTTableInBounds 3 0 53 dtTable3 := by
+private theorem dtTable3_bounds : DTTableInBounds 3 0 53 dtTable3 := by
   rw [dtTableInBounds_iff]; refine ⟨by decide, fun mask hmask => ?_⟩
   have h8 : mask < 8 := by simpa using hmask
   interval_cases mask <;> decide
@@ -233,7 +237,7 @@ private theorem dtTable3_leaf_entry (mask : ℕ) (hlen : (maskEdgePairs 3 mask).
   rw [hd0, holdsCompleteTree_leaf]; exact ⟨by decide, by decide, hleaf⟩
 
 /-- `dtTable3` satisfies `HoldsDTTable 3 0` across all 8 canonical graphs on `≤ 3` vertices. -/
-theorem dtTable3_holds : HoldsDTTable 3 0 dtTable3 := by
+private theorem dtTable3_holds : HoldsDTTable 3 0 dtTable3 := by
   rw [holdsDTTable_iff]; intro mask hmask
   have h8 : mask < 8 := by simpa using hmask
   interval_cases mask <;> first
@@ -480,52 +484,32 @@ private def batchList : List ℕ :=
 private def batchCs : List (List (IndexedEdge 6)) := [k3Uncompacted, [], [⟨2, 0, 7, 20⟩]]
 private def batchEdgeBases : List ℕ := [53, 65, 65]
 
-private theorem subperm_of_map {α β : Type*} (f : α → β) {xs : List β} {ys : List α}
-    (hsub : xs.Subperm (ys.map f)) : ∃ zs : List α, zs.Subperm ys ∧ xs = zs.map f := by
-  have hp : ∀ {as bs : List β} {l : List α}, as.Perm bs → as = l.map f →
-      ∃ zs : List α, l.Perm zs ∧ bs = zs.map f := by
-    intro as bs l h; induction h generalizing l with
-    | nil =>
-      cases l with
-      | nil => intro _; exact ⟨[], .nil, rfl⟩
-      | cons _ _ => simp_all
-    | cons _ _ ih => cases l with | nil => simp | cons y l' =>
-      simp only [List.map_cons, List.cons.injEq]; rintro ⟨rfl, rfl⟩
-      obtain ⟨zs, hzp, rfl⟩ := ih rfl; exact ⟨y :: zs, hzp.cons y, rfl⟩
-    | swap _ _ _ => cases l with | nil => simp | cons y₁ l'' => cases l'' with
-      | nil => simp | cons y₂ l' =>
-        simp only [List.map_cons, List.cons.injEq]; rintro ⟨rfl, rfl, rfl⟩
-        exact ⟨y₂ :: y₁ :: l', .swap y₂ y₁ l', rfl⟩
-    | trans _ _ ih1 ih2 =>
-      intro hl; obtain ⟨zs, hzp, rfl⟩ := ih1 hl; obtain ⟨ws, hwp, rfl⟩ := ih2 rfl
-      exact ⟨ws, hzp.trans hwp, rfl⟩
-  obtain ⟨l, hpe, hs⟩ := hsub; obtain ⟨l', hs', hm⟩ := List.sublist_map_iff.mp hs
-  obtain ⟨zs, hzp, rfl⟩ := hp hpe hm; exact ⟨zs, ⟨l', hzp, hs'⟩, rfl⟩
-
 example :
     let s : Memory.State := ⟨dtTable3, 60⟩; let d : DTBatchArgs := ⟨0, 3, 4, 0, 53⟩
     let res := (Memory.spec 0).clientResult s (evalDecisionTreeBatchProg d)
     let s' := (Memory.spec 0).clientState s (evalDecisionTreeBatchProg d)
-    evalDecisionTreeBatchProgSafe 16 d s ∧ res.2 = 0 ∧ (∀ a < 60, s'.mem a = dtTable3 a) := by
+    evalDecisionTreeBatchProgSafe 16 d s ∧
+    res.numVertices = 4 ∧ res.numEdges = 0 ∧ (∀ a < 60, s'.mem a = dtTable3 a) := by
   intro s d res s'
   have hspec := @evalDecisionTreeBatchProg_spec 16 53 d [] [] s
     (by decide) ⟨by decide, dtTable3_fits⟩ rfl rfl (fun _ hi => by simp at hi) (by decide)
     (fun _ hi => by simp at hi) (fun _ hi => by simp at hi) (fun _ hi => by simp at hi)
     dtTable3_holds dtTable3_bounds (by decide) (by decide)
-  obtain ⟨_, _, hmod, hsafe, _, _, _, Fs, hFs_len, _, hflat_len, _⟩ :=
+  obtain ⟨_, _, hmod, hsafe, hnv, _, _, _, Fs, hFs_len, _, hflat_len, _⟩ :=
     framedTriple_iff_realization.mp hspec
   have hFs_nil : Fs = [] := List.eq_nil_of_length_eq_zero hFs_len; subst hFs_nil
-  exact ⟨hsafe, hflat_len.symm, fun a ha => hmod.mem_eq_of_not_mem ha (Set.notMem_empty a)⟩
+  exact ⟨hsafe, hnv, hflat_len.symm, fun a ha => hmod.mem_eq_of_not_mem ha (Set.notMem_empty a)⟩
 
 example :
     let mem := testMem batchList; let s : Memory.State := ⟨mem, 80⟩
     let d : DTBatchArgs := ⟨0, 3, 6, 3, 69⟩
     let res := (Memory.spec 0).clientResult s (evalDecisionTreeBatchProg d)
     let s' := (Memory.spec 0).clientState s (evalDecisionTreeBatchProg d)
-    evalDecisionTreeBatchProgSafe 16 d s ∧ res.2 = 3 ∧
+    evalDecisionTreeBatchProgSafe 16 d s ∧ res.numVertices = 6 ∧ res.numEdges = 3 ∧
     (∃ Fs : List (List (IndexedEdge 6)),
       Fs.length = 3 ∧ Fs.flatten.length = 3 ∧
-      (Fs.flatten.map IndexedEdge.weight).sum = 15 ∧ HoldsIndexedEdges res.1 Fs.flatten s'.mem) ∧
+      (Fs.flatten.map IndexedEdge.weight).sum = 15 ∧
+      HoldsIndexedEdges res.edgeBase Fs.flatten s'.mem) ∧
     (∀ a < 80, s'.mem a = mem a) := by
   intro mem s d res s'; obtain ⟨htab, hbnd⟩ := testMem_table batchList
   have hsimp0 : IsSimple (edgeEnds (k3Uncompacted.map IndexedEdge.toWeighted)) :=
@@ -565,7 +549,7 @@ example :
       · exact ⟨∅, by decide, fun _ h => by simp [batchCs] at h⟩
       · exact ⟨{0, 2}, by decide, by simp [batchCs]⟩)
     htab hbnd (by decide) (by decide)
-  obtain ⟨_, _, hmod, hsafe, _, _, _, Fs, hFs_len, hflat_holds, hflat_len, hFs_msf⟩ :=
+  obtain ⟨_, _, hmod, hsafe, hnv, _, _, _, Fs, hFs_len, hflat_holds, hflat_len, hFs_msf⟩ :=
     framedTriple_iff_realization.mp hspec
   rcases Fs with _ | ⟨F0, _ | ⟨F1, _ | ⟨F2, rest⟩⟩⟩
   · simp [batchCs] at hFs_len
@@ -590,11 +574,11 @@ example :
       have hx := h2_sub.subset List.mem_cons_self
       simp only [batchCs, List.getElem_cons_zero, List.getElem_cons_succ, List.mem_singleton] at hx
       subst hx; rfl
-  have h0_sub' : F0.Subperm k3Uncompacted := by simpa [batchCs] using h0_sub
-  obtain ⟨F0', hF0'_sub, rfl⟩ :=
-    subperm_of_map (fun e : IndexedEdge 3 =>
-      (⟨lift3To6 e.u, lift3To6 e.v, e.weight, e.id⟩ : IndexedEdge 6)) h0_sub'
-  let F0 : List (IndexedEdge 6) := F0'.map fun e => ⟨lift3To6 e.u, lift3To6 e.v, e.weight, e.id⟩
+  have h0_sub' : F0.Subperm (k3Compact.map fun e : IndexedEdge 3 =>
+      (⟨lift3To6 e.u, lift3To6 e.v, e.weight, e.id⟩ : IndexedEdge 6)) := by
+    simpa [batchCs, k3Uncompacted] using h0_sub
+  obtain ⟨F0', hF0'_sub, hF0_eq⟩ := h0_sub'.exists_map
+  subst hF0_eq
   have hmsf_lift := compactVertices_isMinSpanningForest lift3To6_inj rfl
     k3Compact_witness_msf
   have hmin_w : totalWeight (F0'.map IndexedEdge.toWeighted) ≤ 8 := by
@@ -602,25 +586,288 @@ example :
       IndexedEdge.toWeighted] using h0_msf.2 _ hmsf_lift.1
   have hpart0 := h0_msf.1.2.2
   have hrel_lift : ∀ {u v : Fin 3},
-      (edgePartition (F0.map IndexedEdge.toWeighted)).rel (lift3To6 u) (lift3To6 v) = true →
+      (edgePartition ((F0'.map fun e => (⟨lift3To6 e.u, lift3To6 e.v, e.weight, e.id⟩ :
+        IndexedEdge 6)).map IndexedEdge.toWeighted)).rel (lift3To6 u) (lift3To6 v) = true →
       (edgePartition (F0'.map IndexedEdge.toWeighted)).rel u v = true := fun h =>
     rel_edgePartition_contract_of_inj lift3To6_inj (by
-      simpa [F0, contractEdgeList, contractEdge, List.map_map, Function.comp_def,
+      simpa [contractEdgeList, contractEdge, List.map_map, Function.comp_def,
         IndexedEdge.toWeighted] using h)
   have hrel01 : (edgePartition (F0'.map IndexedEdge.toWeighted)).rel 0 1 :=
-    hrel_lift (by dsimp only [F0, lift3To6]; erw [hpart0]; decide)
+    hrel_lift (by dsimp only [lift3To6]; erw [hpart0]; decide)
   have hrel12 : (edgePartition (F0'.map IndexedEdge.toWeighted)).rel 1 2 :=
-    hrel_lift (by dsimp only [F0, lift3To6]; erw [hpart0]; decide)
+    hrel_lift (by dsimp only [lift3To6]; erw [hpart0]; decide)
   obtain ⟨l0, hp0, hs0⟩ := hF0'_sub
   obtain ⟨hF0'_2, hF0'_tw⟩ := k3_two_or_three_weight_le_8
     ⟨l0.map _, hp0.map _, hs0.map _⟩ hrel01 hrel12 hmin_w
   have hF0'_2' : F0'.length = 2 := by simpa using hF0'_2
   have hF0'_sum : (F0'.map IndexedEdge.weight).sum = 8 := by
     simpa [totalWeight, List.map_map, Function.comp_def, IndexedEdge.toWeighted] using hF0'_tw
-  have hflat_3 : ([F0, F1, F2].flatten).length = 3 := by simp [F0, hF1_nil, hF2_eq, hF0'_2']
-  have hflat_w : (([F0, F1, F2].flatten).map IndexedEdge.weight).sum = 15 := by
-    simp [F0, hF1_nil, hF2_eq, List.map_map, Function.comp_def, hF0'_sum]
-  exact ⟨hsafe, hflat_len.symm.trans hflat_3, ⟨_, rfl, hflat_3, hflat_w, hflat_holds⟩,
+  have hflat_3 : ([F0'.map fun e => ⟨lift3To6 e.u, lift3To6 e.v, e.weight, e.id⟩,
+      F1, F2].flatten).length = 3 := by simp [hF1_nil, hF2_eq, hF0'_2']
+  have hflat_w : (([F0'.map fun e => ⟨lift3To6 e.u, lift3To6 e.v, e.weight, e.id⟩,
+      F1, F2].flatten).map IndexedEdge.weight).sum = 15 := by
+    simp [hF1_nil, hF2_eq, List.map_map, Function.comp_def, hF0'_sum]
+  exact ⟨hsafe, hnv, hflat_len.symm.trans hflat_3, ⟨_, rfl, hflat_3, hflat_w, hflat_holds⟩,
     fun a ha => hmod.mem_eq_of_not_mem ha (Set.notMem_empty a)⟩
+
+/-! ## 6. Boundary Runs (`m = 2`, Equal-Weight Tie-Breaking) and `Program .standard` Client -/
+
+private def m2Compact : List (IndexedEdge 3) := [⟨0, 2, 7, 30⟩, ⟨0, 1, 4, 31⟩]
+private def m2List : List ℕ := [0, 2, 7, 30, 0, 1, 4, 31]
+
+example :
+    let mem := testMem m2List; let s : Memory.State := ⟨mem, 75⟩
+    let q : DTQuery := ⟨0, 3, 2, 53, 62⟩
+    let res := (Memory.spec 0).clientResult s (evalDecisionTreeProg q)
+    let s' := (Memory.spec 0).clientState s (evalDecisionTreeProg q)
+    evalDecisionTreeProgSafe 16 q s ∧ res = 2 ∧
+    (∃ F : List (IndexedEdge 3),
+      F.length = 2 ∧ (F.map IndexedEdge.weight).sum = 11 ∧ HoldsIndexedEdges 62 F s'.mem) ∧
+    (∀ a < 62, s'.mem a = mem a) := by
+  intro mem s q res s'; obtain ⟨htab, hbnd⟩ := testMem_table m2List
+  have hsimp2 : IsSimple (edgeEnds (m2Compact.map IndexedEdge.toWeighted)) := (isSimple_iff _).mpr
+    ⟨fun i => by fin_cases i <;> decide,
+     fun a b h => by fin_cases a <;> fin_cases b <;> first | rfl | exact absurd h (by decide)⟩
+  have hspec := @evalDecisionTreeProg_spec 16 3 53 q m2Compact s
+    (by decide) ⟨by decide, testMem_fits (by decide)⟩ (by decide) rfl hsimp2
+    (fun i hi => by
+      have hi2 : i < 2 := by simpa [m2Compact] using hi
+      interval_cases i <;> simp [mem, s, q, testMem, m2Compact, m2List])
+    (by decide) (by decide) (.inl (by decide))
+    htab hbnd (by decide) (fun a ha => by dsimp only [q]; omega) (by decide)
+  obtain ⟨_, _, hmod, hsafe, _, _, _, F, hF_len, hF_sub, hF_holds, hF_msf⟩ :=
+    framedTriple_iff_realization.mp hspec
+  have hnc_F : (edgePartition (F.map IndexedEdge.toWeighted)).numComponents = 1 := by
+    rw [hF_msf.1.2.2]; decide
+  have hF_ac := (isAcyclic_iff _).mp hF_msf.1.2.1
+  have hF2 : F.length = 2 := by
+    dsimp only [q] at hF_ac; simp only [List.length_map] at hF_ac; omega
+  obtain ⟨l, hp, hs⟩ := hF_sub
+  have hl : l = m2Compact := hs.eq_of_length (by rw [hp.length_eq, hF2]; rfl)
+  have hsum11 : (F.map IndexedEdge.weight).sum = 11 := by
+    rw [hl] at hp
+    simpa [m2Compact] using (hp.symm.map IndexedEdge.weight).sum_eq
+  exact ⟨hsafe, hF_len.symm.trans hF2, ⟨F, hF2, hsum11, hF_holds⟩, fun a ha =>
+    hmod.mem_eq_of_not_mem (by dsimp only [s]; omega) (by simp only [Set.mem_Ico, q]; omega)⟩
+
+private def k3EqCompact : List (IndexedEdge 3) :=
+  [⟨1, 0, 5, 10⟩, ⟨2, 1, 5, 11⟩, ⟨0, 2, 5, 12⟩]
+private def k3EqList : List ℕ := [1, 0, 5, 10, 2, 1, 5, 11, 0, 2, 5, 12]
+
+example :
+    let mem := testMem k3EqList; let s : Memory.State := ⟨mem, 80⟩
+    let q : DTQuery := ⟨0, 3, 3, 53, 65⟩
+    let res := (Memory.spec 0).clientResult s (evalDecisionTreeProg q)
+    let s' := (Memory.spec 0).clientState s (evalDecisionTreeProg q)
+    evalDecisionTreeProgSafe 16 q s ∧ res = 2 ∧
+    (∃ F : List (IndexedEdge 3),
+      F.length = 2 ∧ (F.map IndexedEdge.weight).sum = 10 ∧ HoldsIndexedEdges 65 F s'.mem) ∧
+    (∀ a < 65, s'.mem a = mem a) := by
+  intro mem s q res s'; obtain ⟨htab, hbnd⟩ := testMem_table k3EqList
+  have hsimp3 : IsSimple (edgeEnds (k3EqCompact.map IndexedEdge.toWeighted)) := (isSimple_iff _).mpr
+    ⟨fun i => by fin_cases i <;> decide,
+     fun a b h => by fin_cases a <;> fin_cases b <;> first | rfl | exact absurd h (by decide)⟩
+  have hspec := @evalDecisionTreeProg_spec 16 3 53 q k3EqCompact s
+    (by decide) ⟨by decide, testMem_fits (by decide)⟩ (by decide) rfl hsimp3
+    (fun i hi => by
+      have hi3 : i < 3 := by simpa [k3EqCompact] using hi
+      interval_cases i <;> simp [mem, s, q, testMem, k3EqCompact, k3EqList])
+    (by decide) (by decide) (.inl (by decide))
+    htab hbnd (by decide) (fun a ha => by dsimp only [q]; omega) (by decide)
+  obtain ⟨_, _, hmod, hsafe, _, _, _, F, hF_len, hF_sub, hF_holds, hF_msf⟩ :=
+    framedTriple_iff_realization.mp hspec
+  have hnc_F : (edgePartition (F.map IndexedEdge.toWeighted)).numComponents = 1 := by
+    rw [hF_msf.1.2.2]; decide
+  have hF_ac := (isAcyclic_iff _).mp hF_msf.1.2.1
+  have hF2 : F.length = 2 := by
+    dsimp only [q] at hF_ac; simp only [List.length_map] at hF_ac; omega
+  have hw5 : ∀ e ∈ F, e.weight = 5 := fun e he => by
+    have hm := hF_sub.subset he
+    simp only [k3EqCompact, List.mem_cons, List.not_mem_nil, or_false] at hm
+    rcases hm with rfl | rfl | rfl <;> rfl
+  have hsum10 : (F.map IndexedEdge.weight).sum = 10 := by
+    have hm : F.map IndexedEdge.weight = List.replicate 2 5 :=
+      List.eq_replicate_iff.mpr ⟨by simp [hF2], fun w hw => by
+        obtain ⟨e, he, rfl⟩ := List.mem_map.mp hw; exact hw5 e he⟩
+    rw [hm]; decide
+  exact ⟨hsafe, hF_len.symm.trans hF2, ⟨F, hF2, hsum10, hF_holds⟩, fun a ha =>
+    hmod.mem_eq_of_not_mem (by dsimp only [s]; omega) (by simp only [Set.mem_Ico, q]; omega)⟩
+
+private def evalPipelineProg (p : DTQuery × DTBatchArgs) : Memory.Prog ℕ := do
+  let r1 ← evalDecisionTreeProg p.1
+  let gs ← evalDecisionTreeBatchProg p.2
+  pure (r1 + gs.numEdges)
+
+private theorem realizes_evalPipelineProg : Realizes .exact
+    evalPipelineProg WordEncoding.encode (WordEncoding.encode (α := ℕ))
+    (fun w p s => Fits w 16 ∧ evalDecisionTreeProgSafe w p.1 s ∧
+      let s1 := (Memory.spec 0).clientState s (evalDecisionTreeProg p.1)
+      let r1 := (Memory.spec 0).clientResult s (evalDecisionTreeProg p.1)
+      let gs := (Memory.spec 0).clientResult s1 (evalDecisionTreeBatchProg p.2)
+      evalDecisionTreeBatchProgSafe w p.2 s1 ∧ Fits w (r1 + gs.numEdges))
+    (fun _ _ => 0) := by
+  unfold evalPipelineProg
+  realize [realizes_evalDecisionTreeProg, realizes_evalDecisionTreeBatchProg]
+  all_goals
+    obtain ⟨h16, hq, hb, hsum⟩ := h
+    have hfront := hmem.frontier_fits
+    first | exact hq | exact hb | exact hsum
+
+private theorem dtTable2_holds_and_bounds (mem : ℕ → ℕ)
+    (h11 : mem 11 = 13) (h12 : mem 12 = 16) (h13 : mem 13 = 0) (h14 : mem 14 = 0)
+    (h15 : mem 15 = 0) (h16 : mem 16 = 1) (h17 : mem 17 = 0) (h18 : mem 18 = 0)
+    (h19 : mem 19 = 1) :
+    HoldsDTTable 2 11 mem ∧ DTTableInBounds 2 11 20 mem := by
+  have hm0 : (maskEdgePairs 2 0).length = 0 := by decide
+  have hm1 : (maskEdgePairs 2 1).length = 1 := by decide
+  refine ⟨(holdsDTTable_iff _ _ _).mpr fun mask hmask => ?_,
+    (dtTableInBounds_iff _ _ _ _).mpr ⟨by decide, fun mask hmask => ?_⟩⟩
+  · have h2 : mask < 2 := by simpa using hmask
+    interval_cases mask
+    · have hc := small_simple_optDepth_zero (endsOfMask_isSimple 2 0) (by decide)
+      refine ⟨by rw [h11, h13, hm0], by rw [h11, h14, hc.2],
+        fun j hj => by rw [hm0] at hj; omega,
+        .leaf Finset.univ, by rw [h11, h14]; exact MSFTree.isComplete_leaf, hc.1, ?_⟩
+      rw [h11, h14, hm0, holdsCompleteTree_leaf]
+      refine ⟨by decide, by decide, ?_⟩
+      rw [show 13 + 2 + 0 + 2 * (2 ^ 0 - 1) + (1 - 2 ^ 0) = 15 from rfl, h15]; decide
+    · have hc := small_simple_optDepth_zero (endsOfMask_isSimple 2 1) (by decide)
+      refine ⟨by rw [h12, h16, hm1], by rw [h12, h17, hc.2],
+        fun j hj => ?_, .leaf Finset.univ, by rw [h12, h17]; exact MSFTree.isComplete_leaf,
+        hc.1, ?_⟩
+      · have hj0 : j = 0 := by rw [hm1] at hj; omega
+        subst hj0; rw [h12, show 16 + 2 + 0 = 18 from rfl, h18]; decide +revert
+      · rw [h12, h17, hm1, holdsCompleteTree_leaf]
+        refine ⟨by decide, by decide, ?_⟩
+        rw [show 16 + 2 + 1 + 2 * (2 ^ 0 - 1) + (1 - 2 ^ 0) = 19 from rfl, h19]; decide
+  · have h2 : mask < 2 := by simpa using hmask
+    interval_cases mask
+    · rw [h11]; dsimp only; rw [hm0, h14]; decide
+    · rw [h12]; dsimp only; rw [hm1, h17]; decide
+
+example :
+    let words : List ℕ :=
+      [11, 2, 1, 21, 25, 11, 2, 2, 1, 29, 13, 16, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 7, 42, 0, 0, 0, 0,
+        21, 1]
+    let q : DTQuery := ⟨11, 2, 1, 21, 25⟩
+    let d : DTBatchArgs := ⟨11, 2, 2, 1, 29⟩
+    ∃ r C pc : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
+      ∃ frontier : Fin r, ∃ y n,
+        Runs 16 prog (State.init words) ⟨pc, y⟩ n ∧
+        step 16 prog ⟨pc, y⟩ = .halt 2 ∧
+        memoryState frontier y = (Memory.spec 16).clientState (Memory.State.init words)
+          (evalPipelineProg (q, d)) ∧
+        n + 1 ≤ C * (memoryCost (evalPipelineProg (q, d)) (Memory.State.init words) + 1) + 1 := by
+  intro words q d
+  obtain ⟨r, C, pc, prog, hnw, frontier, _, hrun⟩ :=
+    realizes_evalPipelineProg.exists_standard_basis_init_program_state_from_words (0 : Fin 1)
+  have hlayout : ∀ j : Fin 10, words.getD j.val 0 = WordEncoding.encode (q, d) j := by
+    intro j; fin_cases j <;> rfl
+  let s0 := Memory.State.init words
+  have hs0_fr : s0.frontier = 31 := rfl
+  have hwf0 : Memory.WellFormed 16 s0 := Memory.wellFormed_init (by decide) (by decide)
+  obtain ⟨htab0, hbnd0⟩ := dtTable2_holds_and_bounds s0.mem (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  let e0 : IndexedEdge 2 := ⟨0, 1, 7, 42⟩
+  have hsimp0 : IsSimple (edgeEnds ([e0].map IndexedEdge.toWeighted)) := (isSimple_iff _).mpr
+    ⟨fun i => by fin_cases i; decide, fun a b _ => by fin_cases a; fin_cases b; rfl⟩
+  have hin0 : HoldsIndexedEdges 21 [e0] s0.mem := fun i hi => by
+    have hi0 : i = 0 := by simpa using hi
+    subst hi0
+    change s0.mem 21 = 0 ∧ s0.mem 22 = 1 ∧ s0.mem 23 = 7 ∧ s0.mem 24 = 42
+    decide
+  have hspec1 := @evalDecisionTreeProg_spec 16 2 20 q [e0] s0 (by decide) hwf0 (le_refl 2) rfl
+    hsimp0 hin0 (by rw [hs0_fr]; dsimp only [q]; decide) (by rw [hs0_fr]; dsimp only [q]; decide)
+    (.inl (by decide)) htab0 hbnd0 (by rw [hs0_fr]; decide)
+    (fun a ha => by dsimp only [q]; omega) (by rw [hs0_fr]; dsimp only [q]; decide)
+  obtain ⟨hvh1, _, hmod1, hsafe1, hwf1, hs1_fr, _, F1, hF1_len, hF1_sub, _, hF1_msf⟩ :=
+    framedTriple_iff_realization.mp hspec1
+  let s1 := (Memory.spec 0).clientState s0 (evalDecisionTreeProg q)
+  have hF1_eq1 : F1.length = 1 := by
+    have hpart := hF1_msf.1.2.2
+    rcases F1 with _ | ⟨x, r1⟩
+    · have hpart' : Partition.discrete 2 = edgePartition ([e0].map IndexedEdge.toWeighted) :=
+        hpart
+      have hrel : (Partition.discrete 2).rel 0 1 = true := by rw [hpart']; decide
+      revert hrel; decide
+    · have hle := hF1_sub.length_le
+      simp only [List.length_cons, List.length_nil] at hle ⊢; omega
+  have hr1_eq : (Memory.spec 0).clientResult s0 (evalDecisionTreeProg q) = 1 :=
+    hF1_len.symm.trans hF1_eq1
+  have hs1_ge : 31 ≤ s1.frontier := hs0_fr ▸ hmod1.1
+  have hs1_le : s1.frontier ≤ 33 := by
+    change s1.frontier ≤ s0.frontier + 1 + 1 at hs1_fr; rw [hs0_fr] at hs1_fr; omega
+  have hpres : ∀ a, a < 25 ∨ (29 ≤ a ∧ a < 31) → s1.mem a = s0.mem a := fun a ha =>
+    hmod1.mem_eq_of_not_mem (by rw [hs0_fr]; rcases ha with h | h <;> omega)
+      (by simp only [q, Set.mem_Ico, List.length_singleton]; rcases ha with h | h <;> omega)
+  have htab1 : HoldsDTTable 2 11 s1.mem :=
+    htab0.congr hbnd0 fun a ha => hpres a (.inl (by omega))
+  have hbnd1 : DTTableInBounds 2 11 20 s1.mem :=
+    hbnd0.mono le_rfl fun a ha => hpres a (.inl (by omega))
+  have hin1 : HoldsIndexedEdges 21 [e0] s1.mem :=
+    hin0.congr fun a ha1 ha2 => hpres a (.inl ha2)
+  have hfit64 : Fits 16 64 := by decide
+  have hspec2 := @evalDecisionTreeBatchProg_spec 16 20 d [[e0]] [21] s1 (by decide) hwf1 rfl rfl
+    (fun i hi => by
+      have hi0 : i = 0 := by simpa using hi
+      subst hi0
+      exact ⟨(hpres 29 (.inr (by decide))).trans (by change s0.mem 29 = 21; decide),
+        (hpres 30 (.inr (by decide))).trans (by change s0.mem 30 = 1; decide)⟩)
+    (by dsimp only [d]; omega)
+    (fun i hi => by
+      have hi0 : i = 0 := by simpa using hi
+      subst hi0; exact ⟨hin1, by simp; omega⟩)
+    (fun i hi => by
+      have hi0 : i = 0 := by simpa using hi
+      subst hi0; exact hsimp0)
+    (fun i hi => by
+      have hi0 : i = 0 := by simpa using hi
+      subst hi0
+      exact ⟨Finset.univ, by decide, fun e _ => ⟨Finset.mem_univ _, Finset.mem_univ _⟩⟩)
+    htab1 hbnd1 (by omega) (hfit64.of_le (by simp [d]; omega))
+  obtain ⟨hvh2, _, _, hsafe2, _, _, _, _, Fs, hFs_len, _, hflat_len, hFs_msf⟩ :=
+    framedTriple_iff_realization.mp hspec2
+  have hgs_edges :
+      ((Memory.spec 0).clientResult s1 (evalDecisionTreeBatchProg d)).numEdges = 1 := by
+    rcases Fs with _ | ⟨F2, rest⟩
+    · simp at hFs_len
+    · have hrest : rest = [] := by simpa using hFs_len
+      subst hrest
+      obtain ⟨hF2_sub, hF2_msf⟩ := hFs_msf 0 (by decide) (by simp)
+      simp only [List.getElem_cons_zero] at hF2_sub hF2_msf
+      have hF2_eq1 : F2.length = 1 := by
+        have hpart := hF2_msf.1.2.2
+        rcases F2 with _ | ⟨y, r2⟩
+        · have hpart' : Partition.discrete 2 = edgePartition ([e0].map IndexedEdge.toWeighted) :=
+            hpart
+          have hrel : (Partition.discrete 2).rel 0 1 = true := by rw [hpart']; decide
+          revert hrel; decide
+        · have hle := hF2_sub.length_le
+          simp only [List.length_cons, List.length_nil] at hle ⊢; omega
+      simpa [hF2_eq1] using hflat_len.symm
+  have hv_all : (Memory.spec 16).ValidHistory s0
+      ((Memory.spec 16).clientHistory s0 (evalPipelineProg (q, d))) := by
+    dsimp only [evalPipelineProg]
+    rw [validHistory_bind']; refine ⟨hvh1, ?_⟩
+    change (Memory.spec 16).ValidHistory s1
+      ((Memory.spec 16).clientHistory s1 (evalDecisionTreeBatchProg d >>= fun gs =>
+        pure ((Memory.spec 0).clientResult s0 (evalDecisionTreeProg q) + gs.numEdges)))
+    rw [validHistory_bind']; exact ⟨hvh2, trivial⟩
+  have hres_all : (Memory.spec 16).clientResult s0 (evalPipelineProg (q, d)) = 2 := by
+    rw [clientResult_width 16]; dsimp only [evalPipelineProg]
+    rw [StateTransitionSpec.clientResult_bind, StateTransitionSpec.clientResult_bind,
+      StateTransitionSpec.clientResult_pure, hr1_eq]
+    change 1 + ((Memory.spec 0).clientResult s1 (evalDecisionTreeBatchProg d)).numEdges = 2
+    rw [hgs_edges]
+  have hpre : Fits 16 16 ∧ evalDecisionTreeProgSafe 16 q s0 ∧
+      evalDecisionTreeBatchProgSafe 16 d s1 ∧
+      Fits 16 ((Memory.spec 0).clientResult s0 (evalDecisionTreeProg q) +
+        ((Memory.spec 0).clientResult s1 (evalDecisionTreeBatchProg d)).numEdges) :=
+    ⟨by decide, hsafe1, hsafe2, by rw [hr1_eq, hgs_edges]; decide⟩
+  obtain ⟨y, n, hruns, hhalt, hmem_eq, _, hsteps⟩ :=
+    hrun 16 (q, d) words hlayout (by decide) (by decide) (by decide) hpre hv_all
+  exact ⟨r, C, pc, stripRand prog, not_readsWidth_stripRand hnw, isRandFree_stripRand prog,
+    frontier, y, n, runs_stripRand hruns, step_stripRand_of_halt (hres_all ▸ hhalt), hmem_eq,
+    by simpa only [Nat.add_zero] using hsteps⟩
 
 end CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.DecisionTreeEval
