@@ -6391,6 +6391,7 @@ public import CslibFrontier.GameTheory.ResourceAllocation.SSVCG
 public import CslibFrontier.Computability.Complexity.Problems.CSP.RotationReduction
 public import CslibFrontier.Computability.Complexity.Problems.Graph.RotationSystem.Realization.BouquetOrder
 public import CslibFrontier.Computability.Complexity.CookLevin.Parsimonious
+public import CslibFrontier.Computability.Complexity.RealAlgebraic.ControlledPowerSection
 public import CslibFrontier.MachineLearning.Rademacher.GrowthFunction
 public import CslibFrontier.Foundations.Data.MvPolynomial.PartialDerivatives
 public import CslibFrontier.Logics.Propositional.CNF.Dimacs
@@ -7832,6 +7833,7 @@ public import CslibFrontier.Computability.WordRAM.Realization.Program
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Plumbing.TransformsWords
 public import CslibFrontier.Foundations.Quantum.NoCloning
 public import CslibFrontier.Computability.TreeEval.Ary.IterativeCorrect
+public import CslibFrontier.Foundations.Data.MvPolynomial.PowerSection
 public import CslibFrontier.Computability.Distributed.CRDT.Monotonicity
 public import CslibFrontier.MachineLearning.PACLearning.Nonuniform
 public import CslibFrontier.Computability.Complexity.Problems.CircuitSAT
