@@ -29,6 +29,7 @@ import CslibFrontierResults.Entries.HalfBlockPRPCCA
 import CslibFrontierResults.Entries.SergeevUniqueDisjointness
 import CslibFrontierResults.Entries.DFSWordRAM
 import CslibFrontierResults.Entries.ODonnellMargulisRusso
+import CslibFrontierResults.Entries.ODonnellDerandomization
 import CslibFrontierResults.Entries.HastadInapproximability
 import CslibFrontierResults.Entries.RandomOracleKDF
 import CslibFrontierResults.Entries.BoostingMargin
