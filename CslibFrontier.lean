@@ -9594,6 +9594,7 @@ public import CslibFrontier.DataStructure.CountMin.LinearHash
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Product.SavedGroups
 public import CslibFrontier.Foundations.Geometry.SeparatedStarObstacles
 public import CslibFrontier.Computability.Complexity.FineGrained.PPSZ.Frozen
+public import CslibFrontier.Foundations.Algebra.Polynomial.RealRoot.BranchGrowth
 public import CslibFrontier.Crypto.Computational.Homomorphic.Leveled.FlatSecurity
 public import CslibFrontier.Computability.GenericRAM.Simulation.Degree
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Combinators.Id
