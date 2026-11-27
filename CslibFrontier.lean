@@ -4275,6 +4275,7 @@ public import CslibFrontier.Foundations.Data.BitString.FiniteEncoding
 public import CslibFrontier.DataStructure.Dictionary.WordRAM.SuccinctWhpBufferTrieProg.Rt
 public import CslibFrontier.Crypto.Protocols.UC.PushExecution
 public import CslibFrontier.Algorithms.WordRAM.ThreeSum.Decision.Width
+public import CslibFrontier.Foundations.RingTheory.MvPolynomial.PurePower.RelativeValueSection
 public import CslibFrontier.MachineLearning.OnlineLearning.ConvexOnlineToBatch
 public import CslibFrontier.DataStructure.Dictionary.WordRAM.CuckooHashing
 public import CslibFrontier.Logics.Propositional.CNF.LRAT
