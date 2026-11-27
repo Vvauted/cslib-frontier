@@ -1407,6 +1407,21 @@ theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge 
               (e.u ∈ (rounds[i.val]'i.isLt).tree.treeVerts s_step.val ↔
                 e.v ∉ (rounds[i.val]'i.isLt).tree.treeVerts s_step.val) →
               (rounds[i.val]'i.isLt).tree.wPop s_step ≤ e.weight) := by
+      have hce_bound : ∀ i : Fin W.rounds.length,
+          ((W.rounds.take i.val).map fun q => q.compLocal.length).sum +
+            (W.rounds[i.val]'i.isLt).compLocal.length ≤ L.es.length := fun i => by
+        have h1 := list_take_sum_add_le (fun q => q.compLocal.length) W.rounds i.val i.isLt
+        rw [← W.hcEdgeLen] at h1
+        have hfc := Finset.card_le_univ
+          (Finset.univ.filter fun j : Fin L.es.length => W.edgeState0 j.val ≠ 0)
+        rw [Fintype.card_fin] at hfc
+        have := W.hclaim_card; omega
+      have hcl_bound : ∀ i : Fin W.rounds.length,
+          ((W.rounds.take i.val).map PartitionRoundWitness.numVerts).sum +
+            (W.rounds[i.val]'i.isLt).numVerts ≤ 2 * n := fun i => by
+        have h1 := list_take_sum_add_le PartitionRoundWitness.numVerts W.rounds i.val i.isLt
+        rw [← W.hcLiftLen] at h1
+        have := W.hcl_dead; omega
       refine ⟨W.rounds, H_rem, conglomFn, W.hrounds_len, by simpa [H_rem] using hlen_rem,
         hsub_rem, hperm_es,
         by have hlen := congrArg List.length W.hmc_corr
@@ -1441,33 +1456,16 @@ theorem partitionProg_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge 
           have := W.hrounds_len; have := W.hnc_dead; have := hdead_le_n; omega
         · dsimp only [outRes]
           have := W.hrounds_len; have := W.hnc_dead; have := hdead_le_n; omega
-        · have hi := i.isLt
-          obtain ⟨_, _, hm2, hm3, _⟩ := W.hmeta i.val hi
-          have hce_sum := list_take_sum_add_le (fun q => q.compLocal.length) W.rounds i.val hi
-          rw [← W.hcEdgeLen] at hce_sum
-          have hfc := Finset.card_le_univ
-            (Finset.univ.filter fun j : Fin L.es.length => W.edgeState0 j.val ≠ 0)
-          rw [Fintype.card_fin] at hfc; have := W.hclaim_card
-          have hcl_sum := list_take_sum_add_le PartitionRoundWitness.numVerts W.rounds i.val hi
-          rw [← W.hcLiftLen] at hcl_sum; have := W.hcl_dead
+        · obtain ⟨_, _, hm2, hm3, _⟩ := W.hmeta i.val i.isLt
+          have hce_sum := hce_bound i
+          have hcl_sum := hcl_bound i
           dsimp only [outRes]
           rw [hm2, hm3]
           exact ⟨by omega, by omega⟩
       · have hi : i.val < W.rounds.length := i.isLt
         obtain ⟨_, _, hm2, hm3, _, _, hvc, hp1, _, _, _, _, _, hts, _⟩ := W.hmeta i.val hi
-        have hce_sum : ((W.rounds.take i.val).map fun q => q.compLocal.length).sum +
-            (W.rounds[i.val]'hi).compLocal.length ≤ L.es.length := by
-          have h1 := list_take_sum_add_le (fun q => q.compLocal.length) W.rounds i.val hi
-          rw [← W.hcEdgeLen] at h1
-          have hfc := Finset.card_le_univ
-            (Finset.univ.filter fun j : Fin L.es.length => W.edgeState0 j.val ≠ 0)
-          rw [Fintype.card_fin] at hfc
-          have := W.hclaim_card; omega
-        have hcl_sum : ((W.rounds.take i.val).map PartitionRoundWitness.numVerts).sum +
-            (W.rounds[i.val]'hi).numVerts ≤ 2 * n := by
-          have h1 := list_take_sum_add_le PartitionRoundWitness.numVerts W.rounds i.val hi
-          rw [← W.hcLiftLen] at h1
-          have := W.hcl_dead; omega
+        have hce_sum := hce_bound i
+        have hcl_sum := hcl_bound i
         have hmem_s42 : ∀ addr < L.bufBase + 14 * n, s₄.mem addr = s₂.mem addr := fun addr ha =>
           (hs4_agree_buf addr (by omega)).trans (hs3_agree_pre addr (by omega))
         have hi_n : i.val < n := by have := W.hrounds_len; omega
