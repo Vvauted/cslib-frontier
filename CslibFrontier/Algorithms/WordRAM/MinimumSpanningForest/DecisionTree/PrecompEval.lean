@@ -34,8 +34,10 @@ Corollary 5.6 and Theorem 5.8).
   `DTSkelEnv`: word-encoded workspace handles and search-environment records.
 * `DTEnvLayout`, `DTMaskEntryValid`, `DTMaskIn`, `CodeIsPerm`, `permOfCode`: scratch-workspace
   disjointness invariants, table-entry predicates, and base-`e` permutation decoding.
-* `dtTestSkelProg`, `dtTestSkelProgSafe`: evaluates one comparison skeleton across all `e ^ e`
-  candidate codes and populates `leafAns[0..2^d-1]`.
+* `dtTestSkelProg`, `dtTestSkelProgSafe`: evaluates one comparison skeleton across the first
+  `d.2` base-`e` codes (`0 .. d.2 - 1`, skipping non-permutation codes); under the full code
+  range `d.2 = e ^ e` and initialized `leafSeen`/`leafAns` hypotheses of `dtTestSkelProg_spec`,
+  returns `1` iff the skeleton uniquely determines `Cslib.Multigraph.msf` at every leaf.
 * `dtWriteFoundEntry`, `dtWriteFoundEntrySafe`, `dtWriteTrivialEntry`, `dtWriteTrivialEntrySafe`:
   allocates and writes complete decision-tree table entries (`e ≥ 2` and `e ≤ 1`).
 
@@ -323,11 +325,6 @@ private theorem permOfCode_permCode {e : ℕ} (he : 1 ≤ e) (p : Equiv.Perm (Fi
   ext ⟨i, hi⟩
   rw [permOfCode_apply_val, permCode_digit p hi]
 
-/-- Positivity of `n.choose 2` when `2 ≤ n`. -/
-theorem dtChooseTwo_pos {n : ℕ} (hn : 2 ≤ n) : 1 ≤ n.choose 2 := by
-  rw [Nat.choose_two_right]
-  exact Nat.div_pos (Nat.mul_le_mul hn (Nat.sub_le_sub_right hn 1)) (by decide)
-
 /-- Self-power upper bounds `e ≤ e ^ e`, `e.choose 2 ≤ e ^ e`, and `e * (e - 1) ≤ e ^ e`
 for `2 ≤ e`. -/
 theorem dtPow_le_self_bounds {e : ℕ} (he : 2 ≤ e) :
@@ -344,15 +341,6 @@ theorem dtPow_le_self_bounds {e : ℕ} (he : 2 ≤ e) :
         _ = e ^ 2 := (sq e).symm
         _ ≤ e ^ e := Nat.pow_le_pow_right (by omega) (by omega)
   exact ⟨h1, h2, h3⟩
-
-/-- Client result simplification for `Memory.allocBlockDirty k`. -/
-theorem allocBlockDirty_clientResult (s : Memory.State) (k : ℕ) :
-    ((Memory.spec 0).runClient s (Memory.allocBlockDirty k)).1 = ⟨s.frontier, k⟩ := rfl
-
-/-- Client state simplification for `Memory.allocBlockDirty k`. -/
-theorem allocBlockDirty_clientState (s : Memory.State) (k : ℕ) :
-    (((Memory.spec 0).runClient s (Memory.allocBlockDirty k)).2).fst =
-      ⟨s.mem, s.frontier + k⟩ := rfl
 
 /-! ## Section 2: Layout Invariants, Skeleton Evaluation, and Tree-Entry Writers -/
 
@@ -588,7 +576,7 @@ private theorem dtEvalSkelWalk_loop_spec {w powSkelArr allPairA allPairB powEArr
   let p := permOfCode (by omega : 1 ≤ e) code hcp
   let wEnv : DTSkelWalkEnv :=
     ⟨allPairA, allPairB, powSkelArr, powEArr, e.choose 2, e, skelCode, code⟩
-  have hnp_pos := dtChooseTwo_pos he2
+  have hnp_pos : 1 ≤ e.choose 2 := Nat.choose_pos he2
   let inv (k node : ℕ) (t : Memory.State) : Prop := t = s ∧ 1 ≤ node ∧ node < 2 ^ (k + 1) ∧
     walkSkelNode e he2 skelCode (d - k) node p = walkSkelNode e he2 skelCode d 1 p
   have hstep : ∀ k < d, ∀ node t, inv k node t →
@@ -785,8 +773,11 @@ private theorem realizes_dtCheckOnePermStep : Realizes .exact
     | exact (hbr (by tauto) (by tauto)).2.2
     | fits
 
-/-- Tests candidate skeleton `d.1.skelCode` across all `d.2` base-`e` codes,
-returning `1` iff the skeleton uniquely determines `Cslib.Multigraph.msf` at every leaf. -/
+/-- Tests candidate skeleton `d.1.skelCode` over `d.2` base-`e` codes (`0 .. d.2 - 1`, where
+only valid permutation codes update `leafSeen`/`leafAns`), returning `1` iff no colliding valid
+codes disagree on their MSF mask. Under `dtTestSkelProg_spec`'s full range (`d.2 = e ^ e`) and
+initialized-table hypotheses, returns `1` iff the skeleton uniquely determines
+`Cslib.Multigraph.msf` at every leaf. -/
 def dtTestSkelProg (d : DTCheckPermEnv × ℕ) : Memory.Prog ℕ := do
   let _ ← fillConstProg d.1.env.bufB.leafSeen 0 d.1.pow2d
   let _ ← fillConstProg d.1.env.bufB.leafAns 0 d.1.pow2d
@@ -1162,7 +1153,7 @@ private theorem dtWriteIntNodes_loop_spec {w intBase allPairA allPairB powSkelAr
           s.mem (allPairB + (skelCode / (e.choose 2) ^ k) % e.choose 2) := by
   let env : DTWriteIntEnv := ⟨intBase, allPairA, allPairB, powSkelArr, e.choose 2, skelCode⟩
   let S : Set ℕ := Set.Ico intBase (intBase + 2 * len)
-  have hnp_pos := dtChooseTwo_pos he2
+  have hnp_pos : 1 ≤ e.choose 2 := Nat.choose_pos he2
   let inv (k st : ℕ) (t : Memory.State) : Prop :=
     st = k ∧ t.frontier = s.frontier ∧ Memory.WellFormed w t ∧ Memory.Modifies S s t ∧
     ∀ j < k, ∀ (_ : j < len),
@@ -1279,7 +1270,8 @@ theorem realizes_dtWriteFoundEntry : Realizes .exact
   unfold dtWriteFoundEntry
   realize [realizes_allocBlockDirty, realizes_copy, realizes_dtWriteIntNodesStep]
   all_goals
-    simp only [allocBlockDirty_clientResult, allocBlockDirty_clientState] at *
+    repeat rw [Memory.clientState_allocBlockDirty] at *
+    simp only [Memory.clientResult_allocBlockDirty] at *
     obtain ⟨h2, hp2d, hfr, htb, hep1, heps, hepd, hint, hls, hld⟩ := h
     have hfront := hmem.frontier_fits
     first
@@ -1333,7 +1325,7 @@ theorem dtWriteFoundEntry_spec {w baseFront mask e d permAns powE numSkels skelC
   obtain ⟨hbw0, hbw1, hbw2, hbw3, hbw4, hbw5, hbw6, hbw7, hbw8, hbw9, hbw10⟩ := hlay.work_bounds
   have h2d_le : 2 ^ d ≤ 2 ^ env.maxD := Nat.pow_le_pow_right (by decide) hd_le
   have h2d_pos : 1 ≤ 2 ^ d := Nat.two_pow_pos d
-  have hnp_pos := dtChooseTwo_pos he2
+  have hnp_pos : 1 ≤ e.choose 2 := Nat.choose_pos he2
   have hnp_le : e.choose 2 ≤ env.maxD := by rw [hmaxD]; exact Nat.choose_le_choose 2 he_le
   let ep := s.frontier; let sz := 2 + e + 2 * (2 ^ d - 1) + 2 ^ d
   let S : Set ℕ := {env.bufA.tableBase + mask} ∪ Set.Ico ep (ep + sz)
@@ -1542,7 +1534,7 @@ theorem realizes_dtWriteTrivialEntry : Realizes .exact
   unfold dtWriteTrivialEntry
   realize [realizes_allocBlockDirty]
   all_goals
-    try simp only [allocBlockDirty_clientResult] at *
+    try simp only [Memory.clientResult_allocBlockDirty] at *
     obtain ⟨h2, he1, hfr, htb, hep1, hed⟩ := h
     have hfront := hmem.frontier_fits
     fits

@@ -306,7 +306,7 @@ private theorem dtPrecompArithBounds {r0 e : ℕ} (hr2 : 2 ≤ r0) (he : e ≤ r
   have h16_P : 16 ≤ 2 ^ (r0 ^ 4) :=
     (by decide : 16 ≤ 2 ^ 16).trans (Nat.pow_le_pow_right (by decide) h16)
   have hr0_sq : r0 ^ 2 ≤ r0 ^ 4 := (by nlinarith : r0 ^ 2 ≤ r0 ^ 2 * r0 ^ 2).trans_eq (by ring)
-  have hmaxE_pos : 1 ≤ r0.choose 2 := dtChooseTwo_pos hr2
+  have hmaxE_pos : 1 ≤ r0.choose 2 := Nat.choose_pos hr2
   have hmaxE_le : r0.choose 2 ≤ r0 ^ 2 := hc2 r0
   have he_sq_A : e ^ 2 ≤ r0 ^ 4 := (Nat.pow_le_pow_left (he.trans hmaxE_le) 2).trans_eq (by ring)
   have hmaxD_le : (r0.choose 2).choose 2 ≤ r0 ^ 4 :=
@@ -430,7 +430,7 @@ private theorem dtSearchSkel_spec {w baseFront mask e d permAns : ℕ}
   have h2d_pos : 1 ≤ 2 ^ d := Nat.two_pow_pos d; have he_le_ee := (dtPow_le_self_bounds he2).1
   have h2d_le : 2 ^ d ≤ 2 ^ env.maxD := Nat.pow_le_pow_right (by decide) hd_le
   have hnp_le : e.choose 2 ≤ env.maxD := hmaxD ▸ Nat.choose_le_choose 2 he_le
-  have hns_pos : 1 ≤ (e.choose 2) ^ (2 ^ d - 1) := Nat.pow_pos (dtChooseTwo_pos he2)
+  have hns_pos : 1 ≤ (e.choose 2) ^ (2 ^ d - 1) := Nat.pow_pos (Nat.choose_pos he2)
   let numSkels := (e.choose 2) ^ (2 ^ d - 1)
   let sEnv : DTSkelEnv := ⟨env, mask, e, d, 2 ^ d, e.choose 2, permAns, e ^ e, numSkels⟩
   let Stest := Set.Ico env.bufB.leafSeen (env.bufB.leafSeen + 2 ^ d) ∪
@@ -1024,7 +1024,7 @@ private theorem dtTryDepth_spec {w baseFront mask e permAns : ℕ}
         s'.frontier ≤ s.frontier + (2 + e + 2 * (2 ^ env.maxD - 1) + 2 ^ env.maxD) ∧
         Memory.WellFormed w s' ∧ DTMaskEntryValid env.r0 env.bufA.tableBase mask optD s' ∧
         s.frontier ≤ s'.mem (env.bufA.tableBase + mask) := by
-  have he_le_ee := (dtPow_le_self_bounds he2).1; have hnp_pos := dtChooseTwo_pos he2
+  have he_le_ee := (dtPow_le_self_bounds he2).1; have hnp_pos : 1 ≤ e.choose 2 := Nat.choose_pos he2
   have hr2 := hlay.r0_ge; have hmaxE := hlay.2.1; have hnm := hlay.2.2.1; have hmaxD := hlay.2.2.2.1
   obtain ⟨hbr0, hbr1, hbe0, hbe1, hbe2, hbe3, hbe4, hbe5, hbe6, hbr2⟩ := hlay.edges_bounds
   obtain ⟨hp2d_lay, hp2e_lay, hbb0, hbb1, hbb2, hbb3, hbb4, hbb5, hbb6, hbb7, hbb8, hbb9, hbb10,
@@ -1179,7 +1179,8 @@ private theorem realizes_dtBuildAndSearchProg : Realizes .exact
   realize [realizes_allocBlockDirty, realizes_dtPermAnsStep, realizes_dtFillAllPairsProg,
     realizes_dtTryDepthWhile]
   all_goals
-    try simp only [allocBlockDirty_clientResult, allocBlockDirty_clientState] at *
+    repeat rw [Memory.clientState_allocBlockDirty] at *
+    try simp only [Memory.clientResult_allocBlockDirty] at *
     obtain ⟨h2, hpe, hs1, he1, hmul, hit, hap, hw⟩ := h
     have hfront := hmem.frontier_fits
     first
@@ -1481,7 +1482,8 @@ private theorem realizes_dtPrecompTrivial : Realizes .exact
     dtPrecompTrivialSafe (fun _ _ => 0) := by
   unfold dtPrecompTrivial; realize [realizes_allocBlockDirty]
   all_goals
-    try simp only [allocBlockDirty_clientResult, allocBlockDirty_clientState] at *
+    repeat rw [Memory.clientState_allocBlockDirty] at *
+    try simp only [Memory.clientResult_allocBlockDirty] at *
     obtain ⟨h2, hfit⟩ := h; have hfront := hmem.frontier_fits; fits
 
 private theorem dtPrecompTrivial_spec {w r0 : ℕ} {s : Memory.State}
@@ -1577,7 +1579,8 @@ private theorem realizes_dtPrecompMain : Realizes .exact
   unfold dtPrecompMain; realize [realizes_allocBlockDirty, realizes_dtFillAllPairsProg,
     realizes_dtRunPrecompLoop]
   all_goals
-    try simp only [allocBlockDirty_clientResult, allocBlockDirty_clientState] at *
+    repeat rw [Memory.clientState_allocBlockDirty] at *
+    try simp only [Memory.clientResult_allocBlockDirty] at *
     obtain ⟨h2, hr2, hmul1, hnm, hmul2, hml, halloc, hap, hit⟩ := h
     have hfront := hmem.frontier_fits
     first
@@ -1689,7 +1692,7 @@ private theorem dtPrecompMain_spec {w r0 : ℕ} {s : Memory.State}
   have hmaxE_eq := (Nat.choose_two_right r0).symm
   let maxE := r0.choose 2; let numMasks := 2 ^ maxE; let maxD := maxE.choose 2
   let maxLeaves := 2 ^ maxD; let wsSz := 9 * maxE + 2 * maxD + 3 * maxLeaves + r0 + 1
-  have hmaxE1 := dtChooseTwo_pos hr2
+  have hmaxE1 : 1 ≤ r0.choose 2 := Nat.choose_pos hr2
   have har := dtPrecompArithBounds (r0 := r0) (e := maxE) hr2 le_rfl
   have har_tot_fr := har.2.2.2.2.2.2.1; have har_tot_cost := har.2.2.2.2.2.2.2; clear har
   have hfit_alloc : Fits w (s.frontier + numMasks + wsSz) :=
