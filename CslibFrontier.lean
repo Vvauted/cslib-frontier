@@ -4022,6 +4022,7 @@ public import CslibFrontier.Computability.Probabilistic.PPT.Clock
 public import CslibFrontier.Computability.Complexity.Problems.NCL.Planar.Bandwidth
 public import CslibFrontier.Computability.Circuit.Boolean.HardnessAmplification
 public import CslibFrontier.Computability.Circuit.FanIn
+public import CslibFrontier.Foundations.Algebra.Polynomial.RealRoot.DegreePieceSeparation
 public import CslibFrontier.Computability.LogSpaceDerandomization.NormalizedAtomRows.CommonEnvelope
 public import CslibFrontier.Logics.RealArithmetic.ModularEvaluation
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.BlockComputation.ScheduleReadSpace
