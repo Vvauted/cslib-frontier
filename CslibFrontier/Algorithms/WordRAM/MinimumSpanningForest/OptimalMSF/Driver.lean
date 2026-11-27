@@ -52,14 +52,15 @@ Given an `n`-vertex, `m`-edge weighted undirected multigraph in standard `Kruska
 `realizes_optimalMSFProg` and `optimalMSF_wordRAM_spec` compile `optimalMSFProg` into a fixed,
 width-blind (`¬prog.ReadsWidth`), random-free (`prog.IsRandFree`) `Program .standard` executing in
 `O(optDepthMN m n + m + n + 1)` instructions (`ExecutesList`) on raw multigraphs (where
-`optDepthMN` over simple graphs with `≤ m` edges saturates once `m > n.choose 2`), while
-`optimalMSF_simpleGraph_isMST_spec` achieves the pure `O(optDepthMN m n + 1)` Theorem 5.8 bound
-on connected simple graphs (`SimpleGraph.IsMST`).
+`optDepthMN` over simple graphs saturates once `m > n.choose 2`, and isolated vertices separately
+account for the vertex overhead), while `optimalMSF_simpleGraph_isMST_spec` realizes Theorem 5.8
+in `O(optDepthMN m n + 1)` instructions on connected simple graphs (`SimpleGraph.IsMST`).
 
 ## Main definitions
 
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSFWordBound`: polynomial value/workspace
-  bound using `Nat.iterLog 3` (`Fits w (optimalMSFWordBound n m)` gives logarithmic `w`).
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSFWordBound`: polynomial workspace
+  value threshold using `Nat.iterLog 3` (logarithmic word width suffices for this threshold,
+  with an additional `Fits w` condition for edge weights; any larger width `w` is allowed).
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSFArgs`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.encOptimalMSFArgs`: 2-word input descriptor
   `[numVertices, numEdges]` matching words `0, 1` of `Kruskal.encode`.
@@ -73,11 +74,14 @@ on connected simple graphs (`SimpleGraph.IsMST`).
   `Realizes .exact` compilation certificate for `optimalMSFProg`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSFProg_spec`: functional correctness and
   `O(optDepthMN m n + m + n + 1)` memory-cost bound for `optimalMSFProg`.
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSF_wordRAM_spec`: Theorem 5.8 of
-  [PettieRamachandran2002] (#8624) on `Program .standard` (`ExecutesList`).
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.isMST_toSimpleGraph_of_isMinSpanningForest`,
-  `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSF_simpleGraph_isMST_spec`:
-  specialization to Mathlib `SimpleGraph.IsMST` on connected graphs.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSF_wordRAM_spec`: width-blind,
+  random-free `Program .standard` driver theorem executing in `O(optDepthMN m n + m + n + 1)`
+  instructions (`ExecutesList`) on raw multigraphs (`IsMinSpanningForest`).
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.isMST_toSimpleGraph_of_isMinSpanningForest`:
+  bridge from `IsMinSpanningForest` to Mathlib `SimpleGraph.IsMST` on connected graphs.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSF_simpleGraph_isMST_spec`: Theorem 5.8
+  of [PettieRamachandran2002] (Section 5.1, p. 27, #8624) on connected simple graphs
+  (`SimpleGraph.IsMST`) in `O(optDepthMN m n + 1)` `Program .standard` instructions.
 
 ## References
 
@@ -98,11 +102,11 @@ open Cslib.Algorithms.WordRAM.MinimumSpanningForest.DenseCase
 
 /-! ## Section 1: Public Word-Width Bound and Input Record -/
 
-/-- Polynomial bound on the word-representable workspace and magnitude threshold for
-`optimalMSFProg` on `n` vertices and `m` edges:
-`10000 * m + 60000 * n + 2 * m * max 1 (Nat.iterLog 3 n) + 200000`. Requiring
-`Fits w (optimalMSFWordBound n m)` ensures a logarithmic sufficient word width
-`w = Ω(log (m * max 1 (Nat.iterLog 3 n) + n + 1))` alongside `∀ e ∈ es, Fits w e.weight`. -/
+/-- Polynomial workspace value threshold for `optimalMSFProg` on `n` vertices and `m` edges:
+`10000 * m + 60000 * n + 2 * m * max 1 (Nat.iterLog 3 n) + 200000`. Logarithmic word width
+`w = O(log (m * max 1 (Nat.iterLog 3 n) + n + 1))` suffices to satisfy
+`Fits w (optimalMSFWordBound n m)` (with an additional `∀ e ∈ es, Fits w e.weight` condition
+for edge weights), and the driver theorems allow any larger word width `w`. -/
 @[expose] def optimalMSFWordBound (n m : ℕ) : ℕ :=
   10000 * m + 60000 * n + 2 * m * max 1 (Nat.iterLog 3 n) + 200000
 
@@ -1341,18 +1345,20 @@ theorem optimalMSFProg_spec {w n : ℕ} (es : List (WeightedEdge n ℕ))
     · simpa [hprog] using hspec.2.2
 
 /-- **Width-blind deterministic `O(optDepthMN m n + m + n + 1)` Word-RAM Minimum Spanning
-Forest theorem**: there exists a single fixed, width-blind (`¬prog.ReadsWidth`), random-free
-(`prog.IsRandFree`) standard-basis Word-RAM program `prog : Program .standard r` and a universal
-constant `C : ℕ` such that for every vertex count `n : ℕ`, every weighted undirected multigraph
-`es : List (WeightedEdge n ℕ)` (`m = es.length`), and every word width `w : ℕ` satisfying
-`Fits w (optimalMSFWordBound n m)` (logarithmic sufficient width) and `∀ e ∈ es, Fits w e.weight`,
-running `prog` from `State.init (Kruskal.encode es)` halts in
-`steps ≤ C * (optDepthMN m n + m + n + 1)` instructions (`ExecutesList`), outputting
-`Kruskal.encodeEdges msfEs` for a minimum spanning forest `msfEs` of `es`
-(`IsMinSpanningForest es msfEs`). On raw multigraphs with `m > n.choose 2` or isolated vertices,
-`optDepthMN m n` saturates at `optDepthMN (n.choose 2) n` while `+ m + n` absorbs input scanning
-and deduplication; see `optimalMSF_simpleGraph_isMST_spec` for the pure `O(T*(m, n) + 1)`
-connected simple-graph bound. -/
+Forest driver theorem**: there exists a single fixed, width-blind (`¬prog.ReadsWidth`),
+random-free (`prog.IsRandFree`) standard-basis Word-RAM program `prog : Program .standard r` and
+a universal constant `C : ℕ` such that for every vertex count `n : ℕ`, every weighted undirected
+multigraph `es : List (WeightedEdge n ℕ)` (`m = es.length`), and every word width `w : ℕ`
+satisfying `Fits w (optimalMSFWordBound n m)` and `∀ e ∈ es, Fits w e.weight`, running `prog` from
+`State.init (Kruskal.encode es)` halts in `steps ≤ C * (optDepthMN m n + m + n + 1)` instructions
+(`ExecutesList`), outputting `Kruskal.encodeEdges msfEs` for a minimum spanning forest `msfEs` of
+`es` (`IsMinSpanningForest es msfEs`). Logarithmic word width suffices for the workspace threshold
+`optimalMSFWordBound n m`, with an additional `Fits w` fit condition for edge weights, and the
+theorem allows any larger word width `w`. On raw multigraphs, edge saturation of `optDepthMN m n`
+at `optDepthMN (n.choose 2) n` follows from `m > n.choose 2` (absorbing input scanning and
+deduplication into `+ m`), while isolated vertices separately explain the `+ n` vertex overhead;
+see `optimalMSF_simpleGraph_isMST_spec` for the Theorem 5.8 `O(T*(m, n) + 1)` bound on connected
+simple graphs. -/
 theorem optimalMSF_wordRAM_spec :
     ∃ r C : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
       ∀ (n : ℕ) (es : List (WeightedEdge n ℕ)) (w : ℕ),
@@ -1451,11 +1457,14 @@ theorem isMST_toSimpleGraph_of_isMinSpanningForest {n : ℕ}
 
 /-- **Theorem 5.8 (`O(T*(m, n) + 1)` deterministic Word-RAM MST on connected simple graphs)**
 ([PettieRamachandran2002], Section 5.1, p. 27, #8624): on connected `G : SimpleGraph (Fin n)`
-with `m = G.edgeFinset.card` edges and weights `wt : Sym2 (Fin n) → ℕ` fitting in `w`, if
-`Fits w (optimalMSFWordBound n m)`, `prog` computes `Kruskal.encodeEdges msfEs` for a
-`SimpleGraph.IsMST` in `steps ≤ C * (optDepthMN m n + 1)` instructions (`m ≤ n.choose 2` agrees
-with exact-`m` `optDepthMN` via `optDepthMN_eq_exact`, spanning-tree connectivity gives `n ≤ m + 1`,
-and `le_two_mul_optDepthMN` absorbs `m` and `n` for `3 ≤ m`). -/
+with `m = G.edgeFinset.card` edges and natural weights `wt : Sym2 (Fin n) → ℕ` (allowing ties),
+for every word width `w : ℕ` satisfying `Fits w (optimalMSFWordBound n m)` (logarithmic width
+suffices for this workspace threshold, with the additional `Fits w` condition for edge weights,
+and any larger width `w` is allowed), the width-blind, random-free standard-basis program `prog`
+computes `Kruskal.encodeEdges msfEs` for a `SimpleGraph.IsMST` in
+`steps ≤ C * (optDepthMN m n + 1)` instructions (`m ≤ n.choose 2` matches exact-`m` `optDepthMN`
+via `optDepthMN_eq_exact`, spanning-tree connectivity gives `n ≤ m + 1`, and
+`le_two_mul_optDepthMN` absorbs `m` and `n` for `3 ≤ m`). -/
 theorem optimalMSF_simpleGraph_isMST_spec :
     ∃ r C : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
       ∀ (n : ℕ) (G : SimpleGraph (Fin n)) [DecidableRel G.Adj] (wt : Sym2 (Fin n) → ℕ)
