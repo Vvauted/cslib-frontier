@@ -195,13 +195,6 @@ smallest list index. -/
     (es[idx.val]).weight < (es[j.val]).weight ∨
       ((es[idx.val]).weight = (es[j.val]).weight ∧ idx.val ≤ j.val)
 
-private theorem IsVertexMinEdge.unique {n : ℕ} {es : List (IndexedEdge n)} {x : Fin n}
-    {idx₁ idx₂ : Fin es.length} (h₁ : IsVertexMinEdge es x idx₁)
-    (h₂ : IsVertexMinEdge es x idx₂) : idx₁ = idx₂ := by
-  have h12 := h₁.2.2 idx₂ h₂.1 h₂.2.1
-  have h21 := h₂.2.2 idx₁ h₁.1 h₁.2.1
-  exact Fin.ext (by omega)
-
 private theorem FramedTriple.with_modifies {α : Type} {w c : ℕ} {s : Memory.State}
     {p : Memory.Prog α} {S : Set ℕ} {Q : α → Memory.State → Prop}
     (h : Memory.FramedTriple w s p c S Q) :
@@ -748,12 +741,8 @@ private theorem boruvkaCollect_iter_word_spec {w n m edgeBase minIdxBase usedBas
         (∀ i (hi : i < selIdxs.length), ∀ q < 4,
           s'.mem (selBase + 4 * i + q) = s.mem (edgeBase + 4 * selIdxs[i].val + q)) ∧
         (∀ idx ∈ selIdxs, ∃ x < n, s.mem (minIdxBase + x) = idx.val) ∧
-        (∀ x < n, ∀ hlt : s.mem (minIdxBase + x) < m,
-          (⟨s.mem (minIdxBase + x), hlt⟩ : Fin m) ∈ selIdxs) ∧
-        (∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : ℕ, xi < xj ∧ xj < n ∧
-          s.mem (minIdxBase + xi) = selIdxs[i.val].val ∧
-          s.mem (minIdxBase + xj) = selIdxs[j.val].val ∧
-          ∀ x' < xj, s.mem (minIdxBase + x') ≠ selIdxs[j.val].val) := by
+        ∀ x < n, ∀ hlt : s.mem (minIdxBase + x) < m,
+          (⟨s.mem (minIdxBase + x), hlt⟩ : Fin m) ∈ selIdxs := by
   let cfg : CollectCfg := ⟨edgeBase, minIdxBase, usedBase, selBase, m⟩
   let S := Set.Ico usedBase (usedBase + m) ∪ Set.Ico selBase (selBase + 4 * n)
   let inv (k : ℕ) (st : CollectState) (t : Memory.State) : Prop :=
@@ -765,17 +754,13 @@ private theorem boruvkaCollect_iter_word_spec {w n m edgeBase minIdxBase usedBas
         t.mem (selBase + 4 * i + q) = s.mem (edgeBase + 4 * selIdxs[i].val + q)) ∧
       (∀ idx : Fin m, idx ∈ selIdxs ↔ t.mem (usedBase + idx.val) = 1) ∧
       (∀ idx ∈ selIdxs, ∃ x < k, s.mem (minIdxBase + x) = idx.val) ∧
-      (∀ x < k, ∀ hlt : s.mem (minIdxBase + x) < m,
-        (⟨s.mem (minIdxBase + x), hlt⟩ : Fin m) ∈ selIdxs) ∧
-      (∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : ℕ, xi < xj ∧ xj < k ∧
-        s.mem (minIdxBase + xi) = selIdxs[i.val].val ∧
-        s.mem (minIdxBase + xj) = selIdxs[j.val].val ∧
-        ∀ x' < xj, s.mem (minIdxBase + x') ≠ selIdxs[j.val].val)
+      ∀ x < k, ∀ hlt : s.mem (minIdxBase + x) < m,
+        (⟨s.mem (minIdxBase + x), hlt⟩ : Fin m) ∈ selIdxs
   obtain ⟨hsafe, hvh, hcost, hmod, hvert, hle, _, hfr, hwf', _, _, selIdxs, hsl_len, hnd, hvals, _,
-      hsrc, hcov, hord⟩ :=
+      hsrc, hcov⟩ :=
     iterate_potential_spec boruvkaCollectStep boruvkaCollectStepSafe w cfg 11 n inv (fun _ _ _ => 0)
       S (fun k hk st t ⟨hk_eq, hsl_le, _, htfr, hwt, hrange, hbelow,
-          selIdxs, hsl_len, hnd, hsel_vals, hused_iff, hsrc, hcov, hord⟩ => by
+          selIdxs, hsl_len, hnd, hsel_vals, hused_iff, hsrc, hcov⟩ => by
         rcases st with ⟨u_st, selLen⟩
         dsimp only at hk_eq hsl_le hsl_len; subst u_st
         have hidx_eq : t.mem (minIdxBase + k) = s.mem (minIdxBase + k) := hbelow _ (by omega)
@@ -786,9 +771,7 @@ private theorem boruvkaCollect_iter_word_spec {w n m edgeBase minIdxBase usedBas
           dsimp only [inv]
           refine ⟨rfl, by omega, hk, htfr, hwt, hrange, hbelow, selIdxs, hsl_len, hnd, hsel_vals,
             hused_iff, fun id' hid' => let ⟨x, hx, hmx⟩ := hsrc id' hid'; ⟨x, by omega, hmx⟩,
-            fun x hx hlt => ?_, fun i j hij =>
-              let ⟨xi, xj, hxi, hxj, hmi, hmj, hnf⟩ := hord i j hij
-              ⟨xi, xj, hxi, by omega, hmi, hmj, hnf⟩⟩
+            fun x hx hlt => ?_⟩
           by_cases hxk : x = k
           · rcases hxk with rfl; exact hk_cov hlt
           · exact hcov x (by omega) hlt
@@ -881,37 +864,7 @@ private theorem boruvkaCollect_iter_word_spec {w n m edgeBase minIdxBase usedBas
                   by_cases hxk : x = k
                   · rcases hxk with rfl
                     exact List.mem_append.mpr (.inr (List.mem_singleton.mpr (Fin.ext rfl)))
-                  · exact List.mem_append.mpr (.inl (hcov x (by omega) hlt)),
-                fun i j hij => by
-                  have hij_nat : i.val < j.val := hij
-                  have hj_len := j.isLt
-                  simp only [List.length_append, List.length_singleton] at hj_len
-                  by_cases hj_lt : j.val < selIdxs.length
-                  · have hi_lt : i.val < selIdxs.length := lt_trans hij_nat hj_lt
-                    obtain ⟨xi, xj, hxi, hxj, hmi, hmj, hnf⟩ :=
-                      hord ⟨i.val, hi_lt⟩ ⟨j.val, hj_lt⟩ hij_nat
-                    refine ⟨xi, xj, hxi, by omega, ?_, ?_, ?_⟩
-                    · rw [List.getElem_append_left hi_lt]; exact hmi
-                    · rw [List.getElem_append_left hj_lt]; exact hmj
-                    · simpa only [List.getElem_append_left hj_lt] using hnf
-                  · have hj_eq : j.val = selIdxs.length := by omega
-                    have hi_lt : i.val < selIdxs.length := by omega
-                    have hget_j : (selIdxs ++ [idxFin])[j.val] = idxFin := by
-                      rw [List.getElem_append_right (by omega)]
-                      simp only [hj_eq, Nat.sub_self, List.getElem_singleton]
-                    obtain ⟨xi, hxi, hmi⟩ := hsrc selIdxs[i.val] (List.getElem_mem hi_lt)
-                    refine ⟨xi, k, hxi, Nat.lt_succ_self k, ?_, ?_, fun x' hx' heq => ?_⟩
-                    · rw [List.getElem_append_left hi_lt]; exact hmi
-                    · simp only [hget_j]; rfl
-                    · simp only [hget_j] at heq
-                      have hlt' : s.mem (minIdxBase + x') < m := heq ▸ idxFin.isLt
-                      have hmem_s : idxFin ∈ selIdxs :=
-                        (Fin.ext heq : (⟨s.mem (minIdxBase + x'), hlt'⟩ : Fin m) = idxFin) ▸
-                          hcov x' hx' hlt'
-                      have ht1 := (hused_iff idxFin).mp hmem_s
-                      dsimp only [idxFin, idx] at ht1
-                      rw [hflag0] at ht1
-                      exact absurd ht1 (by decide)⟩
+                  · exact List.mem_append.mpr (.inl (hcov x (by omega) hlt))⟩
             · have hflag0' : ¬ t.mem (usedBase + s.mem (minIdxBase + k)) = 0 := hflag0; split_ifs
               exact (Memory.FramedTriple.pure (c := 0) (hkeep_inv fun hlt =>
                 (hused_iff ⟨idx, hlt⟩).mpr ((hrange idx hlt_m).resolve_left hflag0))).mono
@@ -925,11 +878,10 @@ private theorem boruvkaCollect_iter_word_spec {w n m edgeBase minIdxBase usedBas
         fun _ _ => rfl, [], rfl, List.nodup_nil, fun _ hi => absurd hi (Nat.not_lt_zero _),
         fun idx => ⟨fun h => (by cases h), fun h => by
           have := hused_init idx.val idx.isLt; omega⟩,
-        fun _ h => (by cases h), fun _ h0 => absurd h0 (Nat.not_lt_zero _),
-        fun i => absurd i.isLt (Nat.not_lt_zero _)⟩
+        fun _ h => (by cases h), fun _ h0 => absurd h0 (Nat.not_lt_zero _)⟩
   exact ⟨hsafe, framedTriple_iff_realization.mpr ⟨hvh, by
     simpa only [Nat.add_zero, Nat.zero_add] using hcost,
-    hmod, hvert, hle, hfr, hwf', selIdxs, hsl_len, hnd, hvals, hsrc, hcov, hord⟩⟩
+    hmod, hvert, hle, hfr, hwf', selIdxs, hsl_len, hnd, hvals, hsrc, hcov⟩⟩
 
 /-- Allocates and materializes deduplicated Borůvka-selected edges in `O(m + n)` time. -/
 def boruvkaSelectProg (a : BoruvkaSelectArgs) : Memory.Prog BoruvkaSelectResult := do
@@ -956,12 +908,8 @@ private theorem boruvkaSelectProg_word_spec {w n m edgeBase minIdxBase : ℕ} {s
           (∀ i (hi : i < selIdxs.length), ∀ q < 4,
             s'.mem (res.selBase + 4 * i + q) = s.mem (edgeBase + 4 * selIdxs[i].val + q)) ∧
           (∀ idx ∈ selIdxs, ∃ x < n, s.mem (minIdxBase + x) = idx.val) ∧
-          (∀ x < n, ∀ hlt : s.mem (minIdxBase + x) < m,
-            (⟨s.mem (minIdxBase + x), hlt⟩ : Fin m) ∈ selIdxs) ∧
-          (∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : ℕ, xi < xj ∧ xj < n ∧
-            s.mem (minIdxBase + xi) = selIdxs[i.val].val ∧
-            s.mem (minIdxBase + xj) = selIdxs[j.val].val ∧
-            ∀ x' < xj, s.mem (minIdxBase + x') ≠ selIdxs[j.val].val) := by
+          ∀ x < n, ∀ hlt : s.mem (minIdxBase + x) < m,
+            (⟨s.mem (minIdxBase + x), hlt⟩ : Fin m) ∈ selIdxs := by
   let usedBase := s.frontier
   let s₁ : Memory.State := ⟨clear s.mem usedBase m, usedBase + m⟩
   let selBase := usedBase + m
@@ -986,7 +934,7 @@ private theorem boruvkaSelectProg_word_spec {w n m edgeBase minIdxBase : ℕ} {s
   refine ⟨hcol.1, ((Memory.FramedTriple.allocBlock_bind hfit_s1
     (Memory.FramedTriple.allocBlockDirty_bind hfit_s2 (Memory.FramedTriple.bind_same (c₂ := 0)
       (hcol.2.mono le_rfl fun _ _ ⟨_, hlen_le, hfr', hwf', selIdxs, hsl_len, hnd, hvals, hsrc,
-          hcov, hord⟩ => Memory.FramedTriple.pure ⟨rfl, hlen_le, by
+          hcov⟩ => Memory.FramedTriple.pure ⟨rfl, hlen_le, by
         have := (List.subperm_of_subset hnd fun i _ => List.mem_finRange i).length_le
         rw [← hsl_len]; simpa only [List.length_finRange] using this, by rw [hfr'], hwf', selIdxs,
         hsl_len, hnd, fun i hi q hq => (hvals i hi q hq).trans (hs1_lt _ (by omega)),
@@ -997,13 +945,7 @@ private theorem boruvkaSelectProg_word_spec {w n m edgeBase minIdxBase : ℕ} {s
             change s₁.mem (minIdxBase + x) < m; rw [hs1_lt _ (by omega)]; exact hlt
           simpa only [show (⟨s₂.mem (minIdxBase + x), hlt2⟩ : Fin m) =
             ⟨s.mem (minIdxBase + x), hlt⟩ from Fin.ext (hs1_lt _ (by omega))] using
-            hcov x hx hlt2,
-        fun i j hij => let ⟨xi, xj, hxi, hxj, hmi, hmj, hnf⟩ := hord i j hij
-          ⟨xi, xj, hxi, hxj, (hs1_lt _ (by omega)).symm.trans hmi,
-            (hs1_lt _ (by omega)).symm.trans hmj, fun x' hx' => by
-              change s.mem (minIdxBase + x') ≠ selIdxs[j.val].val
-              rw [← hs1_lt _ (by omega)]
-              exact hnf x' hx'⟩⟩)))).mono (by omega) fun _ _ h => h).frame_empty_of_ge_frontier
+            hcov x hx hlt2⟩)))).mono (by omega) fun _ _ h => h).frame_empty_of_ge_frontier
     fun _ ha => by
       rcases ha with ⟨h1, _⟩ | ⟨h1, _⟩ <;> dsimp only [usedBase, selBase] at h1 <;> omega⟩
 
@@ -1072,14 +1014,10 @@ theorem boruvkaSelectProg_spec {w n edgeBase minIdxBase : ℕ} {es : List (Index
           selIdxs.Nodup ∧
           HoldsIndexedEdges res.selBase (selIdxs.map fun i => es[i.val]) s'.mem ∧
           (∀ idx ∈ selIdxs, ∃ x : Fin n, s.mem (minIdxBase + x.val) = idx.val) ∧
-          (∀ x : Fin n, ∀ hlt : s.mem (minIdxBase + x.val) < es.length,
-            (⟨s.mem (minIdxBase + x.val), hlt⟩ : Fin es.length) ∈ selIdxs) ∧
-          (∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : Fin n, xi < xj ∧
-            s.mem (minIdxBase + xi.val) = selIdxs[i.val].val ∧
-            s.mem (minIdxBase + xj.val) = selIdxs[j.val].val ∧
-            ∀ x' : Fin n, x' < xj → s.mem (minIdxBase + x'.val) ≠ selIdxs[j.val].val) := by
+          ∀ x : Fin n, ∀ hlt : s.mem (minIdxBase + x.val) < es.length,
+            (⟨s.mem (minIdxBase + x.val), hlt⟩ : Fin es.length) ∈ selIdxs := by
   refine (boruvkaSelectProg_word_spec h16 hwf hin_lt hmin_lt hfit).2.mono le_rfl fun res s'
-      ⟨hsb, hcn, hcm, hfr, hwf', selIdxs, hsl_len, hnd, hvals, hsrc, hcov, hord⟩ =>
+      ⟨hsb, hcn, hcm, hfr, hwf', selIdxs, hsl_len, hnd, hvals, hsrc, hcov⟩ =>
     ⟨hsb, hcn, hcm, hfr, hwf', selIdxs, hsl_len, hnd, fun i hi => by
       have hi' : i < selIdxs.length := by simpa only [List.length_map] using hi
       obtain ⟨hu, hv, hw, hid⟩ := hin selIdxs[i].val selIdxs[i].isLt
@@ -1087,9 +1025,7 @@ theorem boruvkaSelectProg_spec {w n edgeBase minIdxBase : ℕ} {es : List (Index
       exact ⟨(hvals i hi' 0 (by decide)).trans hu, (hvals i hi' 1 (by decide)).trans hv,
         (hvals i hi' 2 (by decide)).trans hw, (hvals i hi' 3 (by decide)).trans hid⟩,
     fun idx hidx => let ⟨x, hx, hmx⟩ := hsrc idx hidx; ⟨⟨x, hx⟩, hmx⟩,
-    fun x hlt => hcov x.val x.isLt hlt,
-    fun i j hij => let ⟨xi, xj, hxi, hxj, hmi, hmj, hnf⟩ := hord i j hij
-      ⟨⟨xi, lt_trans hxi hxj⟩, ⟨xj, hxj⟩, hxi, hmi, hmj, fun x' hx' => hnf x'.val hx'⟩⟩
+    fun x hlt => hcov x.val x.isLt hlt⟩
 
 /-! ## Algebraic Helpers & Two-Phase Borůvka Contraction -/
 
@@ -1240,7 +1176,9 @@ theorem boruvkaPartitionProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n
     Memory.FramedTriple w s (boruvkaPartitionProg ⟨n, es.length, edgeBase⟩)
       (10 * es.length + 50 * n + 11) ∅ fun res s' =>
         s'.frontier ≤ s.frontier + (es.length + 13 * n + 1) ∧
+        s.frontier ≤ res.selBase ∧
         res.selBase + 4 * res.selCount ≤ s'.frontier ∧
+        s.frontier ≤ res.compBase ∧
         res.compBase + n ≤ s'.frontier ∧
         res.selCount ≤ n ∧ res.selCount ≤ es.length ∧ res.numComps ≤ n ∧
         Memory.WellFormed w s' ∧
@@ -1261,12 +1199,8 @@ theorem boruvkaPartitionProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n
             (edgePartition ((selIdxs.map fun i => es[i.val]).map IndexedEdge.toWeighted)).rel x y =
               true) ∧
           (∀ idx ∈ selIdxs, ∃ x : Fin n, IsVertexMinEdge es x idx) ∧
-          (∀ x : Fin n, (∃ e ∈ es, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) →
-            ∃ idx ∈ selIdxs, IsVertexMinEdge es x idx) ∧
-          (∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : Fin n, xi < xj ∧
-            IsVertexMinEdge es xi selIdxs[i.val] ∧
-            IsVertexMinEdge es xj selIdxs[j.val] ∧
-            ∀ x' : Fin n, x' < xj → ¬IsVertexMinEdge es x' selIdxs[j.val]) := by
+          ∀ x : Fin n, (∃ e ∈ es, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) →
+            ∃ idx ∈ selIdxs, IsVertexMinEdge es x idx := by
   dsimp only [boruvkaPartitionProg]
   refine (Memory.FramedTriple.bind_same (c₂ := (es.length + 11 * n + 2) + (24 * n + 13 * n + 8))
     ((holdsIndexedEdges_frame_mem (boruvkaMinProg_spec h16 hwf hin hin_lt (hfit.of_le (by omega)))
@@ -1277,7 +1211,7 @@ theorem boruvkaPartitionProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n
     (by rw [hmin_res, hfr₁]) (hfit.of_le (by rw [hfr₁]; omega))
   refine (Memory.FramedTriple.bind_same (c₂ := 24 * n + 13 * n + 8)
     (hsel.mono le_rfl fun sel s₂ ⟨hsel_b, hsel_cn, hsel_cm, hfr₂, hwf₂, selIdxs, hsl_len, hnd,
-      hsel_holds, hsrc, hcov, hord⟩ => ?_)).mono (by omega) fun _ _ h => h
+      hsel_holds, hsrc, hcov⟩ => ?_)).mono (by omega) fun _ _ h => h
   let selEs := selIdxs.map fun i => es[i.val]
   have hsel_len_eq : selEs.length = sel.selCount := by simp only [selEs, List.length_map, hsl_len]
   have hcc := holdsIndexedEdges_frame_mem (@connectedComponentsProg_spec w n sel.selBase selEs s₂
@@ -1313,21 +1247,13 @@ theorem boruvkaPartitionProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n
       ∃ idx ∈ selIdxs, (es[idx.val]).u ≠ (es[idx.val]).v ∧
         ((es[idx.val]).u = x ∨ (es[idx.val]).v = x) :=
     fun x hx => let ⟨idx, hmem, hne, hinc, _⟩ := hcov_min x hx; ⟨idx, hmem, hne, hinc⟩
-  have hsel_ord : ∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : Fin n, xi < xj ∧
-      IsVertexMinEdge es xi selIdxs[i.val] ∧ IsVertexMinEdge es xj selIdxs[j.val] ∧
-      ∀ x' : Fin n, x' < xj → ¬IsVertexMinEdge es x' selIdxs[j.val] := fun i j hij => by
-    obtain ⟨xi, xj, hxi, hmi, hmj, hnf⟩ := hord i j hij
-    refine ⟨xi, xj, hxi, hmin_at xi _ hmi, hmin_at xj _ hmj, fun x' hx' hm_x' => ?_⟩
-    rcases hopt x' with ⟨_, hnone⟩ | ⟨idx', heq, hne, hinc, hbest⟩
-    · exact not_or.mpr (hnone selIdxs[j.val] hm_x'.1) hm_x'.2.1
-    · have heq_idx : idx' = selIdxs[j.val] := IsVertexMinEdge.unique ⟨hne, hinc, hbest⟩ hm_x'
-      exact hnf x' hx' (heq.trans (congrArg Fin.val heq_idx))
   exact Memory.FramedTriple.pure ⟨by rw [hfr₃, hfr₂, hfr₁]; omega,
-    by dsimp only; rw [hfr₃, hfr₂, hsel_b]; omega, by dsimp only; rw [hfr₃, hcc_b]; omega,
+    by dsimp only; rw [hsel_b, hfr₁]; omega, by dsimp only; rw [hfr₃, hfr₂, hsel_b]; omega,
+    by dsimp only; rw [hcc_b, hfr₂, hfr₁]; omega, by dsimp only; rw [hfr₃, hcc_b]; omega,
     hsel_cn, hsel_cm, hcc_le, hwf₃, selIdxs, fun u => ⟨s₃.mem (cc.compBase + u.val), hcc_lt u⟩,
     hsl_len, hnd, hsel_sub, hsel_msf, hsel_holds3, hcov_nonloop, fun _ => rfl,
     fun c => let ⟨u, hu⟩ := hcc_surj c; ⟨u, Fin.ext hu⟩, fun x y => Fin.ext_iff.trans (hcc_rel x y),
-    hsel_sound, hcov_min, hsel_ord⟩
+    hsel_sound, hcov_min⟩
 
 private theorem boruvkaPartition_word_posts {w : ℕ} {d : GraphSlice} {s : Memory.State}
     (hwf : Memory.WellFormed w s) (h16 : Fits w 16)
@@ -1408,6 +1334,7 @@ theorem boruvkaShrinkProg_spec {w n nComp edgeBase compBase : ℕ}
     Memory.FramedTriple w s (boruvkaShrinkProg ⟨n, nComp, es.length, edgeBase, compBase⟩)
       (66 * es.length + 11 * nComp + 23) ∅ fun res s' =>
         s'.frontier ≤ s.frontier + (21 * es.length + 3 * nComp + 3) ∧
+        s.frontier ≤ res.edgeBase ∧
         res.edgeBase + 4 * res.numEdges ≤ s'.frontier ∧
         res.numVertices ≤ nComp ∧ res.numEdges ≤ es.length ∧
         Memory.WellFormed w s' ∧
@@ -1432,13 +1359,15 @@ theorem boruvkaShrinkProg_spec {w n nComp edgeBase compBase : ℕ}
       (hfit.of_le (by omega))).mono
       le_rfl fun conBase s₁ ⟨hres_con, hfr₁, hwf₁, esCon, hlen_con, hcon_holds, hel_con⟩ =>
         ?_)).mono (by omega) fun _ _ h => h
-  have hded := dedupSimpleEdgesProg_spec h16 hwf₁ hcon_holds
-    (by rw [hlen_con, hres_con, hfr₁]) (hfit.of_le (by rw [hlen_con, hfr₁]; omega))
+  have hded := FramedTriple.with_modifies (dedupSimpleEdgesProg_spec h16 hwf₁ hcon_holds
+    (by rw [hlen_con, hres_con, hfr₁]) (hfit.of_le (by rw [hlen_con, hfr₁]; omega)))
   rw [show (⟨nComp, esCon.length, conBase⟩ : GraphSlice) = ⟨nComp, es.length, conBase⟩ from by
     rw [hlen_con]] at hded
   refine (Memory.FramedTriple.bind_same (c₂ := 14 * es.length + 3 * nComp + 2)
-    (hded.mono le_rfl fun dedup s₂ ⟨_, hded_bound, hfr₂_le, hwf₂, esDedup, hlen_ded, hded_sub,
-      hded_holds, hded_eq, hded_simp, _⟩ => ?_)).mono (by rw [hlen_con]) fun _ _ h => h
+    (hded.mono le_rfl fun dedup s₂ ⟨hmod₂, _, hded_bound, hfr₂_le, hwf₂, esDedup, hlen_ded,
+      hded_sub, hded_holds, hded_eq, hded_simp, _⟩ => ?_)).mono (by rw [hlen_con]) fun _ _ h => h
+  have hfr₁_le : s₁.frontier ≤ s₂.frontier := hmod₂.1
+  have hfr_s2 : s.frontier ≤ s₂.frontier := by rw [hfr₁] at hfr₁_le; omega
   rw [hfr₁, hlen_con] at hfr₂_le
   have hded_le : dedup.numEdges ≤ es.length := hlen_ded ▸ hded_sub.length_le.trans hlen_con.le
   have hcmp := compactVerticesProg_spec h16 hwf₂ hded_holds
@@ -1449,6 +1378,7 @@ theorem boruvkaShrinkProg_spec {w n nComp edgeBase compBase : ℕ}
       ⟨_, hcmp_eb, hcmp_nv, hfr₃, hwf₃, lift, esOut, hlift_inj, hlen_out, hout_holds, _,
         hout_cover, hes_compact⟩ => ?_)).mono (by rw [hlen_ded]; omega) fun _ _ h => h
   exact Memory.FramedTriple.pure ⟨by rw [hfr₃, hlen_ded]; omega,
+    by dsimp only; rw [hcmp_eb]; omega,
     by dsimp only; rw [hfr₃, hcmp_eb, hlen_ded], hcmp_nv, hded_le, hwf₃, esCon, esDedup, lift,
     esOut, List.ext_getElem (by simp only [List.length_map, hlen_con]) fun i hi₁ hi₂ => by
       obtain ⟨hu, hv, hw, hid⟩ := hel_con i (by simpa only [List.length_map] using hi₁) hi₂
@@ -1610,7 +1540,7 @@ private theorem boruvkaStep_word_post {w : ℕ} {d : GraphSlice} {s : Memory.Sta
   have hpart_ft := boruvkaPartitionProg_spec h16 hwf hin
     (by rw [hlen]; exact hin_lt) (by rw [hlen]; exact hfit.of_le (by omega))
   rw [show (⟨n, es.length, eb⟩ : GraphSlice) = ⟨n, m, eb⟩ from by rw [hlen]] at hpart_ft
-  obtain ⟨_, _, hmod₁, hfr₁, _, hcc_fr, _, _, hcc_le, _, _, compFn, _, _, _, _, _, _,
+  obtain ⟨_, _, hmod₁, hfr₁, _, _, _, hcc_fr, _, _, hcc_le, _, _, compFn, _, _, _, _, _, _,
       hcomp_mem, _⟩ := framedTriple_iff_realization.mp hpart_ft
   rw [hlen] at hfr₁
   refine ⟨Nat.le_trans hin_lt hmod₁.1, hcc_fr, hfit.of_le (by omega), fun j hj => by
@@ -1652,7 +1582,9 @@ theorem boruvkaStepProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n)}
     Memory.FramedTriple w s (boruvkaStepProg ⟨n, es.length, edgeBase⟩)
       (76 * es.length + 61 * n + 34) ∅ fun res s' =>
         s'.frontier ≤ s.frontier + (22 * es.length + 16 * n + 4) ∧
+        s.frontier ≤ res.selBase ∧
         res.selBase + 4 * res.selCount ≤ s'.frontier ∧
+        s.frontier ≤ res.outBase ∧
         res.outBase + 4 * res.outEdges ≤ s'.frontier ∧
         2 * res.outVertices ≤ n ∧ res.outEdges ≤ es.length ∧
         res.selCount ≤ n ∧ res.selCount ≤ es.length ∧ Memory.WellFormed w s' ∧
@@ -1675,26 +1607,22 @@ theorem boruvkaStepProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n)}
               IsMinSpanningForest (es.map IndexedEdge.toWeighted)
                 ((selIdxs.map (fun i => es[i.val]) ++ L_orig).map IndexedEdge.toWeighted)) ∧
           (∀ idx ∈ selIdxs, ∃ x : Fin n, IsVertexMinEdge es x idx) ∧
-          (∀ x : Fin n, (∃ e ∈ es, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) →
-            ∃ idx ∈ selIdxs, IsVertexMinEdge es x idx) ∧
-          (∀ i j : Fin selIdxs.length, i < j → ∃ xi xj : Fin n, xi < xj ∧
-            IsVertexMinEdge es xi selIdxs[i.val] ∧
-            IsVertexMinEdge es xj selIdxs[j.val] ∧
-            ∀ x' : Fin n, x' < xj → ¬IsVertexMinEdge es x' selIdxs[j.val]) := by
+          ∀ x : Fin n, (∃ e ∈ es, e.u ≠ e.v ∧ (e.u = x ∨ e.v = x)) →
+            ∃ idx ∈ selIdxs, IsVertexMinEdge es x idx := by
   dsimp only [boruvkaStepProg]
   refine (Memory.FramedTriple.bind_same (c₂ := 66 * es.length + 11 * n + 23)
     ((FramedTriple.with_modifies (holdsIndexedEdges_frame_mem
       (boruvkaPartitionProg_spec h16 hwf hin hin_lt (hfit.of_le (by omega)))
       hin (Set.empty_disjoint _) hin_lt)).mono le_rfl fun p s₁
-        ⟨hmod₁, ⟨hfr₁, hsel_fr1, hcc_fr1, hsel_cn, hsel_cm, _, hwf₁, selIdxs, compFn, hsl_len,
-          hnd_sel, hsel_sub, hsel_msf, hsel_holds, hcov_nonloop, hcomp_mem, hcomp_surj, hcomp_rel,
-          hsel_sound, hcov_min, hsel_ord⟩, hin₁⟩ => ?_)).mono (by omega) fun _ _ h => h
+        ⟨hmod₁, ⟨hfr₁, hsel_ge, hsel_fr1, _, hcc_fr1, hsel_cn, hsel_cm, _, hwf₁, selIdxs, compFn,
+          hsl_len, hnd_sel, hsel_sub, hsel_msf, hsel_holds, hcov_nonloop, hcomp_mem, hcomp_surj,
+          hcomp_rel, hsel_sound, hcov_min⟩, hin₁⟩ => ?_)).mono (by omega) fun _ _ h => h
   refine (Memory.FramedTriple.bind_same (c₂ := 0) ((FramedTriple.with_modifies
     (holdsIndexedEdges_frame_mem (boruvkaShrinkProg_spec h16 hwf₁ hin₁
       (Nat.le_trans hin_lt hmod₁.1) hcomp_mem hcc_fr1 (hfit.of_le (by omega))) hsel_holds
       (Set.empty_disjoint _) (by rw [List.length_map, hsl_len]; exact hsel_fr1))).mono
-      le_rfl fun out s₂ ⟨hmod₂, ⟨hfr₂, hout_fr2, _, hne_le, hwf₂, esCon, esDedup, lift, esOut,
-        hes_con, hded_sub, hded_eq, hded_simp, hlift_inj, hlen_out, hout_holds, hout_cover,
+      le_rfl fun out s₂ ⟨hmod₂, ⟨hfr₂, hout_ge, hout_fr2, _, hne_le, hwf₂, esCon, esDedup, lift,
+        esOut, hes_con, hded_sub, hded_eq, hded_simp, hlift_inj, hlen_out, hout_holds, hout_cover,
         hes_compact⟩, hsel_holds2⟩ => ?_)).mono (by omega) fun _ _ h => h
   let remapper (e : IndexedEdge n) : IndexedEdge p.numComps :=
     ⟨compFn e.u, compFn e.v, e.weight, e.id⟩
@@ -1719,7 +1647,8 @@ theorem boruvkaStepProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n)}
     simp only [edgeEnds, List.getElem_map, IndexedEdge.toWeighted, Sym2.mk_isDiag_iff] at hno
     exact hno (hlift_inj ((congrArg IndexedEdge.u he_eq).trans
       (hcomp_eq.trans (congrArg IndexedEdge.v he_eq).symm)))
-  exact Memory.FramedTriple.pure ⟨by omega, Nat.le_trans hsel_fr1 hmod₂.1, hout_fr2,
+  exact Memory.FramedTriple.pure ⟨by omega, hsel_ge, Nat.le_trans hsel_fr1 hmod₂.1,
+    Nat.le_trans hmod₁.1 hout_ge, hout_fr2,
     boruvkaStep_two_mul_le hes_con hded_sub hlift_inj hout_cover hes_compact hes_out_simp
       hcov_nonloop hcomp_rel,
     hne_le, hsel_cn, hsel_cm, hwf₂, selIdxs, outIdxs, esOut, hsl_len, hnd_sel, hout_len,
@@ -1731,6 +1660,6 @@ theorem boruvkaStepProg_spec {w n edgeBase : ℕ} {es : List (IndexedEdge n)}
       congrArg (List.map IndexedEdge.id) hmap_eq,
     fun L_out hL_sub hL_msf => boruvkaStepProg_lift_msf hsel_sub hsel_msf hcomp_surj hcomp_rel
       hes_con hded_sub hded_eq hded_simp hlift_inj hes_compact hL_sub hL_msf,
-    hsel_sound, hcov_min, hsel_ord⟩
+    hsel_sound, hcov_min⟩
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest
