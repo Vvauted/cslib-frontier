@@ -17,11 +17,15 @@ Exercises `PartitionRoundWitness`, `PartitionRoundWitness.compGlobal`,
 `PartitionRoundWitness.verts`, `partition_optDepth_sum_le`,
 `partition_conglom_active_verts_le`, and `partition_isMinSpanningForest` across:
 
-- a 5-vertex, 3-round overlapping conglomerate instance (`V₀ = {0, 1}`, `V₁ = {2, 0}` stopping at
-  `stopPrev = some 0`, `V₂ = {3, 4}`), non-empty inter-conglomerate `H_rem` pruned down to `H_lift`,
-  and non-empty corrupted border edges `corrEdges`;
+- a 5-vertex, 3-round overlapping conglomerate instance (`V₀ = {0, 1}`, `V₁ = {2, 0}` overlapping
+  at shared vertex `0`, `V₂ = {3, 4}`), non-empty inter-conglomerate `H_rem` pruned down to
+  `H_lift`, and non-empty corrupted border edges `corrEdges`;
 - a 4-vertex, 2-round disjoint conglomerate instance with `n_a = 2`, `maxsize = 2`, `n = 4`;
-- a 0-edge / 0-active-conglomerate boundary instance on `n = 2`.
+- a 0-edge / 0-active-conglomerate boundary instance on `n = 2`;
+- a 5-vertex, `numSteps = 2` overlapping multigraph witness exercising non-trivial `truncateDJP`
+  (`D_pre.numSteps = 1`), parallel edges, and duplicate weights in `partition_isMinSpanningForest`;
+- a 5-vertex witness exercising the third `hstop` branch (inactive `< maxsize` isolated component
+  with no incident `H_rem` edges alongside active conglomerates).
 -/
 
 -- This test module intentionally exports no declarations.
@@ -81,7 +85,6 @@ private def r5_0 : PartitionRoundWitness 5 where
   lift k := ⟨k.val, by omega⟩
   compLocal := [⟨0, 1, 1, 0⟩]
   corrEdges := [⟨1, 2, 9, 5⟩]
-  stopPrev := none
 
 private def r5_1 : PartitionRoundWitness 5 where
   tree := tree5R1
@@ -89,7 +92,6 @@ private def r5_1 : PartitionRoundWitness 5 where
   lift k := if k.val = 0 then 2 else 0
   compLocal := [⟨0, 1, 5, 1⟩]
   corrEdges := []
-  stopPrev := some 0
 
 private def r5_2 : PartitionRoundWitness 5 where
   tree := tree5R2
@@ -97,7 +99,6 @@ private def r5_2 : PartitionRoundWitness 5 where
   lift k := ⟨k.val + 3, by omega⟩
   compLocal := [⟨0, 1, 3, 2⟩]
   corrEdges := [⟨1, 4, 11, 6⟩]
-  stopPrev := none
 
 private def rounds5 : List (PartitionRoundWitness 5) := [r5_0, r5_1, r5_2]
 private def hRem5 : List (IndexedEdge 5) := [⟨1, 3, 7, 3⟩, ⟨0, 4, 8, 4⟩]
@@ -146,8 +147,9 @@ example :
       optDepthMN es5.length 5 ∧
       2 * 2 ≤ 5 ∧
       IsMinSpanningForest (es5.map IndexedEdge.toWeighted) f5 := by
-  have hdepth := partition_optDepth_sum_le (es := es5) (rounds := rounds5) (H_rem := hRem5)
-    rounds5_hsimp (List.Perm.refl _) (fun i => by
+  have hdepth := partition_optDepth_sum_le (es := es5) (rounds := rounds5)
+    rounds5_hsimp ((List.sublist_append_left _ _).trans (List.sublist_append_left _ _)).subperm
+    (fun i => by
       fin_cases i <;> dsimp only
       · refine ⟨fun a b h => by fin_cases a <;> fin_cases b <;> cases h <;> rfl,
           fun e he => by
@@ -257,7 +259,7 @@ example :
         | exact absurd hij (by decide)
         | (obtain ⟨s, _, rfl⟩ := List.mem_map.mp he
            fin_cases s
-           refine ⟨by decide, fun s₀ hs => ?_⟩
+           intro s₀ hs
            fin_cases s₀
            first | decide | exact absurd hs (by decide)))
     rfl hF_msf
@@ -299,7 +301,6 @@ private def r4_0 : PartitionRoundWitness 4 where
   lift k := ⟨k.val, by omega⟩
   compLocal := [⟨0, 1, 2, 0⟩]
   corrEdges := [⟨0, 3, 9, 3⟩]
-  stopPrev := none
 
 private def r4_1 : PartitionRoundWitness 4 where
   tree := tree4R1
@@ -307,7 +308,6 @@ private def r4_1 : PartitionRoundWitness 4 where
   lift k := ⟨k.val + 2, by omega⟩
   compLocal := [⟨0, 1, 3, 1⟩]
   corrEdges := []
-  stopPrev := none
 
 private def rounds4 : List (PartitionRoundWitness 4) := [r4_0, r4_1]
 private def hRem4 : List (IndexedEdge 4) := [⟨1, 2, 4, 2⟩]
@@ -344,8 +344,9 @@ example :
     rw [isSimple_iff]
     refine ⟨fun i => by fin_cases i <;> decide, fun i j hij => by
       fin_cases i <;> fin_cases j <;> first | rfl | exact absurd hij (by decide)⟩
-  have hdepth := partition_optDepth_sum_le (es := es4) (rounds := rounds4) (H_rem := hRem4)
-    hsimp (List.Perm.refl _) (fun i => by
+  have hdepth := partition_optDepth_sum_le (es := es4) (rounds := rounds4)
+    hsimp ((List.sublist_append_left _ _).trans (List.sublist_append_left _ _)).subperm
+    (fun i => by
       fin_cases i <;> dsimp only
       · exact ⟨fun a b h => by fin_cases a <;> fin_cases b <;> cases h <;> rfl,
           fun e he => by
@@ -431,7 +432,9 @@ example :
         | exact absurd hij (by decide)
         | (obtain ⟨s, _, rfl⟩ := List.mem_map.mp he
            fin_cases s
-           refine ⟨by decide, fun s₀ _ => by fin_cases s₀; decide⟩))
+           intro s₀ _
+           fin_cases s₀
+           decide))
     rfl hF_msf
     (show hLift4.Sublist (hRem4.map IndexedEdge.toWeighted) by decide).subperm
     hHL_msf hF
@@ -458,7 +461,6 @@ private def r2_0 : PartitionRoundWitness 2 where
   lift _ := 0
   compLocal := []
   corrEdges := []
-  stopPrev := none
 
 private def r2_1 : PartitionRoundWitness 2 where
   tree := tree2Iso 1
@@ -466,7 +468,6 @@ private def r2_1 : PartitionRoundWitness 2 where
   lift _ := 1
   compLocal := []
   corrEdges := []
-  stopPrev := none
 
 private def rounds2 : List (PartitionRoundWitness 2) := [r2_0, r2_1]
 
@@ -512,5 +513,208 @@ example :
     (by change IsMinSpanningForest [] []; exact h0)
     (by change IsMinSpanningForest [] []; exact h0)
   exact ⟨hconglom, hmsf⟩
+
+/-! ## Multi-step overlapping multigraph witness (`numSteps = 2`, parallel & duplicate weights) -/
+
+private def tree5M0 : DynamicDJPTree 5 where
+  numSteps := 1
+  root := 0
+  edge _ := ⟨0, 1, 2⟩
+  wPop _ := 2
+  vIn _ := 0
+  vOut _ := 1
+  edge_weight_le_wPop s := by fin_cases s; decide
+  ends_match s := by fin_cases s; simp
+  vIn_mem s := by fin_cases s; decide
+  vOut_not_mem s := by fin_cases s; decide
+  djp_future s s' hlt := by fin_cases s; fin_cases s'; simp_all
+
+private def tree5M1 : DynamicDJPTree 5 where
+  numSteps := 2
+  root := 2
+  edge s := if s.val = 0 then ⟨2, 3, 2⟩ else ⟨2, 1, 4⟩
+  wPop s := if s.val = 0 then 2 else 4
+  vIn _ := 2
+  vOut s := if s.val = 0 then 3 else 1
+  edge_weight_le_wPop s := by fin_cases s <;> decide
+  ends_match s := by fin_cases s <;> simp
+  vIn_mem s := by fin_cases s <;> decide
+  vOut_not_mem s := by fin_cases s <;> decide
+  djp_future s s' hlt _ := by
+    fin_cases s <;> fin_cases s' <;> first | exact absurd hlt (by decide) | decide
+
+private def tree5Iso (x : Fin 5) : DynamicDJPTree 5 where
+  numSteps := 0
+  root := x
+  edge s := Fin.elim0 s
+  wPop s := Fin.elim0 s
+  vIn s := Fin.elim0 s
+  vOut s := Fin.elim0 s
+  edge_weight_le_wPop s := Fin.elim0 s
+  ends_match s := Fin.elim0 s
+  vIn_mem s := Fin.elim0 s
+  vOut_not_mem s := Fin.elim0 s
+  djp_future s := Fin.elim0 s
+
+private def r5M_0 : PartitionRoundWitness 5 where
+  tree := tree5M0
+  numVerts := 2
+  lift k := ⟨k.val, by omega⟩
+  compLocal := [⟨0, 1, 2, 0⟩]
+  corrEdges := [⟨0, 2, 7, 7⟩]
+
+private def r5M_1 : PartitionRoundWitness 5 where
+  tree := tree5M1
+  numVerts := 3
+  lift k := if k.val = 0 then 2 else if k.val = 1 then 3 else 1
+  compLocal := [⟨0, 1, 2, 1⟩, ⟨0, 1, 2, 2⟩, ⟨0, 2, 4, 3⟩]
+  corrEdges := []
+
+private def r5M_2 : PartitionRoundWitness 5 where
+  tree := tree5Iso 4
+  numVerts := 1
+  lift _ := 4
+  compLocal := []
+  corrEdges := []
+
+private def rounds5M : List (PartitionRoundWitness 5) := [r5M_0, r5M_1, r5M_2]
+private def hRem5M : List (IndexedEdge 5) := [⟨0, 4, 5, 4⟩, ⟨0, 4, 5, 5⟩, ⟨3, 4, 6, 6⟩]
+private def es5M : List (IndexedEdge 5) :=
+  (rounds5M.flatMap PartitionRoundWitness.compGlobal) ++ hRem5M ++
+    (rounds5M.flatMap PartitionRoundWitness.corrEdges)
+
+private def conglomFn5M (x : Fin 5) : Fin 2 := if x.val ≤ 3 then 0 else 1
+private def fComps5M : List (List (WeightedEdge 5 ℕ)) :=
+  [[⟨0, 1, 2⟩], [⟨2, 3, 2⟩, ⟨2, 1, 4⟩], []]
+private def hLift5M : List (WeightedEdge 5 ℕ) := [⟨0, 4, 5⟩]
+private def f5M : List (WeightedEdge 5 ℕ) :=
+  [⟨0, 1, 2⟩, ⟨2, 3, 2⟩, ⟨2, 1, 4⟩, ⟨0, 4, 5⟩]
+
+example : IsMinSpanningForest (es5M.map IndexedEdge.toWeighted) f5M := by
+  have hcov : ∀ x : Fin 5, ∃ r ∈ rounds5M, x ∈ r.verts := fun x => by
+    fin_cases x
+    · exact ⟨r5M_0, by simp [rounds5M], by decide⟩
+    · exact ⟨r5M_0, by simp [rounds5M], by decide⟩
+    · exact ⟨r5M_1, by simp [rounds5M], by decide⟩
+    · exact ⟨r5M_1, by simp [rounds5M], by decide⟩
+    · exact ⟨r5M_2, by simp [rounds5M], by decide⟩
+  have hrel : ∀ x y : Fin 5, conglomFn5M x = conglomFn5M y ↔
+      (edgePartition (rounds5M.flatMap fun r => r.tree.treeEdges)).rel x y = true :=
+    fun x y => by fin_cases x <;> fin_cases y <;> decide
+  have hF_msf : ∀ i : Fin rounds5M.length,
+      IsMinSpanningForest (rounds5M[i.val].compGlobal.map IndexedEdge.toWeighted)
+        (fComps5M[i.val]'(by dsimp [fComps5M, rounds5M] at *; omega)) := by
+    intro i
+    fin_cases i <;> dsimp only [rounds5M, fComps5M]
+    · have hk : kruskalEdges (r5M_0.compGlobal.map IndexedEdge.toWeighted) = [⟨0, 1, 2⟩] := by
+        rw [kruskalEdges, show sortEdges (r5M_0.compGlobal.map IndexedEdge.toWeighted) =
+          [⟨0, 1, 2⟩] by simp [r5M_0, PartitionRoundWitness.compGlobal, IndexedEdge.toWeighted,
+            sortEdges_singleton]]
+        rfl
+      exact hk ▸ kruskalEdges_isMinSpanningForest _
+    · have hk : kruskalEdges (r5M_1.compGlobal.map IndexedEdge.toWeighted) =
+          [⟨2, 3, 2⟩, ⟨2, 1, 4⟩] := by
+        rw [kruskalEdges, show sortEdges (r5M_1.compGlobal.map IndexedEdge.toWeighted) =
+          [⟨2, 3, 2⟩, ⟨2, 3, 2⟩, ⟨2, 1, 4⟩] by
+            simp [r5M_1, PartitionRoundWitness.compGlobal, IndexedEdge.toWeighted,
+              sortEdges_cons_cons, sortEdges_singleton]]
+        rfl
+      exact hk ▸ kruskalEdges_isMinSpanningForest _
+    · have hk : kruskalEdges (r5M_2.compGlobal.map IndexedEdge.toWeighted) = [] := by
+        rw [kruskalEdges, show sortEdges (r5M_2.compGlobal.map IndexedEdge.toWeighted) = [] by
+          simp [r5M_2, PartitionRoundWitness.compGlobal, sortEdges_nil]]
+        rfl
+      exact hk ▸ kruskalEdges_isMinSpanningForest _
+  have hHL_msf : IsMinSpanningForest
+      (contractEdgeList conglomFn5M (hRem5M.map IndexedEdge.toWeighted))
+      (contractEdgeList conglomFn5M hLift5M) := by
+    have hk : kruskalEdges (contractEdgeList conglomFn5M (hRem5M.map IndexedEdge.toWeighted)) =
+        contractEdgeList conglomFn5M hLift5M := by
+      rw [kruskalEdges, show sortEdges
+        (contractEdgeList conglomFn5M (hRem5M.map IndexedEdge.toWeighted)) =
+          [⟨0, 1, 5⟩, ⟨0, 1, 5⟩, ⟨0, 1, 6⟩] by
+            simp [hRem5M, contractEdgeList, contractEdge, IndexedEdge.toWeighted, conglomFn5M,
+              sortEdges_cons_cons, sortEdges_singleton]]
+      rfl
+    exact hk ▸ kruskalEdges_isMinSpanningForest _
+  have hF : IsMinSpanningForest
+      (fComps5M.flatten ++ hLift5M ++
+        (rounds5M.flatMap PartitionRoundWitness.corrEdges).map IndexedEdge.toWeighted) f5M := by
+    have hk : kruskalEdges (fComps5M.flatten ++ hLift5M ++
+        (rounds5M.flatMap PartitionRoundWitness.corrEdges).map IndexedEdge.toWeighted) =
+        f5M := by
+      rw [kruskalEdges, show sortEdges (fComps5M.flatten ++ hLift5M ++
+        (rounds5M.flatMap PartitionRoundWitness.corrEdges).map IndexedEdge.toWeighted) =
+          [⟨0, 1, 2⟩, ⟨2, 3, 2⟩, ⟨2, 1, 4⟩, ⟨0, 4, 5⟩, ⟨0, 2, 7⟩] by
+            simp [fComps5M, hLift5M, rounds5M, r5M_0, r5M_1, r5M_2, IndexedEdge.toWeighted,
+              sortEdges_cons_cons, sortEdges_singleton]]
+      rfl
+    exact hk ▸ kruskalEdges_isMinSpanningForest _
+  exact partition_isMinSpanningForest (n := 5) (nConglom := 2)
+    (es := es5M.map IndexedEdge.toWeighted) (rounds := rounds5M) (H_rem := hRem5M)
+    (conglomFn := conglomFn5M) (F_comps := fComps5M) (H_lift := hLift5M) (F := f5M)
+    (List.Perm.refl _) hcov hrel
+    (fun i => by
+      fin_cases i
+      · refine ⟨(show tree5M0.treeEdges.Sublist _ by decide).subperm, fun x hx hprev => ?_⟩
+        fin_cases x <;> first | exact absurd hx (by decide) | exact absurd hprev (by decide)
+      · refine ⟨(show tree5M1.treeEdges.Sublist _ by decide).subperm, fun x hx hprev => ?_⟩
+        refine ⟨by decide, ?_⟩
+        fin_cases x <;> first | rfl | exact absurd hx (by decide) | exact absurd hprev (by decide)
+      · exact ⟨List.Subperm.refl _, fun x hx hprev => by
+          fin_cases x <;> first | exact absurd hx (by decide) | exact absurd hprev (by decide)⟩)
+    (fun i e he => by
+      fin_cases i <;>
+        simp only [hRem5M, List.mem_cons, List.not_mem_nil, or_false] at he <;>
+        rcases he with rfl | rfl | rfl <;>
+        refine ⟨by decide, fun s hs => ?_⟩ <;>
+        fin_cases s <;> decide)
+    (fun i j hij e he => by
+      fin_cases i <;> fin_cases j <;>
+        first
+        | exact absurd hij (by decide)
+        | (obtain ⟨s, _, rfl⟩ := List.mem_map.mp he
+           fin_cases s <;> intro s₀ _ <;> fin_cases s₀ <;> decide))
+    rfl hF_msf
+    (show hLift5M.Sublist (hRem5M.map IndexedEdge.toWeighted) by decide).subperm
+    hHL_msf hF
+
+/-! ## Boundary instance: inactive `< maxsize` isolated component (`n = 5`, 3rd `hstop` branch) -/
+
+private def r5B_1 : PartitionRoundWitness 5 where
+  tree := tree5Iso 2
+  numVerts := 1
+  lift _ := 2
+  compLocal := []
+  corrEdges := []
+
+private def rounds5B : List (PartitionRoundWitness 5) := [r5_0, r5B_1, r5_2]
+private def hRem5B : List (IndexedEdge 5) := [⟨1, 3, 7, 0⟩]
+private def conglomFn5B (x : Fin 5) : Fin 3 :=
+  if x.val ≤ 1 then 0 else if x.val = 2 then 1 else 2
+
+example : 2 * 2 ≤ 5 := by
+  refine partition_conglom_active_verts_le (n := 5) (nConglom := 3) (n_a := 2) (maxsize := 2)
+    (rounds := rounds5B) (H_rem := hRem5B) (conglomFn := conglomFn5B)
+    (lift_a := fun y => if y.val = 0 then 0 else 2)
+    (fun x => by
+      fin_cases x
+      · exact ⟨r5_0, by simp [rounds5B], by decide⟩
+      · exact ⟨r5_0, by simp [rounds5B], by decide⟩
+      · exact ⟨r5B_1, by simp [rounds5B], by decide⟩
+      · exact ⟨r5_2, by simp [rounds5B], by decide⟩
+      · exact ⟨r5_2, by simp [rounds5B], by decide⟩)
+    (fun x y => by fin_cases x <;> fin_cases y <;> decide)
+    (fun i => by
+      fin_cases i
+      · exact .inl (by decide)
+      · exact .inr (.inr ⟨fun j hne => by
+          fin_cases j <;> first | exact absurd rfl hne | decide,
+          fun e he => by
+            simp only [hRem5B, List.mem_cons, List.not_mem_nil, or_false] at he
+            subst he; decide⟩)
+      · exact .inl (by decide))
+    (fun a b h => by fin_cases a <;> fin_cases b <;> cases h <;> rfl)
+    (fun y => by fin_cases y <;> exact ⟨⟨1, 3, 7, 0⟩, by simp [hRem5B], by decide⟩)
 
 end CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.PartitionBridges

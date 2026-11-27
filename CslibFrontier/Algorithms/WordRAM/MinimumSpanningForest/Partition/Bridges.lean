@@ -11,16 +11,18 @@ public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.Contract
 public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Canonical
 public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.IndexedEdges
 import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.DecisionTree.Decomp
+import CslibFrontier.Foundations.Data.List.Subperm
 import Mathlib.Data.Nat.Find
 
 /-!
 # Partition Round Bridges: Decision-Tree Depth, Conglomerate Size, and MSF Lifting
 
-Pure Lean bridges connecting dynamic-DJP `Partition` round witnesses (`PartitionRoundWitness`)
-to upstream `Cslib.Query.MinimumSpanningForest` theorems (`sum_optDepth_le_optDepthMN`,
-`maxsize_le_card_biUnion_of_stop`, `DynamicDJPTree.rel_treeEdges_filter_of_border`, and
-`isMinSpanningForest_of_weakSupport`), proving the Lemma 3.2 and Lemma 3.3 bounds of
-[PettieRamachandran2002] (#8624).
+Steps toward Theorem 5.8 of [PettieRamachandran2002] (#8624) over caller-supplied dynamic-DJP
+round witnesses (`PartitionRoundWitness`), connecting `PartitionRoundWitness` lists to upstream
+`Cslib.Query.MinimumSpanningForest` theorems (`sum_optDepth_le_optDepthMN`,
+`maxsize_le_card_biUnion_of_stop`, `DynamicDJPTree.rel_treeEdges_filter_of_border`,
+`edgePartition_rel_of_contracted_bridge`, and `isMinSpanningForest_of_weakSupport`) for Lemma 3.2
+(§3.1, p. 20), Lemma 3.3 (§3.2, pp. 21–22), and Property 5.3 / Corollary 5.6 (§5.1, pp. 25–26).
 
 ## Main definitions
 
@@ -37,6 +39,11 @@ to upstream `Cslib.Query.MinimumSpanningForest` theorems (`sum_optDepth_le_optDe
   conglomerate vertex bound `n_a * maxsize ≤ n`.
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.partition_isMinSpanningForest`: multi-round
   conglomerate weak-support MSF lifting theorem.
+
+## References
+
+* [S. Pettie and V. Ramachandran, *An Optimal Minimum Spanning Tree
+  Algorithm*][PettieRamachandran2002]
 -/
 
 public section
@@ -52,16 +59,14 @@ open Cslib.Query.MinimumSpanningForest
 structure PartitionRoundWitness (n : ℕ) where
   /-- Dynamic Soft-Heap DJP tree grown in this round. -/
   tree : DynamicDJPTree n
-  /-- Vertex count `|V_i|` (`1 ≤ numVerts ≤ maxsize`). -/
+  /-- Vertex count `|V_i|` of the dense local vertex set `Fin numVerts`. -/
   numVerts : ℕ
-  /-- Injective embedding from dense local vertices `Fin numVerts` to `Fin n`. -/
+  /-- Map from dense local vertices `Fin numVerts` to global vertices `Fin n`. -/
   lift : Fin numVerts → Fin n
-  /-- Simple local edge list `C_i` on `Fin numVerts`. -/
+  /-- Local edge list `C_i` on `Fin numVerts`. -/
   compLocal : List (IndexedEdge numVerts)
   /-- Corrupted edges `M_i` collected at the end of this round. -/
   corrEdges : List (IndexedEdge n)
-  /-- Optional stopping vertex already present in an earlier round. -/
-  stopPrev : Option (Fin n)
 
 /-- Lift `compLocal` back to global vertices `Fin n` via `lift`. -/
 @[expose] def PartitionRoundWitness.compGlobal {n : ℕ} (r : PartitionRoundWitness n) :
@@ -173,69 +178,6 @@ private theorem validDecomp_rounds_take_reverse {n : ℕ}
     exact (Finset.card_le_card (Finset.inter_subset_inter hsub1 hsub2)).trans
       (hrounds ⟨t, ht_lt⟩).2
 
-private theorem sublist_inj {α : Type*} :
-    ∀ {xs ys : List α}, xs.Sublist ys →
-      ∃ f : Fin xs.length ↪ Fin ys.length, ∀ i : Fin xs.length, xs[i.val] = ys[(f i).val]
-  | [], _, .slnil => ⟨⟨Fin.elim0, fun a => Fin.elim0 a⟩, fun a => Fin.elim0 a⟩
-  | _, _ :: _, .cons _ h => by
-    obtain ⟨f, hf⟩ := sublist_inj h
-    exact ⟨f.trans ⟨Fin.succ, Fin.succ_injective _⟩, fun i => by simpa using hf i⟩
-  | _ :: _, _ :: _, .cons_cons _ h => by
-    obtain ⟨f, hf⟩ := sublist_inj h
-    refine ⟨⟨fun i => Fin.cases 0 (fun j => (f j).succ) i, fun a b hab => ?_⟩, fun i => ?_⟩
-    · cases a using Fin.cases with
-      | zero =>
-        cases b using Fin.cases with
-        | zero => rfl
-        | succ b' => exact absurd hab.symm (Fin.succ_ne_zero _)
-      | succ a' =>
-        cases b using Fin.cases with
-        | zero => exact absurd hab (Fin.succ_ne_zero _)
-        | succ b' =>
-          simp only [Fin.cases_succ, Fin.succ_inj] at hab
-          exact congrArg Fin.succ (f.injective hab)
-    · cases i using Fin.cases with
-      | zero => rfl
-      | succ i' => simpa using hf i'
-
-private theorem perm_inj {α : Type*} {xs ys : List α} (h : xs.Perm ys) :
-    ∃ f : Fin xs.length ≃ Fin ys.length, ∀ i : Fin xs.length, xs[i.val] = ys[(f i).val] := by
-  induction h with
-  | nil => exact ⟨Equiv.refl _, fun i => Fin.elim0 i⟩
-  | cons _ _ ih =>
-    obtain ⟨f, hf⟩ := ih
-    refine ⟨⟨fun i => Fin.cases 0 (fun j => (f j).succ) i,
-      fun j => Fin.cases 0 (fun k => (f.symm k).succ) j, fun i => ?_, fun j => ?_⟩, fun i => ?_⟩
-    · cases i using Fin.cases with
-      | zero => rfl
-      | succ i' => simp
-    · cases j using Fin.cases with
-      | zero => rfl
-      | succ j' => simp
-    · cases i using Fin.cases with
-      | zero => rfl
-      | succ i' => simpa using hf i'
-  | swap _ _ _ =>
-    refine ⟨⟨fun i => if i.val = 0 then ⟨1, by simp⟩
-      else if i.val = 1 then ⟨0, by simp⟩ else ⟨i.val, by simpa using i.isLt⟩,
-      fun i => if i.val = 0 then ⟨1, by simp⟩
-      else if i.val = 1 then ⟨0, by simp⟩ else ⟨i.val, by simpa using i.isLt⟩,
-      fun i => ?_, fun i => ?_⟩, fun i => ?_⟩
-    · ext; rcases i with ⟨_ | _ | k, hk⟩ <;> simp
-    · ext; rcases i with ⟨_ | _ | k, hk⟩ <;> simp
-    · rcases i with ⟨_ | _ | k, hk⟩ <;> simp
-  | trans _ _ ih1 ih2 =>
-    obtain ⟨f1, hf1⟩ := ih1
-    obtain ⟨f2, hf2⟩ := ih2
-    exact ⟨f1.trans f2, fun i => (hf1 i).trans (hf2 (f1 i))⟩
-
-private theorem subperm_inj {α : Type*} {xs ys : List α} (h : xs.Subperm ys) :
-    ∃ f : Fin xs.length ↪ Fin ys.length, ∀ i : Fin xs.length, xs[i.val] = ys[(f i).val] := by
-  obtain ⟨zs, hperm, hsl⟩ := List.subperm_iff.mp h
-  obtain ⟨f1, hf1⟩ := sublist_inj hsl
-  obtain ⟨f2, hf2⟩ := perm_inj hperm
-  exact ⟨f1.trans f2.toEmbedding, fun i => (hf1 i).trans (hf2 (f1 i))⟩
-
 private theorem edgeUnionList_ends_equiv {n : ℕ} (L : List (List (WeightedEdge n ℕ))) :
     let Cs := L.map fun xs => (⟨xs.length, edgeEnds xs⟩ : Σ e, Fin e → Sym2 (Fin n))
     ∃ σ : Fin (edgeCountList Cs) ≃ Fin L.flatten.length,
@@ -297,46 +239,51 @@ private theorem edgeUnionList_isSimple_of_subperm {n : ℕ}
     (hsub : L.flatten.Subperm es) (hsimp : IsSimple (edgeEnds es)) :
     IsSimple (edgeUnionList (L.map fun xs =>
       (⟨xs.length, edgeEnds xs⟩ : Σ e, Fin e → Sym2 (Fin n)))) := by
-  let Cs := L.map fun xs => (⟨xs.length, edgeEnds xs⟩ : Σ e, Fin e → Sym2 (Fin n))
   obtain ⟨σ, hσ⟩ := edgeUnionList_ends_equiv L
-  obtain ⟨f, hf⟩ := subperm_inj hsub
   have hsimp' := (isSimple_iff _).mp hsimp
+  have hnd_es : (es.map fun e : WeightedEdge n ℕ => s(e.u, e.v)).Nodup :=
+    List.nodup_iff_injective_get.mpr fun i j hij => by
+      have heq : edgeEnds es ⟨i.val, by simpa only [List.length_map] using i.isLt⟩ =
+          edgeEnds es ⟨j.val, by simpa only [List.length_map] using j.isLt⟩ := by
+        simpa [edgeEnds, List.get_eq_getElem] using hij
+      exact Fin.ext (congrArg (Fin.val : Fin es.length → ℕ) (hsimp'.2 heq))
+  let endsFlat := L.flatten.map fun e : WeightedEdge n ℕ => s(e.u, e.v)
+  have hnd_flat : endsFlat.Nodup := (List.subperm_map _ hsub).nodup hnd_es
   rw [isSimple_iff]
   refine ⟨fun i => ?_, fun i₁ i₂ hij => ?_⟩
   · rw [hσ i]
-    have hne := hsimp'.1 (f (σ i))
+    obtain ⟨j, hj, hje⟩ := List.getElem_of_mem (hsub.subset (List.getElem_mem (σ i).isLt))
+    have hne := hsimp'.1 ⟨j, by simpa using hj⟩
     dsimp only [edgeEnds] at hne
-    have h1 := congrArg WeightedEdge.u (hf (σ i))
-    have h2 := congrArg WeightedEdge.v (hf (σ i))
-    rw [h1, h2]
-    exact hne
-  · simp only [hσ, hf] at hij
-    exact σ.injective (f.injective (hsimp'.2 hij))
+    rwa [hje] at hne
+  · rw [hσ i₁, hσ i₂] at hij
+    have heq : endsFlat.get ⟨(σ i₁).val, by simpa only [endsFlat, List.length_map] using
+          (σ i₁).isLt⟩ =
+        endsFlat.get ⟨(σ i₂).val, by simpa only [endsFlat, List.length_map] using
+          (σ i₂).isLt⟩ := by
+      simpa only [endsFlat, List.get_eq_getElem, List.getElem_map] using hij
+    exact σ.injective (Fin.ext (congrArg (Fin.val : Fin endsFlat.length → ℕ)
+      (List.nodup_iff_injective_get.mp hnd_flat heq)))
 
 private theorem map_compGlobal_flatten {n : ℕ} (qs : List (PartitionRoundWitness n)) :
     (qs.map fun r => r.compGlobal.map IndexedEdge.toWeighted).flatten =
       (qs.flatMap PartitionRoundWitness.compGlobal).map IndexedEdge.toWeighted := by
-  induction qs with
-  | nil => rfl
-  | cons q rest ih => simp [List.flatMap_cons, List.flatten_cons, ih]
+  rw [List.flatMap_def, List.map_flatten, List.map_map]; rfl
 
 private theorem sum_compGlobal_length {n : ℕ} (qs : List (PartitionRoundWitness n)) :
     ((qs.map toGlobalEnds).map Sigma.fst).sum =
       (qs.map fun r => r.compGlobal.map IndexedEdge.toWeighted).flatten.length := by
-  induction qs with
-  | nil => rfl
-  | cons q rest ih =>
-    simp only [List.map_cons, List.sum_cons, List.flatten_cons, List.length_append]
-    rw [ih]; rfl
+  rw [List.length_flatten, List.map_map, List.map_map]; rfl
 
-/-- Decision-tree depth sum bound (`PR02` Lemma 3.3 / Property 5.3): for the disjoint
-vertex-compacted component subgraphs `C_0, ..., C_{k-1}` emitted by `partitionProg`,
-the sum of optimal decision-tree depths `optDepth C_i` is at most `optDepthMN es.length n`. -/
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), adapting Lemma 3.3 (§3.2,
+pp. 21–22) via Property 5.3 and Corollary 5.6 (§5.1, pp. 25–26): for component subgraphs
+`r.compLocal` emitted across a witness list `rounds` whose global vertex sets `r.verts` overlap
+earlier rounds in at most one vertex (`(r.verts ∩ ...).card ≤ 1`), the sum of optimal
+decision-tree depths `optDepth` is at most `optDepthMN es.length n`. -/
 theorem partition_optDepth_sum_le {n : ℕ} {es : List (IndexedEdge n)}
-    {rounds : List (PartitionRoundWitness n)} {H_rem : List (IndexedEdge n)}
+    {rounds : List (PartitionRoundWitness n)}
     (hsimp : IsSimple (edgeEnds (es.map IndexedEdge.toWeighted)))
-    (hperm : ((rounds.flatMap PartitionRoundWitness.compGlobal) ++ H_rem ++
-      (rounds.flatMap PartitionRoundWitness.corrEdges)).Perm es)
+    (hsub : (rounds.flatMap PartitionRoundWitness.compGlobal).Subperm es)
     (hrounds : ∀ i : Fin rounds.length,
       let r := rounds[i.val]'i.isLt
       Function.Injective r.lift ∧
@@ -359,11 +306,7 @@ theorem partition_optDepth_sum_le {n : ℕ} {es : List (IndexedEdge n)}
     have hp1 : (rounds.reverse.flatMap PartitionRoundWitness.compGlobal).Perm
         (rounds.flatMap PartitionRoundWitness.compGlobal) :=
       (List.reverse_perm _).flatMap fun _ _ => List.Perm.refl _
-    have hsub1 : (rounds.flatMap PartitionRoundWitness.compGlobal).Subperm es :=
-      ((List.sublist_append_left _ _).trans (List.sublist_append_left _ _)).subperm.trans
-        hperm.subperm
-    obtain ⟨z, hp, hs⟩ := List.subperm_iff.mp (hp1.subperm.trans hsub1)
-    exact List.subperm_iff.mpr ⟨z.map _, hp.map _, hs.map _⟩
+    exact List.subperm_map _ (hp1.subperm.trans hsub)
   have hCs_eq : Cs = (rounds.reverse.map fun r =>
       r.compGlobal.map IndexedEdge.toWeighted).map fun xs =>
       (⟨xs.length, edgeEnds xs⟩ : Σ e, Fin e → Sym2 (Fin n)) := by
@@ -424,8 +367,9 @@ private theorem verts_conglom_eq {n nConglom : ℕ}
   exact ((hconglom_rel x r.tree.root).mpr
     ((edgePartition _).symm (edgePartition_mono_subperm hsub hrel_r)))
 
-/-- Conglomerate active-vertex bound (`PR02` Lemma 3.3): any set of `n_a` conglomerate labels
-incident to edges in `H_rem` satisfies `n_a * maxsize ≤ n`. -/
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), proving the
+active-conglomerate stopping bound of Lemma 3.3 (§3.2, pp. 21–22): any set of `n_a` conglomerate
+labels incident to edges in `H_rem` satisfies `n_a * maxsize ≤ n`. -/
 theorem partition_conglom_active_verts_le {n nConglom n_a maxsize : ℕ}
     {rounds : List (PartitionRoundWitness n)} {H_rem : List (IndexedEdge n)}
     {conglomFn : Fin n → Fin nConglom} {lift_a : Fin n_a → Fin nConglom}
@@ -590,31 +534,6 @@ theorem partition_conglom_active_verts_le {n nConglom n_a maxsize : ℕ}
 
 /-! ## Section 4: Weak-Support MSF Lifting Bridge -/
 
-private theorem subperm_flatten_of_forall {α : Type*} :
-    ∀ (as bs : List (List α)) (hlen : as.length = bs.length),
-      (∀ i (hi : i < as.length), as[i].Subperm (bs[i]'(hlen ▸ hi))) →
-      as.flatten.Subperm bs.flatten
-  | [], [], _, _ => List.nil_subperm
-  | _ :: as, _ :: bs, hlen, h => by
-    simp only [List.flatten_cons]
-    have h0 := h 0 (Nat.zero_lt_succ _)
-    have hlen' : as.length = bs.length := by simpa using hlen
-    have hrest := subperm_flatten_of_forall as bs hlen'
-      fun i hi => h (i + 1) (Nat.succ_lt_succ hi)
-    obtain ⟨z₁, hp₁, hs₁⟩ := List.subperm_iff.mp h0
-    obtain ⟨z₂, hp₂, hs₂⟩ := List.subperm_iff.mp hrest
-    exact List.subperm_iff.mpr ⟨z₁ ++ z₂, hp₁.append hp₂, hs₁.append hs₂⟩
-
-private theorem subperm_flatten_getElem {α : Type*} (xs : List (List α)) (i : ℕ)
-    (hi : i < xs.length) : xs[i].Subperm xs.flatten := by
-  have htake : xs = xs.take i ++ [xs[i]] ++ xs.drop (i + 1) := by
-    conv_lhs => rw [← List.take_append_drop i xs]
-    rw [List.drop_eq_getElem_cons hi, List.append_assoc]
-    rfl
-  conv_rhs => rw [htake]
-  simp only [List.flatten_append, List.flatten_cons, List.flatten_nil, List.append_nil]
-  exact ((List.sublist_append_right _ _).trans (List.sublist_append_left _ _)).subperm
-
 private theorem edgePartition_mono_subset {n : ℕ} {A B : List (WeightedEdge n ℕ)}
     (hsub : ∀ e ∈ A, e ∈ B) {u v : Fin n} (h : (edgePartition A).rel u v = true) :
     (edgePartition B).rel u v = true := by
@@ -670,34 +589,28 @@ private def partPrevSet {n : ℕ} (rounds : List (PartitionRoundWitness n))
   (Finset.univ.filter fun j : Fin rounds.length => j.val < k.val).biUnion
     (fun j => (rounds[j.val]'j.isLt).verts)
 
+private theorem exists_round_of_mem {n : ℕ} (rounds : List (PartitionRoundWitness n))
+    (hcov : ∀ x : Fin n, ∃ r ∈ rounds, x ∈ r.verts) (z : Fin n) :
+    ∃ i : ℕ, ∃ hi : i < rounds.length, z ∈ (rounds[i]'hi).verts := by
+  obtain ⟨r, hr, hzr⟩ := hcov z
+  obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr
+  exact ⟨i, hi, hzr⟩
+
 private noncomputable def partRoundOf {n : ℕ} (rounds : List (PartitionRoundWitness n))
     (hcov : ∀ x : Fin n, ∃ r ∈ rounds, x ∈ r.verts) (z : Fin n) : Fin rounds.length :=
-  ⟨Nat.find (by
-    obtain ⟨r, hr, hzr⟩ := hcov z
-    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr
-    exact ⟨i, hi, hzr⟩ : ∃ i : ℕ, ∃ hi : i < rounds.length, z ∈ (rounds[i]'hi).verts),
-   (Nat.find_spec (by
-    obtain ⟨r, hr, hzr⟩ := hcov z
-    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr
-    exact ⟨i, hi, hzr⟩ : ∃ i : ℕ, ∃ hi : i < rounds.length, z ∈ (rounds[i]'hi).verts)).1⟩
+  ⟨Nat.find (exists_round_of_mem rounds hcov z),
+   (Nat.find_spec (exists_round_of_mem rounds hcov z)).1⟩
 
 private theorem partRoundOf_mem {n : ℕ} (rounds : List (PartitionRoundWitness n))
     (hcov : ∀ x : Fin n, ∃ r ∈ rounds, x ∈ r.verts) (z : Fin n) :
     z ∈ (rounds[(partRoundOf rounds hcov z).val]'(partRoundOf rounds hcov z).isLt).verts :=
-  (Nat.find_spec (by
-    obtain ⟨r, hr, hzr⟩ := hcov z
-    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr
-    exact ⟨i, hi, hzr⟩ : ∃ i : ℕ, ∃ hi : i < rounds.length, z ∈ (rounds[i]'hi).verts)).2
+  (Nat.find_spec (exists_round_of_mem rounds hcov z)).2
 
 private theorem partRoundOf_min {n : ℕ} (rounds : List (PartitionRoundWitness n))
     (hcov : ∀ x : Fin n, ∃ r ∈ rounds, x ∈ r.verts) (z : Fin n) (j : Fin rounds.length)
     (hj : j.val < (partRoundOf rounds hcov z).val) :
     z ∉ (rounds[j.val]'j.isLt).verts := fun hmem =>
-  Nat.find_min (by
-    obtain ⟨r, hr, hzr⟩ := hcov z
-    obtain ⟨i, hi, rfl⟩ := List.getElem_of_mem hr
-    exact ⟨i, hi, hzr⟩ : ∃ i : ℕ, ∃ hi : i < rounds.length, z ∈ (rounds[i]'hi).verts)
-    hj ⟨j.isLt, hmem⟩
+  Nat.find_min (exists_round_of_mem rounds hcov z) hj ⟨j.isLt, hmem⟩
 
 private noncomputable def partRootOf {n : ℕ} (rounds : List (PartitionRoundWitness n))
     (hcov : ∀ x : Fin n, ∃ r ∈ rounds, x ∈ r.verts)
@@ -760,11 +673,11 @@ private theorem partRootOf_eq_of_inter {n : ℕ} (rounds : List (PartitionRoundW
     · exact congrArg (partRootOf rounds hcov) (Fin.ext heq)
     · exact (step hgt (by omega) hz.2 hz.1).symm
 
-/-- Multi-round conglomerate weak-support MSF lifting theorem (`PR02` Lemma 3.2):
-if `F_comps[i]` is an MSF of `rounds[i].compGlobal` for each round `i`, `H_lift` is a
-subpermutation of `H_rem` whose contraction along `conglomFn` is an MSF of the contracted
-`H_rem`, and `F` is an MSF of `F_comps.flatten ++ H_lift ++ M_C`, then `F` is an MSF of
-the full input graph `es`. -/
+/-- Step toward Theorem 5.8 of [PettieRamachandran2002] (#8624), proving the multi-round
+dynamic-DJP conglomerate weak-support lifting step of Lemma 3.2 (§3.1, p. 20): if `F_comps[i]` is
+an MSF of `rounds[i].compGlobal` for each round `i`, `H_lift` is a subpermutation of `H_rem` whose
+contraction along `conglomFn` is an MSF of the contracted `H_rem`, and `F` is an MSF of
+`F_comps.flatten ++ H_lift ++ M_C`, then `F` is an MSF of the full input graph `es`. -/
 theorem partition_isMinSpanningForest {n nConglom : ℕ}
     {es : List (WeightedEdge n ℕ)} {rounds : List (PartitionRoundWitness n)}
     {H_rem : List (IndexedEdge n)} {conglomFn : Fin n → Fin nConglom}
@@ -789,7 +702,6 @@ theorem partition_isMinSpanningForest {n nConglom : ℕ}
         (rounds[i.val]'i.isLt).tree.wPop s_step ≤ e.weight)
     (huncorr_tree : ∀ i j : Fin rounds.length, i.val < j.val →
       ∀ e ∈ (rounds[j.val]'j.isLt).tree.treeEdges,
-        ¬(e.u ∈ (rounds[i.val]'i.isLt).verts ∧ e.v ∈ (rounds[i.val]'i.isLt).verts) ∧
         ∀ s_step : Fin (rounds[i.val]'i.isLt).tree.numSteps,
           (e.u ∈ (rounds[i.val]'i.isLt).tree.treeVerts s_step.val ↔
             e.v ∉ (rounds[i.val]'i.isLt).tree.treeVerts s_step.val) →
@@ -814,17 +726,11 @@ theorem partition_isMinSpanningForest {n nConglom : ℕ}
   have hC_flat : C_list.flatten = C_all := map_compGlobal_flatten rounds
   have hFC_sub : F_comps.flatten.Subperm C_all := by
     rw [← hC_flat]
-    refine subperm_flatten_of_forall F_comps C_list (by simp [C_list, hF_len]) fun i hi => ?_
-    simpa [C_list] using (hF_msf ⟨i, by omega⟩).1.1
+    exact List.Subperm.flatten_of_forall₂ (List.forall₂_iff_get.mpr ⟨by simp [C_list, hF_len],
+      fun i hi₁ hi₂ => by simpa [C_list] using (hF_msf ⟨i, by omega⟩).1.1⟩)
   have hsub_base : (F_comps.flatten ++ H_lift ++ M_C).Subperm es := by
-    have h1 : (F_comps.flatten ++ H_lift).Subperm (C_all ++ H_edges) := by
-      obtain ⟨z₁, hp₁, hs₁⟩ := List.subperm_iff.mp hFC_sub
-      obtain ⟨z₂, hp₂, hs₂⟩ := List.subperm_iff.mp hHL_sub
-      exact List.subperm_iff.mpr ⟨z₁ ++ z₂, hp₁.append hp₂, hs₁.append hs₂⟩
-    have h2 : (F_comps.flatten ++ H_lift ++ M_C).Subperm (C_all ++ H_edges ++ M_C) := by
-      obtain ⟨z, hp, hs⟩ := List.subperm_iff.mp h1
-      exact List.subperm_iff.mpr
-        ⟨z ++ M_C, hp.append (List.Perm.refl M_C), hs.append (List.Sublist.refl M_C)⟩
+    have h2 : (F_comps.flatten ++ H_lift ++ M_C).Subperm (C_all ++ H_edges ++ M_C) :=
+      (hFC_sub.append hHL_sub).append (.refl M_C)
     have hp_swap : (C_all ++ H_edges ++ M_C).Perm (C_all ++ M_C ++ H_edges) := by
       rw [List.append_assoc, List.append_assoc]
       exact List.Perm.append_left C_all List.perm_append_comm
@@ -857,7 +763,7 @@ theorem partition_isMinSpanningForest {n nConglom : ℕ}
           (List.mem_filter.mpr ⟨he_xs, decide_eq_true le_rfl⟩)
       rw [← hFC_t] at hrel_q
       have hsub_Fi : (F_comps[i]'(by omega)).Subperm F_comps.flatten :=
-        subperm_flatten_getElem F_comps i (by omega)
+        (List.sublist_flatten_of_mem (List.getElem_mem (by omega))).subperm
       have hsub_tot : ((F_comps[i]'(by omega)).filter fun f =>
           decide (f.weight ≤ e.weight)).Subperm
           ((F_comps.flatten ++ H_lift ++ M_C).filter fun f => decide (f.weight ≤ e.weight)) := by
@@ -901,7 +807,7 @@ theorem partition_isMinSpanningForest {n nConglom : ℕ}
           (hF_msf k)).2 w
         rw [← hFC_t] at hrel_c
         have hsub_Fi : (F_comps[k.val]'(by omega)).Subperm F_comps.flatten :=
-          subperm_flatten_getElem F_comps k.val (by omega)
+          (List.sublist_flatten_of_mem (List.getElem_mem (by omega))).subperm
         have hsub_tot : ((F_comps[k.val]'(by omega)).filter fun f =>
             decide (f.weight ≤ w)).Subperm U :=
           (hsub_Fi.trans ((List.sublist_append_left _ _).trans
@@ -1105,8 +1011,8 @@ theorem partition_isMinSpanningForest {n nConglom : ℕ}
               rcases (rounds[k.val]'k.isLt).tree.ends_match s_last with ⟨hu, hv⟩ | ⟨hv, hu⟩
               · exact .inr ⟨hv.trans hv_stop_eq.symm, hu ▸ hvIn_not_k'⟩
               · exact .inl ⟨hu.trans hv_stop_eq.symm, hv ▸ hvIn_not_k'⟩
-            have hun_k' := (huncorr_tree k' k hk'_lt e_stop
-              (List.mem_map.mpr ⟨s_last, List.mem_finRange _, rfl⟩)).2
+            have hun_k' := huncorr_tree k' k hk'_lt e_stop
+              (List.mem_map.mpr ⟨s_last, List.mem_finRange _, rfl⟩)
             have hew_stop : e_stop.weight ≤ w :=
               ((rounds[k.val]'k.isLt).tree.edge_weight_le_wPop s_last).trans hw_last
             obtain ⟨z₀, ez₀, hrel₀, hz₀, hw₀, hcut₀, hun₀⟩ := ih k' (by omega) v_stop e_stop
@@ -1151,52 +1057,19 @@ theorem partition_isMinSpanningForest {n nConglom : ℕ}
         have h21 := (rounds[(partRootOf rounds hcov ky).val]'
           (partRootOf rounds hcov ky).isLt).tree.rel_treeEdges_filter_of_border
           hz₁ hz₂ ez₁ ez₂ hcutz₁ hcutz₂ hunz₁ hunz₂
-        have hrel_z : (edgePartition U).rel z₁ z₂ = true := by
-          refine htree_to_U (partRootOf rounds hcov ky) z₁ z₂
-            (edgePartition_mono_subset (fun f hf => ?_) h21)
-          rw [List.mem_filter, decide_eq_true_eq] at hf ⊢
-          exact ⟨hf.1, hf.2.trans (max_le hwz₁ hwz₂)⟩
+        have hrel_z : (edgePartition U).rel z₁ z₂ = true :=
+          htree_to_U (partRootOf rounds hcov ky) z₁ z₂
+            (edgePartition_filter_mono_subperm (.refl _) (max_le hwz₁ hwz₂) h21)
         exact (edgePartition U).trans hrel₁
           ((edgePartition U).trans hrel_z ((edgePartition U).symm hrel₂))
-      rw [rel_edgePartition_iff_eqvGen] at hc_H
-      have hgen : ∀ x' y' : Fin nConglom,
-          Relation.EqvGen (fun a b => ∃ f ∈ contractEdgeList conglomFn H',
-            a = f.u ∧ b = f.v) x' y' →
-          x' = y' ∨ ∃ a b : Fin n, conglomFn a = x' ∧ conglomFn b = y' ∧
-            EndOf a ∧ EndOf b ∧ (edgePartition U).rel a b = true := by
-        intro x' y' hxy
-        induction hxy with
-        | refl _ => exact .inl rfl
-        | rel _ _ hab =>
-          obtain ⟨f, hf, rfl, rfl⟩ := hab
-          simp only [contractEdgeList, List.mem_map] at hf
-          obtain ⟨h, hhH, rfl⟩ := hf
-          have hh_mem := List.mem_filter.mp hhH
-          have hh_edge : h ∈ H_edges := hHL_sub.subset hh_mem.1
-          have hh_w : h.weight ≤ w := decide_eq_true_eq.mp hh_mem.2
-          have hh_U : h ∈ U := List.mem_filter.mpr ⟨List.mem_append_left _
-            (List.mem_append_right _ hh_mem.1), hh_mem.2⟩
-          exact .inr ⟨h.u, h.v, rfl, rfl, ⟨h, hh_edge, hh_w, .inl rfl⟩,
-            ⟨h, hh_edge, hh_w, .inr rfl⟩,
-            rel_edgePartitionFrom_of_mem (Partition.discrete n) hh_U⟩
-        | symm _ _ _ ih =>
-          rcases ih with rfl | ⟨a, b, ha, hb, oa, ob, hrel⟩
-          · exact .inl rfl
-          · exact .inr ⟨b, a, hb, ha, ob, oa, (edgePartition U).symm hrel⟩
-        | trans _ _ _ _ _ ih1 ih2 =>
-          rcases ih1 with rfl | ⟨a, y₁, ha, hy₁, oa, oy₁, h1⟩
-          · exact ih2
-          · rcases ih2 with rfl | ⟨y₂, b, hy₂, hb, oy₂, ob, h2⟩
-            · exact .inr ⟨a, y₁, ha, hy₁, oa, oy₁, h1⟩
-            · have hb12 := hbridge y₁ y₂ (hy₁.trans hy₂.symm) oy₁ oy₂
-              exact .inr ⟨a, b, ha, hb, oa, ob,
-                (edgePartition U).trans h1 ((edgePartition U).trans hb12 h2)⟩
-      have heuEnd : EndOf e.u := ⟨e, heH, le_rfl, .inl rfl⟩
-      have hevEnd : EndOf e.v := ⟨e, heH, le_rfl, .inr rfl⟩
-      rcases hgen _ _ hc_H with heqc | ⟨a, b, ha, hb, oa, ob, hab⟩
-      · exact hbridge e.u e.v heqc heuEnd hevEnd
-      · exact (edgePartition U).trans (hbridge e.u a ha.symm heuEnd oa)
-          ((edgePartition U).trans hab (hbridge b e.v hb ob hevEnd))
+      refine edgePartition_rel_of_contracted_bridge conglomFn H' U EndOf (fun h hhH => ?_) hbridge
+        ⟨e, heH, le_rfl, .inl rfl⟩ ⟨e, heH, le_rfl, .inr rfl⟩ hc_H
+      have hh_mem := List.mem_filter.mp hhH
+      have hh_edge : h ∈ H_edges := hHL_sub.subset hh_mem.1
+      have hh_w : h.weight ≤ w := decide_eq_true_eq.mp hh_mem.2
+      have hh_U : h ∈ U :=
+        List.mem_filter.mpr ⟨List.mem_append_left _ (List.mem_append_right _ hh_mem.1), hh_mem.2⟩
+      exact ⟨⟨h, hh_edge, hh_w, .inl rfl⟩, ⟨h, hh_edge, hh_w, .inr rfl⟩, hh_U⟩
   exact isMinSpanningForest_of_weakSupport es (F_comps.flatten ++ H_lift ++ M_C) F
     hsub_base hws hF
 
