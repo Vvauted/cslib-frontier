@@ -10778,6 +10778,7 @@ public import CslibFrontier.Computability.Machines.Turing.MultiTape.Plumbing.Tid
 public import CslibFrontier.Foundations.NumberTheory.ModularWeights
 public import CslibFrontier.Computability.LogSpaceDerandomization.RowCompression.Sentinel
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.BoxQuery.FullLeaf
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.GraphOps.Boruvka
 public import CslibFrontier.Computability.Complexity.Problems.STCON.JustesenSourceLoop.Scheduler
 public import CslibFrontier.Foundations.Data.MvPolynomial.AffineLine
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.LogSpace.NondeterministicQueryMachine.Dispatch.Resource
