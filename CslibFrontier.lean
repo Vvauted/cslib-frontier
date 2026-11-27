@@ -5058,6 +5058,7 @@ public import CslibFrontier.DataStructure.BTree.WordRAM.Arena
 public import CslibFrontier.Algorithms.WordRAM.TreeDecomposition.IndependentSet.WeightScan
 public import CslibFrontier.Foundations.BooleanAnalysis.PolynomialThreshold
 public import CslibFrontier.Computability.Complexity.Classes.TFNP.Subclasses.PotentialLineCollapse
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.OuterRound
 public import CslibFrontier.Foundations.GroupTheory.Perm.RemoveNoneExtension
 public import CslibFrontier.Logics.FirstOrder.FiniteVariable.Basic
 public import CslibFrontier.Foundations.Geometry.Orthogonal.Separation
@@ -6610,6 +6611,7 @@ public import CslibFrontier.Computability.Circuit.Quantum.Oracle.Basic
 public import CslibFrontier.Foundations.Combinatorics.Design.ReedSolomon
 public import CslibFrontier.Probability.SmallBias.Correlation
 public import CslibFrontier.Logics.FirstOrder.Ordered.Radix.Arithmetic
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.Outer
 public import CslibFrontier.Computability.LogSpaceDerandomization.RootMetric
 public import CslibFrontier.Crypto.Protocols.MPC.MaskedOT.DDH
 public import CslibFrontier.Foundations.LinearAlgebra.Matrix.Order
@@ -6857,6 +6859,7 @@ public import CslibFrontier.Algorithms.WordRAM.Arborescence.Internal.ReducedCost
 public import CslibFrontier.Computability.LogSpaceDerandomization.RowCompression.GateClosure
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.Product.Tiles
 public import CslibFrontier.Computability.Distributed.SetAgreement.AtomicSnapshot.Linearizability
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.OuterOps
 public import CslibFrontier.Crypto.Computational.Homomorphic.Leveled.GameCoinTape
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.BandPrepare
 public import CslibFrontier.Computability.PolyTime.CSP.CyclicDifference.Native
@@ -9360,6 +9363,7 @@ public import CslibFrontier.GameTheory.Market.EisenbergGale
 public import CslibFrontier.Crypto.Computational.GeneratorPadding
 public import CslibFrontier.Computability.Kolmogorov.Basic
 public import CslibFrontier.Languages.Probabilistic.Simulation
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.OuterEmit
 public import CslibFrontier.Crypto.Computational.PseudorandomFunction.Cascade.ChildTables
 public import CslibFrontier.Computability.Communication.PaturiSimon
 public import CslibFrontier.Crypto.Computational.Homomorphic.GSW.DepthParameters
