@@ -42,6 +42,7 @@ canonical bitmask reindexing (`dtGraphMask`) over `Cslib.Query.MinimumSpanningFo
 * `holdsCompleteTree_skelToTree`, `exists_skelCode_of_complete_correct`: complete-tree skeleton
   decoding and separating-skeleton existence.
 * `endsOfMask_reindex_dtGraphMask`: isomorphism between `dtGraphMask es` and explicit edge lists.
+* `testBit_eq_decide_shift_and`: bitwise test equivalence for `((m >>> j) &&& 1 = 1)`.
 
 ## References
 
@@ -1111,6 +1112,12 @@ theorem exists_skelCode_of_complete_correct {e n d : ℕ} (he : 2 ≤ e)
   rw [← heq, hlp] at hlq
   cases hlq
   rfl
+
+/-- Bitwise test equivalence for `((m >>> j) &&& 1 = 1) ↔ m.testBit j = true`. -/
+theorem testBit_eq_decide_shift_and (m j : ℕ) :
+    ((m >>> j) &&& 1 = 1) ↔ m.testBit j = true := by
+  rw [Nat.and_one_is_mod, Nat.testBit, Nat.and_comm 1 (m >>> j), Nat.and_one_is_mod]
+  rcases Nat.mod_two_eq_zero_or_one (m >>> j) with h | h <;> simp [h]
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest
 
