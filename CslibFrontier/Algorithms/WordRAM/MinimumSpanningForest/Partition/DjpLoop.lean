@@ -536,7 +536,7 @@ private theorem extendDJP_wpop_fut
       have hs_le : s_step.val ≤ W.D.numSteps := by
         have := s_step.isLt; simp [PoppedAddArgs.D', extendDJP] at this; omega
       dsimp only [PoppedAddArgs.D']; rw [extendDJP_treeVerts_le _ _ _ _ _ _ _ _ _ _ _ hs_le]
-      exact djpVerts_mono W.D hs_le le_rfl
+      exact fun _ hx => mem_djpVerts_mono W.D.root W.D.vOut hs_le hx
     rcases he'_inc with ⟨hu, hv⟩ | ⟨hv, hu⟩ <;> rw [← he'_eq] at hu hv
     · exact C.hvOut_not (hu ▸ hmono_s (hcross.mpr fun h => hv (hmono_s h)))
     · exact hu (hmono_s (hcross.mpr fun h => C.hvOut_not (hv ▸ hmono_s h)))
@@ -619,6 +619,18 @@ private structure DjpS3State
     remDeg n L.offBase s.mem
       (Finset.univ.filter (fun x : Fin n => dead0 x.val ≠ 0) ∪ W.D.treeVerts W.D.numSteps)
 
+private theorem holdsIndexedEdges_append {n : ℕ} {base : ℕ} {xs ys : List (IndexedEdge n)}
+    {mem : ℕ → ℕ} (hx : HoldsIndexedEdges base xs mem)
+    (hy : HoldsIndexedEdges (base + 4 * xs.length) ys mem) :
+    HoldsIndexedEdges base (xs ++ ys) mem := by
+  intro i hi
+  by_cases hlt : i < xs.length
+  · simpa [List.getElem_append_left hlt] using hx i hlt
+  · have hge : xs.length ≤ i := Nat.le_of_not_lt hlt
+    have hlt2 : i - xs.length < ys.length := by rw [List.length_append] at hi; omega
+    simpa [List.getElem_append_right hge, show base + 4 * xs.length + 4 * (i - xs.length) =
+      base + 4 * i by omega] using hy (i - xs.length) hlt2
+
 private theorem partDjpAddVert_s3_state
     {W : DjpWitness L s₀ dead0 inCur0 edgeState0 cid ic0 nc0 tLen0 u a s}
     (C : PoppedAddArgs L s₀ dead0 inCur0 edgeState0 cid ic0 nc0 tLen0 u a s W) : DjpS3State C := by
@@ -650,9 +662,7 @@ private theorem partDjpAddVert_s3_state
       (dstBase := L.bufBase + 10 * n) (srcIdx := C.it₀.val) (dstIdx := a.tLen)
       (by have := L.edge_lt_itemBase; have := L.hit_nd; have := L.hnd_buf
           rw [C.hs1_fr, W.hfr, C.he_id]; omega)
-      (by rw [C.hs1_fr, W.hfr]; omega)
-      (.inl (by have := L.edge_lt_itemBase; have := L.hit_nd; have := L.hnd_buf
-                rw [C.he_id]; omega)) with
+      (by rw [C.hs1_fr, W.hfr]; omega) with
     ⟨hcopy_safe, hcopy_vh, hcopy_cost, hs2_fr, hwf2, hs2_mod, hc0, hc1, hc2, hc3⟩
   have hfr2 : s₂.frontier = L.bufBase + (14 * n + 14 * m) := hs2_fr.trans (C.hs1_fr.trans W.hfr)
   have hdout_eq : s₂.mem (L.bufBase + C.vOut.val) = dead0 C.vOut.val := by
@@ -1329,9 +1339,10 @@ theorem partDjpStep_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memory.State)
     ∃ W' : DjpWitness L s₀ dead0 inCur0 edgeState0 cid ic0 nc0 tLen0 u a' s',
       (memoryCost prog s : ℚ) + djpPot W' ≤ djpPot W ∧ djpRank W' < djpRank W := by
   let m := L.es.length; let env := L.toEnv; have h16 := L.h16
-  have hfuel_fit : Fits w (500 * (2 * m + 1)) := by simpa [partSHFuel] using L.hfit_fuel
+  have hfuel_fit : Fits w (500 * (2 * m + 1)) := by
+    simpa [partSHFuel, shFuelBound, partRankThreshold] using L.hfit_fuel
   have hfuel_ge : shFuelBound a.sh.rankThreshold (2 * m) ≤ 500 * (2 * m + 1) := by
-    rw [W.hrt, ← partSHFuel_eq]; exact le_refl _
+    rw [W.hrt]; dsimp only [shFuelBound, partRankThreshold]; exact le_rfl
   have hbuf_lt : L.bufBase < s.frontier := by have := L.hn_pos; rw [W.hfr]; omega
   rcases shExtractMin_spec W.hsh hfuel_ge hfuel_fit with
     ⟨hv_ext, hsafe_ext, h_ib, h_nb, h_ic, _, h_rt, hs1_fr, hs1_mod, hempty, hnonempty⟩
@@ -1479,12 +1490,10 @@ theorem partRoundInit_spec {w n : ℕ} (L : PartLayout w n)
     (h₀ : SHHandle) (s₀ : Memory.State)
     (hfr₀ : s₀.frontier = L.bufBase + (14 * n + 14 * L.es.length))
     (hib₀ : h₀.itemBase = L.itemBase) (hnb₀ : h₀.nodeBase = L.nodeBase)
-    (hrt₀ : h₀.rankThreshold = partRankThreshold)
-    (hic₀_eq : h₀.itemCount = ic0) (_hnc₀_eq : h₀.nodeCount = nc0)
+    (hrt₀ : h₀.rankThreshold = partRankThreshold) (hic₀_eq : h₀.itemCount = ic0)
     (hsh₀ : SHInv w ic0 nc0 (2 * L.es.length) (4 * L.es.length) h₀ [] (fun _ => 0) s₀)
     (hcsr₀ : HoldsUndirCSR L.offBase L.adjBase L.es s₀.mem)
     (hin₀ : HoldsIndexedEdges L.edgeBase L.es s₀.mem)
-    (_hdead₀ : ∀ x < n, s₀.mem (L.bufBase + x) = dead0 x)
     (hincur₀ : ∀ x < n, s₀.mem (L.bufBase + n + x) = inCur0 x)
     (hincur₀_ne : ∀ x < n, inCur0 x ≠ cid) (hcid_fit : Fits w cid) (hu_alive : dead0 u.val = 0)
     (hedge₀ : ∀ i < L.es.length, s₀.mem (L.bufBase + 14 * n + i) = edgeState0 i)
@@ -1745,7 +1754,7 @@ theorem partDjpLoop_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memory.State)
         partDjpStep_spec L s₀ dead0 inCur0 edgeState0 cid ic0 nc0 tLen0 u
           hcsr₀ hin₀ hdead₀ hedge₀ hincur₀_ne hcid_fit hsimp a' s' W hne
       exact ⟨hsafe_s, hv_s, ⟨⟨_, _⟩, W'⟩, ⟨rfl, rfl⟩, le_trans hpot_s (le_of_eq (add_zero _).symm),
-        modifies_of_agree_outside S hfr_s hmod_s, hrank_s⟩
+        ⟨le_of_eq hfr_s.symm, fun x _ hx => hmod_s x hx⟩, hrank_s⟩
     have hrank0 : djpRank (⟨⟨⟨1, 0, 1, tLen0, h₀⟩, s₁⟩, W₀⟩ : WType).2 ≤ 2 * m + 1 := by
       dsimp only [djpRank]; simp only [Nat.one_ne_zero, ↓reduceIte]
       have hlen := shInv_forestItems_length_le W₀.hsh
@@ -1763,7 +1772,13 @@ theorem partDjpLoop_spec {w n : ℕ} (L : PartLayout w n) (s₀ : Memory.State)
     have hfr_eq : ((Memory.spec 0).clientState s₁ (partDjpLoop d)).frontier = s₁.frontier :=
       W'.hfr.trans W₀.hfr.symm
     refine ⟨by rw [partDjpLoopSafe_def]; exact ⟨L.h16, fun _ => hsafe_bw⟩, hv_bw,
-      not_not.mp hstop_bw, hfr_eq, mem_eq_of_modifies_frontier hv_bw hmod_bw hfr_eq, W', ?_⟩
-    simpa only [zero_mul, add_zero] using hpot_bw
+      not_not.mp hstop_bw, hfr_eq, fun x hxS => ?_, W', ?_⟩
+    · by_cases hx : x < s₁.frontier
+      · exact hmod_bw.2 x hx hxS
+      · have ha : ((Memory.spec w).clientState s₁ (partDjpLoop d)).frontier ≤ x := by
+          rw [clientState_width w, hfr_eq]; omega
+        simpa only [clientState_width w] using
+          Memory.mem_clientState_of_frontier_le s₁ (partDjpLoop d) hv_bw ha
+    · simpa only [zero_mul, add_zero] using hpot_bw
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest

@@ -8,7 +8,8 @@ module
 -- upstream: candidate
 
 public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.DjpOps
-public import CslibFrontier.Computability.WordRAM.Realization.LoopFrame
+public import CslibFrontier.Algorithms.Lean.Query.MinimumSpanningForest.Contraction.Robust
+import CslibFrontier.Computability.WordRAM.Realization.LoopFrame
 import CslibFrontier.Computability.WordRAM.Realization.ArrayOps
 import CslibFrontier.DataStructure.Memory.Frame
 import CslibFrontier.DataStructure.PriorityQueue.WordRAM.SoftHeap.Insert
@@ -58,24 +59,9 @@ open Cslib.DataStructure.PriorityQueue.WordRAM.SoftHeap
 
 /-- Item membership in `forestItems roots` iff paired with some corrupted key in
 `forestEntries roots`. -/
-theorem mem_forestItems_iff {it : SHItem} {roots : List SHTree} :
+private theorem mem_forestItems_iff {it : SHItem} {roots : List SHTree} :
     it ∈ forestItems roots ↔ ∃ c, (it, c) ∈ forestEntries roots := by
-  induction roots with
-  | nil => simp [forestItems, forestEntries]
-  | cons t rest ih =>
-    have h1 : forestItems (t :: rest) = (t.allEntries.map Prod.fst) ++ forestItems rest := by
-      simp [forestItems, forestEntries]
-    have h2 : forestEntries (t :: rest) = t.allEntries ++ forestEntries rest := by
-      simp [forestEntries]
-    rw [h1, h2, List.mem_append, List.mem_map, ih]
-    simp only [List.mem_append]
-    constructor
-    · rintro (⟨p, hp, rfl⟩ | ⟨c, hc⟩)
-      · exact ⟨p.2, .inl hp⟩
-      · exact ⟨c, .inr hc⟩
-    · rintro ⟨c, h | h⟩
-      · exact .inl ⟨(it, c), h, rfl⟩
-      · exact .inr ⟨c, h⟩
+  simp [forestItems, Prod.exists]
 
 /-- Live item count in `forestItems roots` is at most `h.itemCount - ic₀`. -/
 theorem shInv_forestItems_length_le {w ic₀ nc₀ maxItems maxNodes : ℕ}
@@ -83,17 +69,7 @@ theorem shInv_forestItems_length_le {w ic₀ nc₀ maxItems maxNodes : ℕ}
     (hinv : SHInv w ic₀ nc₀ maxItems maxNodes h roots created s) :
     (forestItems roots).length ≤ h.itemCount - ic₀ := by
   have hlen : (forestItemIds roots).length = (forestItems roots).length := by
-    clear hinv
-    induction roots with
-    | nil => rfl
-    | cons t rest ih =>
-      have h1 : forestItemIds (t :: rest) = t.itemIds ++ forestItemIds rest := rfl
-      have h2 : forestItems (t :: rest) =
-          (t.allEntries.map Prod.fst) ++ forestItems rest := by
-        simp [forestItems, forestEntries]
-      have ht : t.itemIds.length = t.allEntries.length := by
-        simp [SHTree.itemIds, SHTree.allItems]
-      rw [h1, h2, List.length_append, List.length_append, List.length_map, ht, ih]
+    simp [forestItemIds, forestItems, forestEntries, SHTree.itemIds, SHTree.allItems]
   have hnd : ((forestItemIds roots).map (fun id => id - (ic₀ + 1))).Nodup := by
     refine List.Nodup.map_on ?_ hinv.itemIds_nodup
     intro a ha b hb _
@@ -114,40 +90,8 @@ theorem shInv_forestItems_length_le {w ic₀ nc₀ maxItems maxNodes : ℕ}
     _ ≤ (Finset.range (h.itemCount - ic₀)).card := Finset.card_le_card hsub
     _ = h.itemCount - ic₀ := Finset.card_range _
 
-/-- Advances `SHInv` to the empty fresh round handle anchored at `(h.itemCount, h.nodeCount)`. -/
-theorem shInv_next_round {w ic₀ nc₀ m : ℕ}
-    {h : SHHandle} {roots : List SHTree} {created : ℕ → ℕ} {s : Memory.State}
-    (hinv : SHInv w ic₀ nc₀ (2 * m) (4 * m) h roots created s)
-    (hnc_le : nc₀ ≤ 2 * ic₀) :
-    h.nodeCount ≤ 2 * h.itemCount ∧
-    SHInv w h.itemCount h.nodeCount (2 * m) (4 * m)
-      ⟨h.itemBase, h.nodeBase, 0, h.itemCount, h.nodeCount, h.rankThreshold⟩
-      [] (fun _ => 0) s := by
-  have hnc_roots := hinv.nc_roots_le
-  have hic_le := hinv.ic_le
-  have hic_max := hinv.ic_max
-  have hnc_new : h.nodeCount ≤ 2 * h.itemCount := by omega
-  have hcap_new : h.nodeCount + 2 * (2 * m - h.itemCount) ≤ 4 * m := by omega
-  exact ⟨hnc_new, shInit_inv hinv.fits16 hinv.wf hic_max hcap_new hinv.item_pool_lt
-    hinv.node_pool_lt hinv.pools_disj hinv.fits_fuel⟩
-
-/-- Appends two contiguous stride-4 `HoldsIndexedEdges` slices. -/
-theorem holdsIndexedEdges_append {n : ℕ} {base : ℕ} {xs ys : List (IndexedEdge n)}
-    {mem : ℕ → ℕ} (hx : HoldsIndexedEdges base xs mem)
-    (hy : HoldsIndexedEdges (base + 4 * xs.length) ys mem) :
-    HoldsIndexedEdges base (xs ++ ys) mem := by
-  intro i hi
-  by_cases hlt : i < xs.length
-  · have h := hx i hlt
-    simpa [List.getElem_append_left hlt] using h
-  · have hge : xs.length ≤ i := Nat.le_of_not_lt hlt
-    have hlt2 : i - xs.length < ys.length := by rw [List.length_append] at hi; omega
-    have h := hy (i - xs.length) hlt2
-    simpa [List.getElem_append_right hge, show base + 4 * xs.length + 4 * (i - xs.length) =
-      base + 4 * i by omega] using h
-
 /-- Total CSR degree sum across `Fin n` equals `2 * es.length`. -/
-theorem csr_deg_sum_eq {n : ℕ} {offBase adjBase : ℕ} {es : List (IndexedEdge n)}
+private theorem csr_deg_sum_eq {n : ℕ} {offBase adjBase : ℕ} {es : List (IndexedEdge n)}
     {mem : ℕ → ℕ} (hcsr : HoldsUndirCSR offBase adjBase es mem) :
     (∑ u : Fin n, (mem (offBase + u.val + 1) - mem (offBase + u.val))) = 2 * es.length := by
   have hsum : ∀ k ≤ n, (∀ j < k, mem (offBase + j) ≤ mem (offBase + j + 1)) →
@@ -230,7 +174,7 @@ theorem remDeg_anti {n offBase : ℕ} {mem : ℕ → ℕ} {S T : Finset (Fin n)}
     simp [huT, huS]
 
 /-- Extracts out-of-set memory agreement from `Memory.Modifies` and preserved frontier. -/
-theorem mem_eq_of_modifies_frontier {α : Type} {w : ℕ} {S : Set ℕ} {s : Memory.State}
+private theorem mem_eq_of_modifies_frontier {α : Type} {w : ℕ} {S : Set ℕ} {s : Memory.State}
     {prog : Memory.Prog α}
     (hv : (Memory.spec w).ValidHistory s ((Memory.spec w).clientHistory s prog))
     (hmod : Memory.Modifies S s ((Memory.spec 0).clientState s prog))
@@ -244,7 +188,7 @@ theorem mem_eq_of_modifies_frontier {α : Type} {w : ℕ} {S : Set ℕ} {s : Mem
     simpa only [clientState_width w] using Memory.mem_clientState_of_frontier_le s prog hv ha
 
 /-- Builds `Memory.Modifies S` from unchanged frontier and outside agreement. -/
-theorem modifies_of_agree_outside (S : Set ℕ) {s s' : Memory.State}
+private theorem modifies_of_agree_outside (S : Set ℕ) {s s' : Memory.State}
     (hfr : s'.frontier = s.frontier) (hagree : ∀ x, x ∉ S → s'.mem x = s.mem x) :
     Memory.Modifies S s s' :=
   ⟨le_of_eq hfr.symm, fun x _ hx => hagree x hx⟩
@@ -259,7 +203,7 @@ theorem djpVertsList_length {n : ℕ} (D : DynamicDJPTree n) :
   simp [djpVertsList]
 
 /-- Membership characterization for `D.treeVerts k` (`k ≤ D.numSteps`). -/
-theorem mem_djpVerts_iff_mem_list {n : ℕ} (D : DynamicDJPTree n) :
+private theorem mem_djpVerts_iff_mem_list {n : ℕ} (D : DynamicDJPTree n) :
     ∀ k ≤ D.numSteps, ∀ x : Fin n,
       x ∈ D.treeVerts k ↔ x = D.root ∨ ∃ j : Fin D.numSteps, j.val < k ∧ D.vOut j = x := by
   intro k hk x
@@ -320,22 +264,15 @@ theorem djpVertsList_nodup {n : ℕ} (D : DynamicDJPTree n) :
     intro k
     rw [mem_djpVerts_iff_mem_list D (k.val + 1) k.isLt]
     exact .inr ⟨k, Nat.lt_succ_self _, rfl⟩
-  have hmono : ∀ a b : ℕ, a ≤ b → b ≤ D.numSteps → D.treeVerts a ⊆ D.treeVerts b := by
-    intro a b hab hb x hx
-    rw [mem_djpVerts_iff_mem_list D a (hab.trans hb)] at hx
-    rw [mem_djpVerts_iff_mem_list D b hb]
-    rcases hx with rfl | ⟨j, hj, rfl⟩
-    · exact .inl rfl
-    · exact .inr ⟨j, Nat.lt_of_lt_of_le hj hab, rfl⟩
   have hroot_mem : ∀ k ≤ D.numSteps, D.root ∈ D.treeVerts k := fun k hk => by
     rw [mem_djpVerts_iff_mem_list D k hk]; exact .inl rfl
   have hinj : Function.Injective D.vOut := by
     intro i j hij
     rcases lt_trichotomy i.val j.val with hlt | heq | hgt
-    · have him := hmono (i.val + 1) j.val hlt j.isLt.le (hv_mem i)
+    · have him := mem_djpVerts_mono D.root D.vOut hlt (hv_mem i)
       rw [hij] at him; exact absurd him (D.vOut_not_mem j)
     · exact Fin.ext heq
-    · have hjm := hmono (j.val + 1) i.val hgt i.isLt.le (hv_mem j)
+    · have hjm := mem_djpVerts_mono D.root D.vOut hgt (hv_mem j)
       rw [← hij] at hjm; exact absurd hjm (D.vOut_not_mem i)
   refine List.nodup_cons.mpr ⟨?_, (List.nodup_finRange D.numSteps).map hinj⟩
   intro hmem
@@ -450,14 +387,6 @@ theorem extendDJP_treeEdges {n : ℕ} (D : DynamicDJPTree n) (e : IndexedEdge n)
     subst hieq
     simp [extendDJP, List.getElem_append_right]
 
-/-- Monotonicity of `D.treeVerts` over prefix step counts `t₁ ≤ t₂ ≤ D.numSteps`. -/
-theorem djpVerts_mono {n : ℕ} (D : DynamicDJPTree n) {t₁ t₂ : ℕ} (h : t₁ ≤ t₂)
-    (ht₂ : t₂ ≤ D.numSteps) : D.treeVerts t₁ ⊆ D.treeVerts t₂ := fun _ hx => by
-  rw [mem_djpVerts_iff_mem_list D t₂ ht₂, mem_djpVerts_iff_mem_list D t₁ (h.trans ht₂)] at *
-  rcases hx with rfl | ⟨j, hj, rfl⟩
-  · exact .inl rfl
-  · exact .inr ⟨j, Nat.lt_of_lt_of_le hj h, rfl⟩
-
 /-- Extracting one item from a nodup Soft-Heap forest preserves edge-ID uniqueness. -/
 theorem forestItems_nodup_of_perm {it₀ : SHItem} {roots₁ roots₀ : List SHTree}
     (hperm : (it₀ :: forestItems roots₁).Perm (forestItems roots₀))
@@ -534,9 +463,7 @@ to `dstBase + 4 * dstIdx` in cost `8` while framing other memory cells. -/
 theorem partCopyIndexedEdge_spec {w srcBase dstBase srcIdx dstIdx : ℕ} {s : Memory.State}
     (h16 : Fits w 16) (hwf : Memory.WellFormed w s)
     (hs_lt : srcBase + 4 * srcIdx + 3 < s.frontier)
-    (hd_lt : dstBase + 4 * dstIdx + 3 < s.frontier)
-    (_hdisj : srcBase + 4 * srcIdx + 3 < dstBase + 4 * dstIdx ∨
-      dstBase + 4 * dstIdx + 3 < srcBase + 4 * srcIdx) :
+    (hd_lt : dstBase + 4 * dstIdx + 3 < s.frontier) :
     let prog := partCopyIndexedEdge ⟨srcBase, dstBase, srcIdx, dstIdx⟩
     let s' := (Memory.spec 0).clientState s prog
     partCopyIndexedEdgeSafe w ⟨srcBase, dstBase, srcIdx, dstIdx⟩ s ∧
@@ -705,7 +632,7 @@ theorem partSetup_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge n)}
       (by rw [hp1, hfr5, hfr4]; dsimp only [s3, bufBase]; rw [hfr2]; omega)
       (by rw [hp2, hfr5, hfr4]; dsimp only [s3, bufBase]; rw [hfr2]; omega)
       (by rw [hp1, hp2]; exact Or.inl (by omega))
-      (by rw [← partSHFuel_eq]; exact hfit.of_le (by dsimp only [partSHFuel]; omega))
+      (by dsimp only [shFuelBound, partRankThreshold]; exact hfit.of_le (by omega))
   have hedges_in : ∀ j < m, s.mem (edgeBase + 4 * j) < n ∧ s.mem (edgeBase + 4 * j + 1) < n :=
     fun j hj => ⟨(hin j hj).1 ▸ es[j].u.isLt, (hin j hj).2.1 ▸ es[j].v.isLt⟩
   have hsafe : partSetupSafe w ⟨n, m, edgeBase, maxsize⟩ s := by
@@ -719,13 +646,13 @@ theorem partSetup_spec {w n edgeBase maxsize : ℕ} {es : List (IndexedEdge n)}
     { es := es, edgeBase := edgeBase, maxsize := maxsize, offBase := csr.offBase,
       adjBase := csr.adjBase, itemBase := pool.1, nodeBase := pool.2, bufBase := bufBase,
       initFrontier := s.frontier, h16 := h16, hmax_pos := hmax_pos, hn_pos := hn_pos,
-      hin_lt := hin_lt, hoff_ge := le_of_eq hcsr1.symm, hoff_eq := hcsr1,
+      hin_lt := hin_lt, hoff_ge := le_of_eq hcsr1.symm,
       hoff_adj := by rw [hcsr1, hcsr2]; omega,
       hadj_it := by rw [hcsr2, hp1, hfr1]; omega,
       hit_nd := by rw [hp1, hp2],
       hnd_buf := by dsimp only [bufBase]; rw [hp2, hfr2],
       hfit_end := by dsimp only [bufBase]; rw [hfr2, hfr1]; exact hfit.of_le (by omega),
-      hfit_fuel := hfit.of_le (by dsimp only [partSHFuel]; omega) }
+      hfit_fuel := hfit.of_le (by dsimp only [partSHFuel, shFuelBound, partRankThreshold]; omega) }
   refine ⟨hsafe, hv_all, hcost_all, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
     L, ?_⟩
   · rw [hres_eq]
@@ -843,7 +770,7 @@ theorem partTryInsertEdge_spec {w n : ℕ} (L : PartLayout w n)
   have h16 := L.h16
   have hwf := hsh.wf
   have hfuel_fit : Fits w (500 * (2 * m + 1)) := by
-    simpa [partSHFuel] using L.hfit_fuel
+    simpa [partSHFuel, shFuelBound, partRankThreshold] using L.hfit_fuel
   have hbuf_fit : Fits w (L.bufBase + 14 * n + 14 * m) := L.hfit_end.of_le (by omega)
   have hst_lt : L.bufBase + 14 * n + eIdx < s.frontier := by rw [hfr]; omega
   have hnb_fr : L.bufBase + n + nb < s.frontier := by rw [hfr]; omega
@@ -859,7 +786,7 @@ theorem partTryInsertEdge_spec {w n : ℕ} (L : PartLayout w n)
     have he_fit : Fits w eIdx := L.hfit_end.of_le (by omega)
     have hwt_fit : Fits w (s.mem (L.edgeBase + 4 * eIdx + 2)) := hwf.mem_fits _
     have hfuel_ge : shFuelBound h.rankThreshold (2 * m) ≤ 500 * (2 * m + 1) := by
-      rw [hrt, ← partSHFuel_eq]; exact le_refl _
+      rw [hrt]; dsimp only [shFuelBound, partRankThreshold]; exact le_rfl
     have hins_all := shInsert_spec hsh hcap_lt he_fit hwt_fit hfuel_ge hfuel_fit
     rcases hins_all with ⟨hv_ins, hsafe_ins, h_ib, h_nb, h_ic, _h_nc, h_rt, h_sfr, h_mod,
       roots', created', hsh', hperm', hent', hpot'⟩
@@ -912,7 +839,8 @@ theorem partTryInsertEdge_spec {w n : ℕ} (L : PartLayout w n)
     have hc : (memoryCost (partTryInsertEdge d) s : ℚ) ≤ 2 := by exact_mod_cast hcost_le
     linarith
 
-/-- Edge IDs appearing in a CSR adjacency slice of a simple graph (`u ≠ v`) have no duplicates. -/
+/-- Edge IDs appearing in a CSR adjacency slice of a loopless multigraph (`u ≠ v`) have no
+duplicates. -/
 private theorem csr_slice_edgeIds_nodup {n offBase adjBase : ℕ} {es : List (IndexedEdge n)}
     {mem : ℕ → ℕ} (hcsr : HoldsUndirCSR offBase adjBase es mem)
     (hsimp : ∀ i : Fin es.length, es[i.val].u ≠ es[i.val].v) (u : Fin n) :
@@ -1000,7 +928,6 @@ theorem partExpandVertex_iter_spec {w n : ℕ} (L : PartLayout w n)
     (s₀ : Memory.State) (edgeState0 : ℕ → ℕ)
     (hfr₀ : s₀.frontier = L.bufBase + (14 * n + 14 * L.es.length))
     (hib₀ : h₀.itemBase = L.itemBase) (hnb₀ : h₀.nodeBase = L.nodeBase)
-    (_hrt₀ : h₀.rankThreshold = partRankThreshold)
     (hcsr₀ : HoldsUndirCSR L.offBase L.adjBase L.es s₀.mem)
     (hin₀ : HoldsIndexedEdges L.edgeBase L.es s₀.mem)
     (hedgeSt₀ : ∀ i < L.es.length, s₀.mem (L.bufBase + 14 * n + i) = edgeState0 i)
@@ -1455,7 +1382,7 @@ theorem partExpandVertex_spec {w n : ℕ} (L : PartLayout w n)
     have := L.hoff_adj; have := L.hadj_it; have := L.hit_nd; have := L.hnd_buf
     rw [hfr₀]; omega
   have hind := partExpandVertex_iter_spec L cid ic₀ nc₀ u h₀ roots₀ s₀ edgeState0 hfr₀ hib₀ hnb₀
-    hrt₀ hcsr₀ hin₀ hedgeSt₀ hsimp hno_dup₀ deg startJ h₀ roots₀ created₀ s₀ (by omega) le_rfl
+    hcsr₀ hin₀ hedgeSt₀ hsimp hno_dup₀ deg startJ h₀ roots₀ created₀ s₀ (by omega) le_rfl
     rfl (fun _ hx => absurd rfl hx) rfl rfl hrt₀ hsh₀ hok₀ hnd₀
     (fun p hp => .inl (List.mem_map.mpr ⟨p.1, mem_forestItems_iff.mpr ⟨p.2, hp⟩, rfl⟩)) hcap
   rcases hind with ⟨hsafe_it, hv_it, _, hfr_it, hmod_it, hib_it, hnb_it, hrt_it, hic1, hic2,
