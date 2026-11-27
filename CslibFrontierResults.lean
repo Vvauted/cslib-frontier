@@ -42,6 +42,7 @@ import CslibFrontierResults.Registry
 import CslibFrontierResults.Entries.PolynomialHashing
 import CslibFrontierResults.Entries.ODonnellPTFSparsity
 import CslibFrontierResults.Entries.ODonnellPeres
+import CslibFrontierResults.Entries.TwoProverNEXP
 import CslibFrontierResults.Entries.Roberts
 import CslibFrontierResults.Entries.SecurityEconomics
 import CslibFrontierResults.Entries.ODonnellLowDegreeGranularity
