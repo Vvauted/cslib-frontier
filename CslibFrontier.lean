@@ -622,6 +622,7 @@ public import CslibFrontier.Computability.Circuit.Boolean.AffineDisperser.Normal
 public import CslibFrontier.Probability.StatisticalDistance.CouplingBind
 public import CslibFrontier.Computability.LogSpaceDerandomization.NormalizedAtomRows.FiniteEnvelopePayment
 public import CslibFrontier.Crypto.Primitives.PRG.Parallel
+public import CslibFrontier.Foundations.Analysis.ODE.Descriptor
 public import CslibFrontier.Computability.QueryComplexity.SensitivitySeparation.Internal.Separation
 public import CslibFrontier.Crypto.Computational.Encryption.OneWay
 public import CslibFrontier.Computability.Machines.Turing.SingleTape.InnerProduct
@@ -728,6 +729,7 @@ public import CslibFrontier.Computability.Complexity.Problems.NCL.Planar.GridDra
 public import CslibFrontier.Computability.TreeEval.Ary.Packed.Constant
 public import CslibFrontier.Computability.QueryComplexity.Quantum.BitQuery
 public import CslibFrontier.Algorithms.ExactTriangle.Weights
+public import CslibFrontier.Algorithms.LinearAlgebra.DescriptorCertificate
 public import CslibFrontier.Crypto.Computational.Pseudoentropy.ThreeSource.Seeded
 public import CslibFrontier.Foundations.Combinatorics.FunctionalGraph.PeriodicPts
 public import CslibFrontier.Computability.Complexity.Problems.NCL.Diagram.Permutation
@@ -2659,6 +2661,7 @@ public import CslibFrontier.Foundations.LinearAlgebra.Matrix.SubmatrixRobust
 public import CslibFrontier.Computability.Complexity.Problems.Clique
 public import CslibFrontier.Computability.PCP.TwoProverGame.Quantum
 public import CslibFrontier.Computability.Circuit.Boolean.MassProduction.Schedule
+public import CslibFrontier.Languages.Electrical.LinearCircuit
 public import CslibFrontier.Probability.Product.ConditionalExpectation
 public import CslibFrontier.Logics.Propositional.CNF.Moser.LocalLemma
 public import CslibFrontier.Logics.FirstOrder.Trakhtenbrot.Undecidability
