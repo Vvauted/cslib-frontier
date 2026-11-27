@@ -6115,6 +6115,7 @@ public import CslibFrontier.Computability.Circuit.Boolean.CarrySave
 public import CslibFrontier.Algorithms.WordRAM.ThreeSum.ChanHe.TraversalOutput
 public import CslibFrontier.Languages.Probabilistic.Iteration
 public import CslibFrontier.Computability.Circuit.Boolean.Braverman.Gates
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.Phase
 public import CslibFrontier.Algorithms.WordRAM.TreeDecomposition.CSP.BagOps
 public import CslibFrontier.Computability.Complexity.Reduction
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Universal.SpaceBudget
@@ -7287,6 +7288,7 @@ public import CslibFrontier.Algorithms.Lean.EdgeCSP.Blossom.Transport
 public import CslibFrontier.Foundations.LinearAlgebra.Matrix.CoinStep
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Uni.CmpU
 public import CslibFrontier.Computability.QueryComplexity.SensitivitySeparation.Internal.RecursiveChildren
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.Scan
 public import CslibFrontier.Logics.Propositional.CSP.Planar.Substitution.ProbeParity
 public import CslibFrontier.Computability.PolyTime.Graph.OrthogonalRoutes
 public import CslibFrontier.Foundations.LinearAlgebra.Tensor.Degeneration
@@ -8603,6 +8605,7 @@ public import CslibFrontier.Computability.Machines.Turing.MultiTape.Probabilisti
 public import CslibFrontier.DataStructure.FusionTree.WordRAM.Query
 public import CslibFrontier.Computability.WordRAM.Footprint
 public import CslibFrontier.Crypto.Protocols.SigmaProtocol.SchnorrSignature
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.Layout
 public import CslibFrontier.Computability.PointerMachine.WordRAM.Encoding
 public import CslibFrontier.DataStructure.Queue.WordRAM.RegisterTransfer
 public import CslibFrontier.MachineLearning.PACBayes.Inversion
@@ -10464,6 +10467,7 @@ public import CslibFrontier.Foundations.Data.BitString.WordCount
 public import CslibFrontier.Foundations.Order.UpperLower
 public import CslibFrontier.Computability.Circuit.Arithmetic.Pairing
 public import CslibFrontier.Computability.PolyTime.CSP.Edge.Solver.Endpoint
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.ScanOps
 public import CslibFrontier.Foundations.Data.Set.EqOnUpdate
 public import CslibFrontier.Logics.Propositional.CNF.Horn.Relabel
 public import CslibFrontier.Foundations.Probability.Gaussian.MassBounds
