@@ -32,10 +32,13 @@ Each outer iteration executes three Borůvka contraction stages (`boruvkaThreeSt
 dense/small stopping criterion (`0 < m' ∧ 64 < n' ∧ 2 * m' < n' * r0`), and when still sparse and
 large invokes `partitionProg`, decision-tree evaluation (`pr02EvalDTLoop`), remainder-graph MSF
 solving (`pr02SolveHRemProg`), edge concatenation (`concatThreeProg`), deduplication
-(`dedupSimpleEdgesProg`), and isolated-vertex compaction (`compactVerticesProg`). Together these
-cut vertices by at least `8×`, halve edges, halve `optDepthMN`, preserve `MSFLiftInv`, preserve
-`tableFrontier` and already-written selected edge IDs `selBuf[0..st.selLen)`, and amortize total
-memory operations and frontier growth against `20000 * m + 5000 * n + 30 * optDepthMN m n + 110`.
+(`dedupSimpleEdgesProg`), and isolated-vertex compaction (`compactVerticesProg`). Using three
+Borůvka stages (`8×` vertex reduction) adapts the paper's two-round Boruvka2 on connected graphs
+to `Partition`'s fixed `ε = 1 / 16` (`partRankThreshold = 8`) on general non-isolated multigraphs
+(`n ≤ 2 * m`). Together these cut vertices by at least `8×`, halve edges, halve `optDepthMN`,
+preserve `MSFLiftInv`, preserve `tableFrontier` and already-written selected edge IDs
+`selBuf[0..st.selLen)`, and amortize total memory operations and frontier growth against
+`20000 * m + 5000 * n + 30 * optDepthMN m n + 110`.
 
 ## Main definitions
 
@@ -350,13 +353,7 @@ private theorem pr02MergeNextProg_spec {w n_orig n' nConglom fcBase hlBase mcBas
       hlift_eq⟩ => ?_)).mono (by omega) fun _ _ h => h
   have hinv_next : MSFLiftInv es accIds esNext := by
     have hFC_sub : F_C.Subperm (rounds.flatMap PartitionRoundWitness.compGlobal) := by
-      have hC_flat : ∀ l : List (PartitionRoundWitness n'),
-          (l.map PartitionRoundWitness.compGlobal).flatten =
-            l.flatMap PartitionRoundWitness.compGlobal := fun l => by
-        induction l with
-        | nil => simp
-        | cons r rs ih => simp [List.flatMap_cons, ih]
-      rw [← hC_flat rounds]
+      rw [List.flatMap_def]
       refine List.Subperm.flatten_of_forall₂ (List.forall₂_iff_get.mpr ⟨by simp [hF_len],
         fun i hi1 hi2 => by simpa using hF_sub ⟨i, by omega⟩⟩)
     have hmerged_sub : L_merged.Subperm es' := by
@@ -835,7 +832,7 @@ theorem pr02LoopBodyProg_spec {w n_orig n₀ r0 tableFrontier nCur : ℕ}
       ∃ (accIds' : List (Fin es.length)) (esNext : List (IndexedEdge st'.numVerts)),
         esNext.length = st'.numEdges ∧
         HoldsIndexedEdges st'.edgeBase esNext s'.mem ∧
-        (st'.cont = 1 → IsSimple (edgeEnds (esNext.map IndexedEdge.toWeighted))) ∧
+        IsSimple (edgeEnds (esNext.map IndexedEdge.toWeighted)) ∧
         accIds'.length = st'.selLen ∧
         (∀ j (hj : j < accIds'.length), s'.mem (env.selBuf + j) = accIds'[j].val) ∧
         MSFLiftInv es accIds' esNext := by
@@ -938,7 +935,7 @@ theorem pr02LoopBodyProg_spec {w n_orig n₀ r0 tableFrontier nCur : ℕ}
       refine ⟨hmod_all.1, ?_, Or.inr hnxt_cont, fun h => by omega,
         fun _ => ⟨hm_pos, hnxt_8n, hnxt_2m_prev, hnxt_2m, hnxt_n0⟩, hnxt_n0, by omega, hnxt_eb,
         hwf₂, fun a ha => (hmod_s1_s2 a (ha.trans_le htf_s1)).trans (hmod_tf_s1 a ha), ?_,
-        acc1, esNext, hnext_len, hnext_holds, fun _ => hnext_simp, hacc1_len.trans hnxt_sel.symm,
+        acc1, esNext, hnext_len, hnext_holds, hnext_simp, hacc1_len.trans hnxt_sel.symm,
         fun j hj => (hmod_s1_s2 _ (by have := hinv1.sum_le; omega)).trans (hacc1_mem j hj),
         hinv_next⟩
       · simp only [hnxt_cont, ↓reduceIte]
@@ -972,7 +969,7 @@ theorem pr02LoopBodyProg_spec {w n_orig n₀ r0 tableFrontier nCur : ℕ}
         Or.inl rfl, fun _ => ?_, fun h => by simp at h, by omega,
         hm'_le_m, heb'_fr, hwf₁, hmod_tf_s1,
         by simp only [Nat.zero_ne_one, ↓reduceIte, add_zero]; omega,
-        acc1, es', hes'_len, hholds_es', fun h => by simp at h, hacc1_len, hacc1_mem, hinv1⟩
+        acc1, es', hes'_len, hholds_es', hsimp_es', hacc1_len, hacc1_mem, hinv1⟩
       rw [← hr0_env]; omega
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest

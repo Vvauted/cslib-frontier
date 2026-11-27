@@ -7,9 +7,11 @@ Authors: vvauted
 module
 -- upstream: local-only (tests)
 
+import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.PrecompSearch
 import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSF.PartitionRound
 import CslibFrontier.Computability.WordRAM.Realization.LoopFrame
 import CslibFrontier.Computability.WordRAM.Realization.Program.Standard
+import CslibFrontier.Foundations.Data.List.Subperm
 import CslibFrontier.Tactic.Fits
 import CslibFrontier.Tactic.Realize
 import CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.GraphOpsTestSupport
@@ -20,12 +22,17 @@ import Mathlib.Tactic.IntervalCases
 # Tests for `OptimalMSF.PartitionRound` (`pr02LoopBodyProg`)
 
 Exercises `PR02LoopEnv`, `PR02LoopState`, `pr02LoopBodyProg`, `pr02LoopBodyProgSafe`,
-`realizes_pr02LoopBodyProg`, and `pr02LoopBodyProg_spec` across concrete Borůvka contraction exit,
-empty and `triMultiEs` halting exits, non-empty `selLen = 1` prefix preservation, multi-round
-`boundedWhile_potential_spec` composition, and `realize [realizes_pr02LoopBodyProg]` / width-blind
-`Program .standard` lowering (`exists_standard_basis_init_program_state_from_words`).
+`realizes_pr02LoopBodyProg`, and `pr02LoopBodyProg_spec`:
+
+* Concrete small-graph witnesses (`nCur ≤ 4`) exercise 3-stage Borůvka contraction and halting
+  (`cont = 0`), including non-empty `selLen = 1` prefix preservation, sentinel preservation, and an
+  unconditional end-to-end `precomputeDTProg_spec` -> `pr02LoopBodyProg_spec` -> `boundedWhile` ->
+  `Program .standard` lowering witness at `r0 = 24` (`w = 2 ^ (4 * 24 ^ 4 + 16) + 2`).
+* `boundedWhile_pr02LoopBody_spec` and `twoRoundOuterProg` verify multi-round composition
+  (`st.cont = 1`) symbolically.
 -/
 
+-- This test module intentionally exports no declarations.
 set_option linter.privateModule false
 
 namespace CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSFPartitionRound
@@ -59,11 +66,6 @@ private theorem msfLiftInv_of_indexed {n : ℕ} (esCur : List (IndexedEdge n))
       have hid : (L[k]'hk2').id = j := by rw [← heq]; exact hids j hj
       simp_rw [hid, heq]
   simpa only [List.nil_append] using hmap_eq ▸ hL_msf
-
-private theorem isMinSpanningForest_nil {n : ℕ} :
-    IsMinSpanningForest (n := n) ([] : List (WeightedEdge n ℕ)) [] :=
-  ⟨⟨List.Subperm.refl _, isAcyclic_nil, rfl⟩, fun _ hF' => by
-    rw [List.length_eq_zero_iff.mp (Nat.eq_zero_of_le_zero hF'.1.length_le)]⟩
 
 private abbrev triMultiEs : List (IndexedEdge 4) :=
   [⟨0, 1, 5, 0⟩, ⟨1, 2, 3, 1⟩, ⟨0, 2, 7, 2⟩, ⟨2, 3, 2, 3⟩, ⟨0, 3, 9, 4⟩]
@@ -170,10 +172,11 @@ private theorem triMulti_concrete_boruvka_exit {w : ℕ} (hw : Fits w 500) :
 
 private theorem empty_loopBody_spec_exit {w r0 tableBase tableFrontier n₀ : ℕ}
     (h16 : Fits w 16) (hr0_ge : 24 ≤ r0) (hr0_log : max 1 (Nat.iterLog 3 n₀) ≤ r0)
-    (htf_le : tableFrontier ≤ 0) (s₀ : Memory.State) (htf : tableFrontier ≤ s₀.frontier)
+    (s₀ : Memory.State) (htf : tableFrontier ≤ s₀.frontier)
     (hwf : Memory.WellFormed w s₀) (htab : HoldsDTTable r0 tableBase s₀.mem)
     (htib : DTTableInBounds r0 tableBase tableFrontier s₀.mem) (hfit : Fits w (s₀.frontier + 100)) :
-    let env : PR02LoopEnv := ⟨r0, tableBase, 0⟩; let st : PR02LoopState := ⟨1, 0, 0, s₀.frontier, 0⟩
+    let env : PR02LoopEnv := ⟨r0, tableBase, tableFrontier⟩
+    let st : PR02LoopState := ⟨1, 0, 0, s₀.frontier, 0⟩
     pr02LoopBodyProgSafe w (env, st) s₀ ∧
     ((Memory.spec 0).clientResult s₀ (pr02LoopBodyProg (env, st))).cont = 0 ∧
     memoryCost (pr02LoopBodyProg (env, st)) s₀ ≤ 30 * optDepthMN 0 0 + 110 := by
@@ -183,7 +186,8 @@ private theorem empty_loopBody_spec_exit {w r0 tableBase tableFrontier n₀ : �
   obtain ⟨hsafe, hft⟩ := pr02LoopBodyProg_spec (w := w) (n_orig := 0) (n₀ := n₀) (r0 := r0)
     (tableFrontier := tableFrontier) (nCur := 0) (es := []) (env := env) (st := st) (accIds := [])
     (esCur := []) (s := s₀) h16 hwf rfl hr0_ge hr0_log rfl rfl (Nat.zero_le _) (by simp) htab htib
-    htf htf_le (Nat.zero_le _) (fun _ h => absurd h (Nat.not_lt_zero _)) (by simp [st]) rfl
+    htf le_rfl (by simpa only [env, List.length_nil, add_zero] using htf)
+    (fun _ h => absurd h (Nat.not_lt_zero _)) (by simp [st]) rfl
     (fun _ h => absurd h (Nat.not_lt_zero _)) hinv
     (by simpa only [List.length_nil, Nat.mul_zero, Nat.zero_mul, Nat.add_zero] using hfit)
   obtain ⟨_, _, _, _, _, hcont, _, hcont1, _, _, _, _, _, hc, _⟩ :=
@@ -445,5 +449,340 @@ private theorem exists_standard_twoRound_pipeline :
     _frontier, out, fun w d words s₀ hs₀ hl hlen hf hinf hsafe hvh => ?_⟩
   subst hs₀; obtain ⟨y, n, hruns, _, _, hregs, hsteps⟩ := hrun w d words hl hlen hf hinf hsafe hvh
   exact ⟨y, n, runs_stripRand hruns, hregs 0, by simpa using hsteps⟩
+
+/-! ## 5. Unconditional Concrete End-to-End Witness (`r0 = 24`) -/
+
+private def e2eTriWords : List ℕ := encodeIndexedEdges triMultiEs ++ [99, 77]
+private theorem e2eTriWords_len : e2eTriWords.length = 22 := by decide
+private theorem e2eTriWords_lt : ∀ x ∈ e2eTriWords, x < 100 := by decide
+
+private theorem e2eTri_init_mem (k : ℕ) (hk : k < 22) :
+    (Memory.State.init e2eTriWords).mem (1 + k) = e2eTriWords[k]'(e2eTriWords_len ▸ hk) := by
+  rw [Nat.add_comm 1 k]; change e2eTriWords.getD k 0 = _
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (e2eTriWords_len ▸ hk),
+    Option.getD_some]
+
+private theorem e2eTri_init_holds :
+    HoldsIndexedEdges 1 triMultiEs (Memory.State.init e2eTriWords).mem := by
+  intro j hj; have hj5 : j < 5 := by simpa [triMultiEs] using hj
+  have hm (off : ℕ) (ho : off < 4) := e2eTri_init_mem (4 * j + off) (by omega)
+  interval_cases j <;>
+    exact ⟨hm 0 (by decide), hm 1 (by decide), hm 2 (by decide), hm 3 (by decide)⟩
+
+private theorem dtPrecompCost_of_two_le {r0 : ℕ} (hr : 2 ≤ r0) :
+    dtPrecompCost r0 = 2 ^ (2 ^ (4 * r0 ^ 4 + 16)) := by
+  have hnot1 : ¬(r0 ≤ 1) := by omega
+  dsimp only [dtPrecompCost]; simp only [hnot1, ↓reduceIte]
+
+private theorem add_lt_pow_succ {s k w : ℕ} (hs : s < 2 ^ k) (hw : w = k + 1) :
+    s + 2 ^ k < 2 ^ w := by
+  rw [hw, Nat.pow_succ', two_mul]; exact Nat.add_lt_add_right hs _
+
+private theorem e2eTri_fits_60k_aux {w k : ℕ} (hk : 16 ≤ k) (hw : w = 2 ^ k + 2) :
+    Fits w (60000 + 2 ^ (2 ^ k)) := by
+  have hpow_ge : 2 ^ 16 ≤ 2 ^ (2 ^ k) :=
+    (Nat.pow_le_pow_right (by decide) hk).trans Nat.lt_two_pow_self.le
+  have h1 : 60000 + 2 ^ (2 ^ k) < 2 ^ (2 ^ k + 1) :=
+    add_lt_pow_succ ((by decide : 60000 < 2 ^ 16).trans_le hpow_ge) rfl
+  have h2 : 2 ^ (2 ^ k + 1) < 2 ^ w := by
+    rw [hw]; exact Nat.pow_lt_pow_right (by decide) (Nat.lt_succ_self _)
+  exact h1.trans h2
+
+private theorem e2eTri_fits_60k {w : ℕ} (hw : w = 2 ^ (4 * 24 ^ 4 + 16) + 2) :
+    Fits w (60000 + dtPrecompCost 24) := by
+  rw [dtPrecompCost_of_two_le (by decide : 2 ≤ 24)]
+  exact e2eTri_fits_60k_aux (k := 4 * 24 ^ 4 + 16) (Nat.le_add_left 16 _) hw
+
+private theorem triMulti_msf_of_lift {m : ℕ} {accIds : List (Fin 5)}
+    {esFinal : List (IndexedEdge m)}
+    (hinv : MSFLiftInv (triMultiEs.map IndexedEdge.toWeighted) accIds esFinal) :
+    ∃ remIds : List (Fin 5), IsMinSpanningForest (triMultiEs.map IndexedEdge.toWeighted)
+      ((accIds ++ remIds).map fun i => (triMultiEs.map IndexedEdge.toWeighted)[i.val]) := by
+  have hkmsf := kruskalEdges_isMinSpanningForest (esFinal.map IndexedEdge.toWeighted)
+  obtain ⟨L, hL_sub, hL_eq⟩ := hkmsf.1.1.exists_map
+  obtain ⟨remIds, _, hmsf⟩ := hinv.2.2.2.2 L hL_sub (hL_eq ▸ hkmsf)
+  exact ⟨remIds, hmsf⟩
+
+private def e2eTriMultiProg (_ : Unit) : Memory.Prog PR02LoopState := do
+  let tb ← precomputeDTProg 24
+  let selBuf ← Memory.allocDirty 5
+  boundedWhile (fun _ (st : PR02LoopState) => 0 < st.cont) pr02LoopBodyProg
+    ⟨24, tb, selBuf⟩ 2 ⟨1, 4, 5, 1, 0⟩
+
+private def e2eTriMultiProgSafe (w : ℕ) (_ : Unit) (s : Memory.State) : Prop :=
+  Fits w 24 ∧ precomputeDTProgSafe w 24 s ∧
+  let tb := (Memory.spec 0).clientResult s (precomputeDTProg 24)
+  let s₁ := (Memory.spec 0).clientState s (precomputeDTProg 24)
+  Fits w (s₁.frontier + 5) ∧
+  let s₂ : Memory.State := ⟨s₁.mem, s₁.frontier + 5⟩
+  whileSafe (fun _ (st : PR02LoopState) => 0 < st.cont) pr02LoopBodyProg
+    pr02LoopBodyProgSafe w ⟨24, tb, s₁.frontier⟩ 2 ⟨1, 4, 5, 1, 0⟩ s₂
+
+private theorem realizes_e2eTriMultiProg : Realizes .exact e2eTriMultiProg
+    WordEncoding.encode WordEncoding.encode e2eTriMultiProgSafe (fun _ _ => 2) := by
+  unfold e2eTriMultiProg; realize [realizes_precomputeDTProg, realizes_pr02LoopBodyProg]
+  all_goals
+    have hfront := hmem.frontier_fits
+    have h16 : Fits w 16 := h.1.of_le (by decide)
+    have hf := h.2.2.1
+    first
+    | exact h.1 | exact h.2.1
+    | exact whileWork_le (fun (_ : PR02LoopEnv) (st : PR02LoopState) => 0 < st.cont)
+        pr02LoopBodyProg (fun _ _ => le_rfl) _ 2 _ _
+    | fits
+    | (intro _; dsimp only [e2eTriMultiProgSafe] at h
+       refine whileSafe_imp (fun (_ : PR02LoopEnv) (st : PR02LoopState) => 0 < st.cont)
+         (fun (_ : PR02LoopEnv) (st : PR02LoopState) => 0 < st.cont) (fun _ => Iff.rfl)
+         (fun _ => rfl) ?_ h.2.2.2; exact fun _ _ _ hs => ⟨h.1, hs⟩)
+
+private theorem e2eTriMulti_spec {w : ℕ} (hw : w = 2 ^ (4 * 24 ^ 4 + 16) + 2) :
+    let s₀ := Memory.State.init e2eTriWords
+    let tb := (Memory.spec 0).clientResult s₀ (precomputeDTProg 24)
+    let s₁ := (Memory.spec 0).clientState s₀ (precomputeDTProg 24)
+    let s₂ : Memory.State := ⟨s₁.mem, s₁.frontier + 5⟩
+    let env : PR02LoopEnv := ⟨24, tb, s₁.frontier⟩
+    let st₀ : PR02LoopState := ⟨1, 4, 5, 1, 0⟩
+    let step1 := pr02LoopBodyProg (env, st₀)
+    pr02LoopBodyProgSafe w (env, st₀) s₂ ∧
+    (Memory.spec w).ValidHistory s₂ ((Memory.spec w).clientHistory s₂ step1) ∧
+    ((Memory.spec 0).clientState s₂ step1).mem 21 = 99 ∧
+    ((Memory.spec 0).clientState s₂ step1).mem 22 = 77 ∧
+    e2eTriMultiProgSafe w () s₀ ∧
+    (Memory.spec w).ValidHistory s₀ ((Memory.spec w).clientHistory s₀ (e2eTriMultiProg ())) ∧
+    ((Memory.spec 0).clientResult s₀ (e2eTriMultiProg ())).cont = 0 ∧
+    ((Memory.spec 0).clientState s₀ (e2eTriMultiProg ())).mem 21 = 99 ∧
+    ((Memory.spec 0).clientState s₀ (e2eTriMultiProg ())).mem 22 = 77 ∧
+    ∃ (accIds' remIds : List (Fin 5)),
+      accIds'.length = ((Memory.spec 0).clientResult s₀ (e2eTriMultiProg ())).selLen ∧
+      (∀ j (hj : j < accIds'.length),
+        ((Memory.spec 0).clientState s₀ (e2eTriMultiProg ())).mem (s₁.frontier + j) =
+          accIds'[j].val) ∧
+      IsMinSpanningForest (triMultiEs.map IndexedEdge.toWeighted)
+        ((accIds' ++ remIds).map fun i => (triMultiEs.map IndexedEdge.toWeighted)[i.val]) := by
+  intro s₀
+  have hfr₀ : s₀.frontier = 23 := by change e2eTriWords.length + 1 = 23; rw [e2eTriWords_len]
+  have h60k : Fits w (60000 + dtPrecompCost 24) := e2eTri_fits_60k hw
+  clear hw
+  have h16 : Fits w 16 := h60k.of_le ((by decide : 16 ≤ 60000).trans (Nat.le_add_right _ _))
+  have h24 : Fits w 24 := h60k.of_le ((by decide : 24 ≤ 60000).trans (Nat.le_add_right _ _))
+  have hinf : InputFits w e2eTriWords :=
+    ⟨h60k.of_le ((by rw [e2eTriWords_len]; decide : e2eTriWords.length ≤ 60000).trans
+      (Nat.le_add_right _ _)),
+    fun v hv => h60k.of_le
+      (((e2eTriWords_lt v hv).le.trans (by decide : 100 ≤ 60000)).trans (Nat.le_add_right _ _))⟩
+  have hwf₀ : Memory.WellFormed w s₀ :=
+    Memory.wellFormed_init hinf
+      (h60k.of_le ((by rw [hfr₀]; decide : s₀.frontier ≤ 60000).trans (Nat.le_add_right _ _)))
+  have hsafe_pre : precomputeDTProgSafe w 24 s₀ := by
+    rw [precomputeDTProgSafe_iff, hfr₀]
+    exact h60k.of_le (Nat.add_le_add_right (by decide) _)
+  have hpre := precomputeDTProg_spec hwf₀ hsafe_pre
+  have hpre_r := framedTriple_iff_realization.mp hpre
+  set tb := (Memory.spec 0).clientResult s₀ (precomputeDTProg 24)
+  set s₁ := (Memory.spec 0).clientState s₀ (precomputeDTProg 24)
+  rcases hpre_r with ⟨hv₁, _, hmod₁, hwf₁, hs₁_fr, htab₁, htib₁⟩
+  have hs₁_ge : s₀.frontier ≤ s₁.frontier := hmod₁.1
+  let s₂ : Memory.State := ⟨s₁.mem, s₁.frontier + 5⟩
+  have hfit_alloc : Fits w (s₁.frontier + 5) := h60k.of_le (by rw [hfr₀] at hs₁_fr; omega)
+  have hwf₂ : Memory.WellFormed w s₂ := ⟨hfit_alloc, hwf₁.mem_fits⟩
+  have hs₂_21 : s₂.mem 21 = 99 :=
+    (hmod₁.2 21 (by rw [hfr₀]; decide) (Set.notMem_empty _)).trans (e2eTri_init_mem 20 (by decide))
+  have hs₂_22 : s₂.mem 22 = 77 :=
+    (hmod₁.2 22 (by rw [hfr₀]; decide) (Set.notMem_empty _)).trans (e2eTri_init_mem 21 (by decide))
+  have hholds₂ : HoldsIndexedEdges 1 triMultiEs s₂.mem :=
+    e2eTri_init_holds.congr fun a _ ha =>
+      hmod₁.2 a (by rw [hfr₀]; have : triMultiEs.length = 5 := rfl; omega) (Set.notMem_empty _)
+  let env : PR02LoopEnv := ⟨24, tb, s₁.frontier⟩
+  let st₀ : PR02LoopState := ⟨1, 4, 5, 1, 0⟩
+  have htri_len : triMultiEs.length = 5 := rfl
+  have htri_wlen : (triMultiEs.map IndexedEdge.toWeighted).length = 5 := rfl
+  have hfit_step1 : Fits w (s₂.frontier + 1200 * 5 + 750 * 4 + 2 * 5 * 24 + 100) :=
+    h60k.of_le (by dsimp only [s₂]; rw [hfr₀] at hs₁_fr; omega)
+  have hstep1 := pr02LoopBodyProg_spec (w := w) (n_orig := 4) (n₀ := 4) (r0 := 24)
+    (tableFrontier := s₁.frontier) (nCur := 4) (es := triMultiEs.map IndexedEdge.toWeighted)
+    (env := env) (st := st₀) (accIds := []) (esCur := triMultiEs) (s := s₂)
+    h16 hwf₂ rfl le_rfl (by decide) rfl htri_len le_rfl (by simp [htri_len]) htab₁ htib₁
+    (by dsimp only [s₂]; omega) le_rfl (by dsimp only [env, s₂]; rw [htri_wlen])
+    hholds₂ (by dsimp only [st₀, s₂]; rw [hfr₀] at hs₁_ge; omega) rfl
+    (fun _ hj => absurd hj (Nat.not_lt_zero _)) triMulti_msfLiftInv
+    (by rw [htri_len]; exact hfit_step1)
+  obtain ⟨hsafe1, hft1⟩ := hstep1
+  obtain ⟨hv_step1, _, hmod_step1, _⟩ := framedTriple_iff_realization.mp hft1
+  have hs1'_21 : ((Memory.spec 0).clientState s₂ (pr02LoopBodyProg (env, st₀))).mem 21 = 99 := by
+    rw [hmod_step1.2 21 (by dsimp only [s₂]; rw [hfr₀] at hs₁_ge; omega)
+      (by dsimp only [env, st₀]; simp only [Set.mem_Ico]; rw [hfr₀] at hs₁_ge; omega)]
+    exact hs₂_21
+  have hs1'_22 : ((Memory.spec 0).clientState s₂ (pr02LoopBodyProg (env, st₀))).mem 22 = 77 := by
+    rw [hmod_step1.2 22 (by dsimp only [s₂]; rw [hfr₀] at hs₁_ge; omega)
+      (by dsimp only [env, st₀]; simp only [Set.mem_Ico]; rw [hfr₀] at hs₁_ge; omega)]
+    exact hs₂_22
+  let cap := s₂.frontier + 1200 * 5 + 750 * 4 + 2 * 5 * 24 + 100
+  let I : PR02LoopState → Memory.State → Prop := fun st s =>
+    Memory.WellFormed w s ∧ s₁.frontier ≤ s.frontier ∧ s₁.frontier + 5 ≤ s.frontier ∧
+    HoldsDTTable 24 tb s.mem ∧ DTTableInBounds 24 tb s₁.frontier s.mem ∧
+    s.frontier + (if st.cont = 1 then
+      1200 * st.numEdges + 750 * st.numVerts + 2 * st.numEdges * 24 + 100 else 0) ≤ cap ∧
+    (st.cont = 0 ∨ st.cont = 1) ∧
+    ∃ esCur : List (IndexedEdge st.numVerts),
+      ∃ accIds : List (Fin (triMultiEs.map IndexedEdge.toWeighted).length),
+      st.numVerts ≤ 4 ∧ (st.cont = 1 → st.numVerts ≤ 2 * esCur.length) ∧
+      st.numEdges = esCur.length ∧ HoldsIndexedEdges st.edgeBase esCur s.mem ∧
+      st.edgeBase + 4 * esCur.length ≤ s.frontier ∧ accIds.length = st.selLen ∧
+      (∀ j (hj : j < accIds.length), s.mem (s₁.frontier + j) = accIds[j].val) ∧
+      MSFLiftInv (triMultiEs.map IndexedEdge.toWeighted) accIds esCur
+  let rank : PR02LoopState → Memory.State → ℕ := fun st _ =>
+    if 0 < st.cont then (if st.numEdges = 0 then 1 else 2) else 0
+  let pot : PR02LoopState → Memory.State → ℕ := fun st _ => if 0 < st.cont then
+    20000 * st.numEdges + 5000 * st.numVerts + 30 * optDepthMN st.numEdges st.numVerts + 110 else 0
+  let guard : PR02LoopEnv → PR02LoopState → Prop := fun _ st => 0 < st.cont
+  have hbw := boundedWhile_potential_spec guard pr02LoopBodyProg
+    (fun w x s => pr02LoopBodyProgSafe w x s) w env 0 I rank pot
+    (Set.Ico s₁.frontier (s₁.frontier + 5))
+    (fun st _ _ hr => by
+      dsimp only [rank, guard] at hr ⊢; split_ifs at hr with hg; exact hg)
+    (fun st s hI hg => by
+      rcases hI with ⟨hwf, hsf, hsel, htab, htib, hcap, h01, esCur, accIds, hnv4, hn2m, hm_eq,
+        hholds, hedges, hacc_len, hacc_mem, hinv⟩
+      have hc1 : st.cont = 1 := h01.elim (fun h0 => by omega) id
+      have hfit_st : Fits w (s.frontier + 1200 * esCur.length + 750 * st.numVerts +
+          2 * esCur.length * 24 + 100) := by
+        dsimp only [cap] at hcap; simp only [hc1, ↓reduceIte] at hcap
+        exact hfit_step1.of_le (by rw [← hm_eq]; omega)
+      obtain ⟨hsafe, hft⟩ := pr02LoopBodyProg_spec (w := w) (n_orig := 4) (n₀ := 4) (r0 := 24)
+        (tableFrontier := s₁.frontier) (nCur := st.numVerts)
+        (es := triMultiEs.map IndexedEdge.toWeighted) (env := env) (st := st) (accIds := accIds)
+        (esCur := esCur) (s := s) h16 hwf rfl le_rfl (by decide) rfl hm_eq hnv4 (hn2m hc1) htab
+        htib hsf le_rfl (by dsimp only [env]; rw [htri_wlen]; exact hsel) hholds
+        (hm_eq ▸ hedges) hacc_len hacc_mem hinv hfit_st
+      obtain ⟨hvh, _, hmod, hs'_ge, hcap', h01', _, hcont1, hnv_n0, _, heb', hwf', htf_pres,
+        hpot_step, accIds', esNext, hnext_len, hnext_holds, _, hacc'_len, hacc'_mem, hinv'⟩ :=
+        framedTriple_iff_realization.mp hft
+      refine ⟨hsafe, hvh, ?_, hmod.mono (fun x hx => by
+          dsimp only [env] at hx; simp only [Set.mem_Ico] at hx ⊢; rw [htri_wlen] at hx; omega),
+        ?_, ?_⟩
+      · dsimp only [pot, guard] at hg ⊢; simp only [hg, ↓reduceIte, add_zero]
+        by_cases hgt : 0 < ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).cont
+        · have hc1' : ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).cont = 1 :=
+            h01'.elim (fun h0 => by omega) id
+          simp only [hgt, ↓reduceIte]
+          simp only [hc1', ↓reduceIte] at hpot_step; exact hm_eq ▸ hpot_step
+        · simp only [hgt, ↓reduceIte, add_zero]
+          have h0' : ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).cont = 0 := by
+            omega
+          simp only [h0', Nat.zero_ne_one, ↓reduceIte, add_zero] at hpot_step
+          exact hm_eq ▸ hpot_step
+      · refine ⟨hwf', hsf.trans hs'_ge, hsel.trans hs'_ge, htab.congr htib htf_pres,
+          htib.mono le_rfl htf_pres, ?_, h01', esNext, accIds', hnv_n0,
+          fun hc => hnext_len ▸ (hcont1 hc).2.2.2.1, hnext_len.symm, hnext_holds,
+          hnext_len ▸ heb', hacc'_len, hacc'_mem, hinv'⟩
+        dsimp only [cap] at hcap ⊢; simp only [hc1, ↓reduceIte] at hcap
+        rw [← hm_eq] at hcap'; omega
+      · dsimp only [rank, guard] at hg ⊢; simp only [hg, ↓reduceIte]
+        by_cases hm0 : st.numEdges = 0
+        · have hesc0 : esCur.length = 0 := hm_eq ▸ hm0
+          by_cases hgt : 0 < ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).cont
+          · have hc1' : ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).cont = 1 :=
+              h01'.elim (fun h0 => by omega) id
+            obtain ⟨hm1, _⟩ := hcont1 hc1'; omega
+          · simp [hm0, hgt]
+        · by_cases hgt : 0 < ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).cont
+          · have hc1' : ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).cont = 1 :=
+              h01'.elim (fun h0 => by omega) id
+            obtain ⟨_, h8v, _⟩ := hcont1 hc1'
+            have hnv0 : ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).numVerts =
+                0 := by omega
+            have hesemp : esNext = [] := by
+              cases esNext with | nil => rfl | cons e _ => exact Fin.elim0 (hnv0 ▸ e.u)
+            have hne0 : ((Memory.spec 0).clientResult s (pr02LoopBodyProg (env, st))).numEdges =
+                0 := by rw [← hnext_len, hesemp]; rfl
+            simp [hm0, hgt, hne0]
+          · simp [hm0, hgt])
+    2 st₀ s₂ ⟨hwf₂, by dsimp only [s₂]; omega, by dsimp only [s₂]; omega, htab₁, htib₁,
+      by dsimp only [cap, st₀]; simp only [↓reduceIte]; omega, Or.inr rfl, triMultiEs, [],
+      by decide, fun _ => by dsimp only [st₀]; rw [htri_len]; decide, htri_len, hholds₂,
+      by dsimp only [st₀, s₂]; rw [hfr₀] at hs₁_ge; omega, rfl,
+      fun _ hj => absurd hj (Nat.not_lt_zero _), triMulti_msfLiftInv⟩
+    (by dsimp only [rank, st₀]; simp)
+  rcases hbw with ⟨hsafe_bw, hvh_bw, hng_bw, hI_bw, hmod_bw, _⟩
+  rcases hI_bw with ⟨_, _, _, _, _, _, h01_end, esFinal, accIds', _, _, _, _, _,
+    hacc'_len, hacc'_mem, hinv'⟩
+  have he2e_eq : e2eTriMultiProg () = (precomputeDTProg 24 >>= fun tb' =>
+      Memory.allocDirty 5 >>= fun selBuf' =>
+        boundedWhile guard pr02LoopBodyProg ⟨24, tb', selBuf'⟩ 2 st₀) := rfl
+  have hsafe_e2e : e2eTriMultiProgSafe w () s₀ :=
+    ⟨h24, hsafe_pre, by change Fits w (s₁.frontier + 5); exact hfit_alloc, by
+      change whileSafe guard pr02LoopBodyProg pr02LoopBodyProgSafe w env 2 st₀ s₂
+      exact hsafe_bw⟩
+  have hvh_e2e : (Memory.spec w).ValidHistory s₀
+      ((Memory.spec w).clientHistory s₀ (e2eTriMultiProg ())) := by
+    rw [he2e_eq]; refine validHistory_bind_step hv₁ ?_
+    change (Memory.spec w).ValidHistory s₁ ((Memory.spec w).clientHistory s₁
+      (Memory.allocDirty 5 >>= fun selBuf' =>
+        boundedWhile guard pr02LoopBodyProg ⟨24, tb, selBuf'⟩ 2 st₀))
+    refine validHistory_allocDirty_bind hfit_alloc ?_
+    exact hvh_bw
+  have hres_e2e : (Memory.spec 0).clientResult s₀ (e2eTriMultiProg ()) =
+      (Memory.spec 0).clientResult s₂ (boundedWhile guard pr02LoopBodyProg env 2 st₀) := by
+    rw [he2e_eq, StateTransitionSpec.clientResult_bind]
+    change (Memory.spec 0).clientResult s₁ (Memory.allocDirty 5 >>= fun selBuf' =>
+      boundedWhile guard pr02LoopBodyProg ⟨24, tb, selBuf'⟩ 2 st₀) = _
+    rw [clientResult_bind_allocDirty]
+  have hst_e2e : (Memory.spec 0).clientState s₀ (e2eTriMultiProg ()) =
+      (Memory.spec 0).clientState s₂ (boundedWhile guard pr02LoopBodyProg env 2 st₀) := by
+    rw [he2e_eq, StateTransitionSpec.clientState_bind]
+    change (Memory.spec 0).clientState s₁ (Memory.allocDirty 5 >>= fun selBuf' =>
+      boundedWhile guard pr02LoopBodyProg ⟨24, tb, selBuf'⟩ 2 st₀) = _
+    rw [clientState_bind_allocDirty]
+  have hcont0_bw : ((Memory.spec 0).clientResult s₂
+      (boundedWhile guard pr02LoopBodyProg env 2 st₀)).cont = 0 := by
+    dsimp only [guard] at hng_bw; exact Nat.eq_zero_of_not_pos hng_bw
+  have hbw_21 : ((Memory.spec 0).clientState s₂
+      (boundedWhile guard pr02LoopBodyProg env 2 st₀)).mem 21 = 99 := by
+    rw [hmod_bw.2 21 (by dsimp only [s₂]; rw [hfr₀] at hs₁_ge; omega)
+      (by simp only [Set.mem_Ico]; rw [hfr₀] at hs₁_ge; omega)]; exact hs₂_21
+  have hbw_22 : ((Memory.spec 0).clientState s₂
+      (boundedWhile guard pr02LoopBodyProg env 2 st₀)).mem 22 = 77 := by
+    rw [hmod_bw.2 22 (by dsimp only [s₂]; rw [hfr₀] at hs₁_ge; omega)
+      (by simp only [Set.mem_Ico]; rw [hfr₀] at hs₁_ge; omega)]; exact hs₂_22
+  obtain ⟨remIds, hmsf⟩ := triMulti_msf_of_lift hinv'
+  exact ⟨hsafe1, hv_step1, hs1'_21, hs1'_22, hsafe_e2e, hvh_e2e,
+    hres_e2e ▸ hcont0_bw, hst_e2e ▸ hbw_21, hst_e2e ▸ hbw_22,
+    accIds', remIds, hres_e2e ▸ hacc'_len, fun j hj => hst_e2e ▸ hacc'_mem j hj, hmsf⟩
+
+private theorem exists_standard_e2e_triMulti :
+    ∃ r C pc : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
+      ∃ frontier : Fin r, ∃ _out : Fin 5 → Fin r,
+      ∀ w : ℕ, w = 2 ^ (4 * 24 ^ 4 + 16) + 2 →
+        ∃ y n, Runs w prog (State.init e2eTriWords) ⟨pc, y⟩ n ∧
+          step w prog ⟨pc, y⟩ = .halt 0 ∧
+          (memoryState frontier y).mem 21 = 99 ∧
+          (memoryState frontier y).mem 22 = 77 ∧
+          n + 1 ≤ C * (memoryCost (e2eTriMultiProg ())
+            (Memory.State.init e2eTriWords) + 1) + 1 := by
+  obtain ⟨r, C, pc, prog, hnw, frontier, out, hrun⟩ :=
+    realizes_e2eTriMultiProg.exists_standard_basis_init_program_state_from_words (0 : Fin 5)
+  refine ⟨r, 3 * C, pc, stripRand prog, not_readsWidth_stripRand hnw, isRandFree_stripRand prog,
+    frontier, out, fun w hw => ?_⟩
+  have h60k : Fits w (60000 + dtPrecompCost 24) := e2eTri_fits_60k hw
+  obtain ⟨_, _, _, _, hsafe, hvh, hcont0, h21, h22, _⟩ := e2eTriMulti_spec hw
+  clear hw
+  have hinf : InputFits w e2eTriWords :=
+    ⟨h60k.of_le ((by rw [e2eTriWords_len]; decide : e2eTriWords.length ≤ 60000).trans
+      (Nat.le_add_right _ _)),
+    fun v hv => h60k.of_le
+      (((e2eTriWords_lt v hv).le.trans (by decide : 100 ≤ 60000)).trans (Nat.le_add_right _ _))⟩
+  obtain ⟨y, n, hruns, hhalt, hmem_st, _, hsteps⟩ := hrun w () e2eTriWords
+    (fun j => Fin.elim0 j) (by rw [e2eTriWords_len]; decide)
+    (h60k.of_le ((by rw [e2eTriWords_len]; decide : e2eTriWords.length + 1 ≤ 60000).trans
+      (Nat.le_add_right _ _))) hinf hsafe hvh
+  have hres_w := clientResult_width (p := e2eTriMultiProg ()) (s := Memory.State.init e2eTriWords) w
+  have hst_w := clientState_width (p := e2eTriMultiProg ()) (s := Memory.State.init e2eTriWords) w
+  have hmul : C * (memoryCost (e2eTriMultiProg ()) (Memory.State.init e2eTriWords) + 2 + 1) ≤
+      3 * C * (memoryCost (e2eTriMultiProg ()) (Memory.State.init e2eTriWords) + 1) := by
+    rw [Nat.mul_comm 3 C, Nat.mul_assoc]; exact Nat.mul_le_mul_left C (by omega)
+  refine ⟨y, n, runs_stripRand hruns,
+    step_stripRand_of_halt (by rw [hhalt, hres_w]; exact congrArg _ hcont0),
+    by rw [hmem_st, hst_w]; exact h21, by rw [hmem_st, hst_w]; exact h22,
+    le_trans hsteps (Nat.add_le_add_right hmul 1)⟩
 
 end CslibFrontierTests.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSFPartitionRound
