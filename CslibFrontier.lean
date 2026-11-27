@@ -3666,6 +3666,7 @@ public import CslibFrontier.Algorithms.Lean.DPLL.Trail
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Internal.BinaryAddition
 public import CslibFrontier.DataStructure.Online.SkiRental
 public import CslibFrontier.Computability.Circuit.Fusion.Boolean
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.Partition.Bridges
 public import CslibFrontier.Probability.KWiseIndependent.Restriction
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Strassen.Push
 public import CslibFrontier.Logics.FirstOrder.FiniteVariable.Counting
