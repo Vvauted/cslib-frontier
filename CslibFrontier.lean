@@ -1886,6 +1886,7 @@ public import CslibFrontier.Computability.Circuit.Frontier.TensorNetwork.Truncat
 public import CslibFrontier.Logics.Propositional.ClauseSet.Sparsification.CountingPathBounds
 public import CslibFrontier.Computability.RAM.Cost
 public import CslibFrontier.Probability.PairwiseIndependentHash.ConditionalAveraging
+public import CslibFrontier.Computability.Interactive.Debate.CopyChain
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.TowerPlan.Transfer
 public import CslibFrontier.Computability.Circuit.Boolean.Minterms
 public import CslibFrontier.Computability.Complexity.FineGrained.PPSZ.Limit
@@ -6552,6 +6553,7 @@ public import CslibFrontier.Foundations.Combinatorics.SimpleGraph.MetricGraph.Su
 public import CslibFrontier.Foundations.Computability.RecursiveInEvalnPrimrec
 public import CslibFrontier.Computability.Circuit.NNF.Basic
 public import CslibFrontier.Foundations.Combinatorics.Expander.Walk
+public import CslibFrontier.Computability.Interactive.Debate.TwoBlock
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.InSpace.NatPow
 public import CslibFrontier.Computability.Circuit.Frontier.LowerBound
 public import CslibFrontier.Computability.Complexity.Problems.CSP.RotationSystem.DegreeTwo
