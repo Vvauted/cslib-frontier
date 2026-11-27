@@ -2328,6 +2328,7 @@ public import CslibFrontier.Logics.FirstOrder.EhrenfeuchtFraisse.DefinedGraph
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Halting.Rice
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.Cuts.Groups
 public import CslibFrontier.Computability.Circuit.Boolean.SemiUnbounded.MinIsolation
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSF.PartitionEval
 public import CslibFrontier.Logics.Propositional.CSP.Planar.Embedding.GadgetCyclic
 public import CslibFrontier.Computability.DecisionTree.InnerProduct
 public import CslibFrontier.Computability.PCP.SelectedComposition
