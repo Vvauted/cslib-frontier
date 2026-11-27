@@ -9968,6 +9968,7 @@ public import CslibFrontier.Foundations.LinearAlgebra.Matrix.Rigidity.TotallyReg
 public import CslibFrontier.Computability.PolyTime.FineGrained.ParameterCheck
 public import CslibFrontier.Computability.Circuit.Arithmetic.Separation.GroupProgram.Bases
 public import CslibFrontier.Foundations.Geometry.Polygonal.RayParityEven
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DenseCase.Driver
 public import CslibFrontier.Computability.PolyTime.Graph.RotationSystem.Recognition.Query
 public import CslibFrontier.Foundations.LinearAlgebra.Matrix.Rank
 public import CslibFrontier.Probability.PMF.Chebyshev
