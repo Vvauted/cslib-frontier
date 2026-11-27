@@ -126,7 +126,7 @@ theorem rel_edgePartition_map_iff_joins {n : ℕ} (es : List (WeightedEdge n ℕ
       · exact ih.trans _ _ _ (.symm _ _ (.rel _ _ ⟨es[i.val], him, h1.symm, h2.symm⟩))
 
 /-- MSF edge list extracted from `Cslib.Multigraph.msf` under weight function `w`. -/
-noncomputable def msfEdges {n : ℕ} {W : Type} [LinearOrder W]
+@[expose] noncomputable def msfEdges {n : ℕ} {W : Type} [LinearOrder W]
     (es : List (WeightedEdge n ℕ)) (w : Fin es.length → W) : List (WeightedEdge n ℕ) :=
   (Cslib.Multigraph.msf (edgeEnds es) w Finset.univ).toList.map fun i => es[i.val]
 

@@ -2788,6 +2788,7 @@ public import CslibFrontier.Computability.Machines.Turing.TM2.PolyTime
 public import CslibFrontier.Foundations.MeasureTheory.Group.ConvolutionDensity
 public import CslibFrontier.Computability.Complexity.Problems.NCL.Planar.MixedCrossover
 public import CslibFrontier.GameTheory.Extensive.PerfectInfoEmbedding
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.Eval
 public import CslibFrontier.Algorithms.WordRAM.MatrixMultiplication.Schonhage.BoxQuery.ExpandMemory
 public import CslibFrontier.Probability.Fooling.DecisionTree.Separation
 public import CslibFrontier.Foundations.LinearAlgebra.Matrix.EndpointIncidence
@@ -8934,6 +8935,7 @@ public import CslibFrontier.Computability.Machines.Turing.MultiTape.InputAt
 public import CslibFrontier.Computability.Circuit.Boolean.Barrington
 public import CslibFrontier.Computability.Circuit.Arithmetic.DepthFive.Path
 public import CslibFrontier.Crypto.Primitives.PRG.NextBit
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.Batch
 public import CslibFrontier.Foundations.Combinatorics.SimpleGraph.EvenEdges
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.InSpace.NatPrime
 public import CslibFrontier.DataStructure.Dictionary.SuccinctWhpModelTick.Stage34
