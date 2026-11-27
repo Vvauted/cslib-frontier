@@ -51,14 +51,15 @@ Given an `n`-vertex, `m`-edge weighted undirected multigraph in standard `Kruska
 
 `realizes_optimalMSFProg` and `optimalMSF_wordRAM_spec` compile `optimalMSFProg` into a fixed,
 width-blind (`¬prog.ReadsWidth`), random-free (`prog.IsRandFree`) `Program .standard` executing in
-`O(optDepthMN m n + m + n + 1)` instructions (`ExecutesList`), and
-`optimalMSF_simpleGraph_isMST_spec` specializes the result to `SimpleGraph.IsMST` on connected
-simple graphs.
+`O(optDepthMN m n + m + n + 1)` instructions (`ExecutesList`) on raw multigraphs (where
+`optDepthMN` over simple graphs with `≤ m` edges saturates once `m > n.choose 2`), while
+`optimalMSF_simpleGraph_isMST_spec` achieves the pure `O(optDepthMN m n + 1)` Theorem 5.8 bound
+on connected simple graphs (`SimpleGraph.IsMST`).
 
 ## Main definitions
 
-* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSFWordBound`: polynomial word-width and
-  workspace bound using `Nat.iterLog 3`.
+* `Cslib.Algorithms.WordRAM.MinimumSpanningForest.optimalMSFWordBound`: polynomial value/workspace
+  bound using `Nat.iterLog 3` (`Fits w (optimalMSFWordBound n m)` gives logarithmic `w`).
 * `Cslib.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSFArgs`,
   `Cslib.Algorithms.WordRAM.MinimumSpanningForest.encOptimalMSFArgs`: 2-word input descriptor
   `[numVertices, numEdges]` matching words `0, 1` of `Kruskal.encode`.
@@ -97,8 +98,11 @@ open Cslib.Algorithms.WordRAM.MinimumSpanningForest.DenseCase
 
 /-! ## Section 1: Public Word-Width Bound and Input Record -/
 
-/-- Polynomial word-width and workspace bound for `optimalMSFProg` on `n` vertices and `m`
-edges: `10000 * m + 60000 * n + 2 * m * max 1 (Nat.iterLog 3 n) + 200000`. -/
+/-- Polynomial bound on the word-representable workspace and magnitude threshold for
+`optimalMSFProg` on `n` vertices and `m` edges:
+`10000 * m + 60000 * n + 2 * m * max 1 (Nat.iterLog 3 n) + 200000`. Requiring
+`Fits w (optimalMSFWordBound n m)` ensures a logarithmic sufficient word width
+`w = Ω(log (m * max 1 (Nat.iterLog 3 n) + n + 1))` alongside `∀ e ∈ es, Fits w e.weight`. -/
 @[expose] def optimalMSFWordBound (n m : ℕ) : ℕ :=
   10000 * m + 60000 * n + 2 * m * max 1 (Nat.iterLog 3 n) + 200000
 
@@ -212,22 +216,6 @@ private theorem isMinSpanningForest_nil_of_all_self {n : ℕ} (es : List (Weight
   refine ⟨⟨List.nil_subperm, isAcyclic_nil, ?_⟩, fun _ _ => Nat.zero_le _⟩
   rw [edgePartition, edgePartition, edgePartitionFrom_nil,
     edgePartitionFrom_eq_of_all_self _ es hself]
-
-private theorem initPreprocess_numVertices_le {w : ℕ} {a : InitPreprocessArgs}
-    {s : Memory.State} (hwf : Memory.WellFormed w s)
-    (hsafe : initPreprocessProgSafe w a s) :
-    ((Memory.spec 0).clientResult s (initPreprocessProg a)).numVertices ≤ a.numVertices := by
-  rcases a with ⟨n, m, inBase⟩
-  obtain ⟨h16, hin, hfit, hedges⟩ := hsafe
-  let rawEs : List (WeightedEdge n ℕ) := List.ofFn fun i : Fin m =>
-    ⟨⟨s.mem (inBase + 3 * i.val), (hedges i.val i.isLt).1⟩,
-     ⟨s.mem (inBase + 3 * i.val + 1), (hedges i.val i.isLt).2⟩,
-     s.mem (inBase + 3 * i.val + 2)⟩
-  have hlen : rawEs.length = m := List.length_ofFn
-  have hraw : HoldsEdges inBase rawEs s.mem := fun i hi => by simp [rawEs]
-  have h := framedTriple_iff_realization.mp (initPreprocessProg_spec h16 hwf hraw
-    (by simpa [hlen] using hin) (by simpa [hlen] using hfit))
-  simpa [hlen] using h.2.2.2.2.1
 
 private theorem realizes_consequence_of {B : Basis} {α δ : Type} {k l : ℕ}
     {p : δ → Memory.Prog α} {input : δ ↪ (Fin k → ℕ)} {output : α ↪ (Fin l → ℕ)}
@@ -1080,7 +1068,7 @@ private theorem realizes_optimalMSFNonEmptyProg : Realizes .exact
   refine realizes_consequence_of hraw (fun _ _ _ _ _ _ h => h) fun w a s _ hmem hsafe => ?_
   have hnv : ((Memory.spec 0).clientResult s
       (initPreprocessProg ⟨a.numVertices, a.numEdges, 3⟩)).numVertices ≤ a.numVertices :=
-    initPreprocess_numVertices_le hmem hsafe.2.1
+    initPreprocessProg_numVertices_le hmem hsafe.2.1
   have hlog_le : Nat.log 2 ((Memory.spec 0).clientResult s
       (initPreprocessProg ⟨a.numVertices, a.numEdges, 3⟩)).numVertices ≤
       Nat.log 2 a.numVertices := Nat.log_mono_right hnv
@@ -1352,16 +1340,19 @@ theorem optimalMSFProg_spec {w n : ℕ} (es : List (WeightedEdge n ℕ))
     · rw [hprog]; exact hspec.2.1
     · simpa [hprog] using hspec.2.2
 
-/-- **Width-blind deterministic `O(T*(m, n) + m + n + 1)` Word-RAM Minimum Spanning Forest
-theorem** ([PettieRamachandran2002], Theorem 5.8, Section 5.1, p. 27, #8624): there exists a single
-fixed, width-blind (`¬prog.ReadsWidth`), random-free (`prog.IsRandFree`) standard-basis Word-RAM
-program `prog : Program .standard r` and a universal constant `C : ℕ` such that for every vertex
-count `n : ℕ`, every weighted undirected multigraph `es : List (WeightedEdge n ℕ)`
-(`m = es.length`), and every word width `w : ℕ` satisfying `Fits w (optimalMSFWordBound n m)` and
-`∀ e ∈ es, Fits w e.weight`, running `prog` from `State.init (Kruskal.encode es)` halts in
+/-- **Width-blind deterministic `O(optDepthMN m n + m + n + 1)` Word-RAM Minimum Spanning
+Forest theorem**: there exists a single fixed, width-blind (`¬prog.ReadsWidth`), random-free
+(`prog.IsRandFree`) standard-basis Word-RAM program `prog : Program .standard r` and a universal
+constant `C : ℕ` such that for every vertex count `n : ℕ`, every weighted undirected multigraph
+`es : List (WeightedEdge n ℕ)` (`m = es.length`), and every word width `w : ℕ` satisfying
+`Fits w (optimalMSFWordBound n m)` (logarithmic sufficient width) and `∀ e ∈ es, Fits w e.weight`,
+running `prog` from `State.init (Kruskal.encode es)` halts in
 `steps ≤ C * (optDepthMN m n + m + n + 1)` instructions (`ExecutesList`), outputting
 `Kruskal.encodeEdges msfEs` for a minimum spanning forest `msfEs` of `es`
-(`IsMinSpanningForest es msfEs`). -/
+(`IsMinSpanningForest es msfEs`). On raw multigraphs with `m > n.choose 2` or isolated vertices,
+`optDepthMN m n` saturates at `optDepthMN (n.choose 2) n` while `+ m + n` absorbs input scanning
+and deduplication; see `optimalMSF_simpleGraph_isMST_spec` for the pure `O(T*(m, n) + 1)`
+connected simple-graph bound. -/
 theorem optimalMSF_wordRAM_spec :
     ∃ r C : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
       ∀ (n : ℕ) (es : List (WeightedEdge n ℕ)) (w : ℕ),
@@ -1458,12 +1449,13 @@ theorem isMST_toSimpleGraph_of_isMinSpanningForest {n : ℕ}
     convert totalWeight_graphEdges T' wt
   omega
 
-/-- **`SimpleGraph (Fin n)` `IsMST` specialization**: on any connected `G : SimpleGraph (Fin n)`
-with edge weights `wt : Sym2 (Fin n) → ℕ` satisfying `∀ e ∈ graphEdges G wt, Fits w e.weight` and
-`Fits w (optimalMSFWordBound n G.edgeFinset.card)`, the same width-blind deterministic
-standard-basis program computes `Kruskal.encodeEdges msfEs` in
-`steps ≤ C * (optDepthMN G.edgeFinset.card n + G.edgeFinset.card + n)` instructions, where
-`toSimpleGraph msfEs` is a minimum-weight spanning tree (`SimpleGraph.IsMST`) of `G`. -/
+/-- **Theorem 5.8 (`O(T*(m, n) + 1)` deterministic Word-RAM MST on connected simple graphs)**
+([PettieRamachandran2002], Section 5.1, p. 27, #8624): on connected `G : SimpleGraph (Fin n)`
+with `m = G.edgeFinset.card` edges and weights `wt : Sym2 (Fin n) → ℕ` fitting in `w`, if
+`Fits w (optimalMSFWordBound n m)`, `prog` computes `Kruskal.encodeEdges msfEs` for a
+`SimpleGraph.IsMST` in `steps ≤ C * (optDepthMN m n + 1)` instructions (`m ≤ n.choose 2` agrees
+with exact-`m` `optDepthMN` via `optDepthMN_eq_exact`, spanning-tree connectivity gives `n ≤ m + 1`,
+and `le_two_mul_optDepthMN` absorbs `m` and `n` for `3 ≤ m`). -/
 theorem optimalMSF_simpleGraph_isMST_spec :
     ∃ r C : ℕ, ∃ prog : Program .standard r, ¬prog.ReadsWidth ∧ prog.IsRandFree ∧
       ∀ (n : ℕ) (G : SimpleGraph (Fin n)) [DecidableRel G.Adj] (wt : Sym2 (Fin n) → ℕ)
@@ -1475,15 +1467,32 @@ theorem optimalMSF_simpleGraph_isMST_spec :
           ExecutesList w prog (State.init (Kruskal.encode (graphEdges G wt)))
             (Kruskal.encodeEdges msfEs) steps ∧
           G.IsMST wt (toSimpleGraph msfEs) ∧
-          steps ≤ C * (optDepthMN G.edgeFinset.card n + G.edgeFinset.card + n) := by
+          steps ≤ C * (optDepthMN G.edgeFinset.card n + 1) := by
+  classical
   obtain ⟨r, C, prog, hnw, hrf, hspec⟩ := optimalMSF_wordRAM_spec
-  refine ⟨r, 2 * C, prog, hnw, hrf, fun n G _ wt w hconn hw_fit hfit => ?_⟩
+  refine ⟨r, 6 * C, prog, hnw, hrf, fun n G _ wt w hconn hw_fit hfit => ?_⟩
   have hfit' : Fits w (optimalMSFWordBound n (graphEdges G wt).length) := by rwa [length_graphEdges]
   obtain ⟨steps, msfEs, hex, hmsf, hst⟩ := hspec n (graphEdges G wt) w hw_fit hfit'
   rw [length_graphEdges] at hst
-  have hn_pos : 1 ≤ n := by obtain ⟨v⟩ := hconn.nonempty; exact Fin.pos v
-  have hmul : C * (optDepthMN G.edgeFinset.card n + G.edgeFinset.card + n + 1) ≤
-      2 * C * (optDepthMN G.edgeFinset.card n + G.edgeFinset.card + n) := by nlinarith
-  exact ⟨steps, msfEs, hex, isMST_toSimpleGraph_of_isMinSpanningForest hconn hmsf, hst.trans hmul⟩
+  have hmst : G.IsMST wt (toSimpleGraph msfEs) :=
+    isMST_toSimpleGraph_of_isMinSpanningForest hconn hmsf
+  have hn_le : n ≤ G.edgeFinset.card + 1 := by
+    have htree_card : (toSimpleGraph msfEs).edgeFinset.card + 1 = Fintype.card (Fin n) := by
+      convert hmst.1.2.card_edgeFinset
+    have hcard_le : (toSimpleGraph msfEs).edgeFinset.card ≤ G.edgeFinset.card :=
+      Finset.card_le_card (SimpleGraph.edgeFinset_mono hmst.1.1)
+    rw [Fintype.card_fin] at htree_card; omega
+  have hm_le : G.edgeFinset.card ≤ n.choose 2 := by
+    simpa [Fintype.card_fin] using G.card_edgeFinset_le_card_choose_two
+  have hsum_le : optDepthMN G.edgeFinset.card n + G.edgeFinset.card + n + 1 ≤
+      6 * (optDepthMN G.edgeFinset.card n + 1) := by
+    by_cases hm3 : 3 ≤ G.edgeFinset.card
+    · have hn3 : 3 ≤ n := by
+        by_contra hn_lt
+        have hc : ∀ k < 3, k.choose 2 ≤ 1 := by decide
+        have := hc n (by omega); omega
+      have := le_two_mul_optDepthMN hm3 hn3 hm_le; omega
+    · omega
+  exact ⟨steps, msfEs, hex, hmst, hst.trans (by nlinarith)⟩
 
 end Cslib.Algorithms.WordRAM.MinimumSpanningForest

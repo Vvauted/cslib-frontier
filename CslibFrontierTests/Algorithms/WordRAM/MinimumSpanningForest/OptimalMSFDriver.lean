@@ -265,8 +265,7 @@ private theorem k4_isMST_witness :
           (State.init (encode (graphEdges (⊤ : SimpleGraph (Fin 4)) k4Wt)))
           (encodeEdges msfEs) steps ∧
         (⊤ : SimpleGraph (Fin 4)).IsMST k4Wt (toSimpleGraph msfEs) ∧
-        steps ≤ C * (optDepthMN (⊤ : SimpleGraph (Fin 4)).edgeFinset.card 4 +
-          (⊤ : SimpleGraph (Fin 4)).edgeFinset.card + 4) := by
+        steps ≤ C * (optDepthMN (⊤ : SimpleGraph (Fin 4)).edgeFinset.card 4 + 1) := by
   obtain ⟨r, C, prog, hnw, hrf, hspec⟩ := optimalMSF_simpleGraph_isMST_spec
   have hfit : Fits 24 (optimalMSFWordBound 4 (⊤ : SimpleGraph (Fin 4)).edgeFinset.card) := by
     rw [show (⊤ : SimpleGraph (Fin 4)).edgeFinset.card = 6 by decide]
