@@ -34,10 +34,11 @@ Corollary 5.6 and Theorem 5.8).
   `DTSkelEnv`: word-encoded workspace handles and search-environment records.
 * `DTEnvLayout`, `DTMaskEntryValid`, `DTMaskIn`, `CodeIsPerm`, `permOfCode`: scratch-workspace
   disjointness invariants, table-entry predicates, and base-`e` permutation decoding.
-* `dtTestSkelProg`, `dtTestSkelProgSafe`: evaluates one comparison skeleton across the first
-  `d.2` base-`e` codes (`0 .. d.2 - 1`, skipping non-permutation codes); under the full code
-  range `d.2 = e ^ e` and initialized `leafSeen`/`leafAns` hypotheses of `dtTestSkelProg_spec`,
-  returns `1` iff the skeleton uniquely determines `Cslib.Multigraph.msf` at every leaf.
+* `dtTestSkelProg`, `dtTestSkelProgSafe`: clears `leafSeen` and `leafAns`, then loops over
+  `0 .. d.2 - 1` reading stored answers from `permAns` (`0` as skip marker) and checking leaf
+  consistency; under `dtTestSkelProg_spec`'s precomputed `DTMaskIn` table, disjoint `DTEnvLayout`
+  workspace, initialized `powSkelArr`/`powEArr` power tables, and `d.2 = e ^ e`, returns `1` iff
+  the skeleton determines `Cslib.Multigraph.msf` at every leaf (writing `leafAns`).
 * `dtWriteFoundEntry`, `dtWriteFoundEntrySafe`, `dtWriteTrivialEntry`, `dtWriteTrivialEntrySafe`:
   allocates and writes complete decision-tree table entries (`e ≥ 2` and `e ≤ 1`).
 
@@ -773,11 +774,13 @@ private theorem realizes_dtCheckOnePermStep : Realizes .exact
     | exact (hbr (by tauto) (by tauto)).2.2
     | fits
 
-/-- Tests candidate skeleton `d.1.skelCode` over `d.2` base-`e` codes (`0 .. d.2 - 1`, where
-only valid permutation codes update `leafSeen`/`leafAns`), returning `1` iff no colliding valid
-codes disagree on their MSF mask. Under `dtTestSkelProg_spec`'s full range (`d.2 = e ^ e`) and
-initialized-table hypotheses, returns `1` iff the skeleton uniquely determines
-`Cslib.Multigraph.msf` at every leaf. -/
+/-- Clears `leafSeen` and `leafAns`, then evaluates candidate skeleton `d.1.skelCode` across
+`0 .. d.2 - 1` by reading stored answers from `d.1.permAns` (using `0` as a skip marker) and
+checking leaf consistency in `leafSeen`/`leafAns`; returns `1` iff no two nonzero `permAns`
+entries reaching the same leaf disagree. Under the hypotheses of `dtTestSkelProg_spec`
+(precomputed permutation-answer table `DTMaskIn`, disjoint `DTEnvLayout` workspace, initialized
+power tables `powEArr`/`powSkelArr`, and `d.2 = e ^ e`), returns `1` iff `skelCode` uniquely
+determines `Cslib.Multigraph.msf` at every leaf (and writes leaf MSF masks to `leafAns`). -/
 def dtTestSkelProg (d : DTCheckPermEnv × ℕ) : Memory.Prog ℕ := do
   let _ ← fillConstProg d.1.env.bufB.leafSeen 0 d.1.pow2d
   let _ ← fillConstProg d.1.env.bufB.leafAns 0 d.1.pow2d
@@ -808,7 +811,11 @@ theorem realizes_dtTestSkelProg : Realizes .exact
     | exact iterationSafe_imp hchk (fun _ => rfl) (fun _ _ hs => hs)
     | fits
 
-/-- Framed specification of `dtTestSkelProg` verifying leaf separation and leaf answers. -/
+/-- Framed specification of `dtTestSkelProg`: given a disjoint `DTEnvLayout` workspace,
+initialized `powSkelArr` power table, precomputed `DTMaskIn` permutation-answer table, and full
+`e ^ e` range, proves `dtTestSkelProg` returns `1` whenever `skelCode` determines
+`Cslib.Multigraph.msf` at every leaf, and when `res = 1` writes each permutation's
+`maskOfFinset` MSF mask into `leafAns`. -/
 theorem dtTestSkelProg_spec {w baseFront mask e d permAns skelCode : ℕ}
     {env : DTPrecompEnv} {s : Memory.State}
     (h2 : Fits w 2) (hwf : Memory.WellFormed w s)
