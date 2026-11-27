@@ -8939,6 +8939,7 @@ public import CslibFrontier.Computability.Circuit.Boolean.Barrington
 public import CslibFrontier.Computability.Circuit.Arithmetic.DepthFive.Path
 public import CslibFrontier.Crypto.Primitives.PRG.NextBit
 public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.DecisionTree.Batch
+public import CslibFrontier.Algorithms.WordRAM.MinimumSpanningForest.OptimalMSF.BaseOps
 public import CslibFrontier.Foundations.Combinatorics.SimpleGraph.EvenEdges
 public import CslibFrontier.Computability.Machines.Turing.MultiTape.Complexity.InSpace.NatPrime
 public import CslibFrontier.DataStructure.Dictionary.SuccinctWhpModelTick.Stage34
