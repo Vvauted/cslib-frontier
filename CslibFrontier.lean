@@ -5505,6 +5505,7 @@ public import CslibFrontier.Computability.PropertyTesting.Majority.DirectAccess
 public import CslibFrontier.Computability.Kolmogorov.TimeBounded.Counting
 public import CslibFrontier.Crypto.Game.RepeatedInversion.SlotBound
 public import CslibFrontier.Computability.Complexity.Problems.Graph.Arborescences
+public import CslibFrontier.Computability.Complexity.Classes.LogSpace.Circuit
 public import CslibFrontier.Foundations.Data.Nat.Min
 public import CslibFrontier.Logics.FirstOrder.Raw.Interpret
 public import CslibFrontier.Computability.Complexity.Classes.AWPP.WPP
